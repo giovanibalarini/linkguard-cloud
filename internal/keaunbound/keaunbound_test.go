@@ -1519,4 +1519,3 @@ func TestInterfaceInexistenteNaoFalhaOApplyDoDNS(t *testing.T) {
 		t.Errorf("kea.conf não deveria ter sido escrito para interface inexistente")
 	}
 }
-

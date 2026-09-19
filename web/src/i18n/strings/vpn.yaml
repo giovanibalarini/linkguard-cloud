@@ -241,3 +241,67 @@ vpn.peer.accessSaved:
   pt: "Perfil de acesso ZTNA atualizado com sucesso."
   en: "ZTNA access profile updated successfully."
 
+
+# Perfil de túnel por peer: o que a máquina do usuário manda para dentro do
+# túnel. É roteamento no cliente, e não controle de acesso — quem garante o que
+# o peer alcança é o perfil ZTNA acima, aplicado em nftables.
+vpn.peer.tunnelTitle:
+  pt: "Tráfego pelo túnel"
+  en: "Traffic through the tunnel"
+vpn.peer.tunnelDesc:
+  pt: "Decide o que o dispositivo envia pelo túnel. Não substitui o perfil de acesso: quem garante o que o peer alcança é o firewall."
+  en: "Decides what the device sends through the tunnel. It does not replace the access profile: the firewall is what enforces what the peer can reach."
+vpn.peer.tunnelFull:
+  pt: "Todo o tráfego"
+  en: "All traffic"
+vpn.peer.tunnelFullDesc:
+  pt: "Tudo sai pelo firewall, inclusive a navegação. Traz filtragem, DNS, QoS e visibilidade para o dispositivo remoto — e consome a banda do link."
+  en: "Everything leaves through the firewall, browsing included. Brings filtering, DNS, QoS and visibility to the remote device — and uses the link's bandwidth."
+vpn.peer.tunnelFullHint:
+  pt: "AllowedIPs = 0.0.0.0/0"
+  en: "AllowedIPs = 0.0.0.0/0"
+vpn.peer.tunnelSplit:
+  pt: "Só as redes liberadas"
+  en: "Only the allowed networks"
+vpn.peer.tunnelSplitDesc:
+  pt: "Apenas a rede da VPN e os destinos permitidos entram no túnel. O resto sai pela Internet local do dispositivo."
+  en: "Only the VPN network and the allowed destinations enter the tunnel. Everything else uses the device's own Internet."
+vpn.peer.extraRoutesLabel:
+  pt: "Redes adicionais (opcional)"
+  en: "Additional networks (optional)"
+vpn.peer.extraRoutesPlaceholder:
+  pt: "ex: 10.0.1.0/24, 192.168.50.10"
+  en: "e.g. 10.0.1.0/24, 192.168.50.10"
+vpn.peer.extraRoutesHelp:
+  pt: "IPs ou CIDRs separados por vírgula, somados aos hosts dos grupos liberados. A rede da VPN entra sempre."
+  en: "Comma-separated IPs or CIDRs, added to the hosts of the allowed groups. The VPN network is always included."
+vpn.peer.mtuLabel:
+  pt: "MTU (opcional)"
+  en: "MTU (optional)"
+vpn.peer.mtuPlaceholder:
+  pt: "em branco = padrão do cliente; típico 1420"
+  en: "blank = client default; 1420 is typical"
+vpn.peer.mtuHelp:
+  pt: "Entre 1280 e 9000. Útil quando o caminho tem MTU menor e conexões grandes travam sem erro."
+  en: "Between 1280 and 9000. Useful when the path has a smaller MTU and large transfers stall with no error."
+vpn.peer.tunnelReissueNote:
+  pt: "O WireGuard não envia rotas para um cliente já configurado: quem tiver a configuração antiga precisa baixá-la de novo."
+  en: "WireGuard does not push routes to an already configured client: anyone holding the old configuration must download it again."
+vpn.peer.configStale:
+  pt: "Config desatualizada"
+  en: "Config out of date"
+vpn.peer.configStaleHint:
+  pt: "O perfil mudou depois que este usuário baixou a configuração. Ele precisa baixá-la novamente."
+  en: "The profile changed after this user downloaded the configuration. They need to download it again."
+vpn.enrollment.reissue:
+  pt: "Baixar configuração novamente"
+  en: "Download configuration again"
+vpn.enrollment.reissueHint:
+  pt: "Gera o arquivo com o perfil atual, mantendo a mesma chave — os dispositivos já configurados continuam funcionando."
+  en: "Produces the file with the current profile, keeping the same key — devices already configured keep working."
+vpn.enrollment.reissued:
+  pt: "Configuração reemitida com o perfil atual. A chave não foi alterada."
+  en: "Configuration reissued with the current profile. The key was not changed."
+vpn.enrollment.staleWarning:
+  pt: "O perfil do seu túnel mudou depois da última vez que você baixou a configuração. Baixe novamente para receber as rotas novas."
+  en: "Your tunnel profile changed after the last time you downloaded the configuration. Download it again to get the new routes."

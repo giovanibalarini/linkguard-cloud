@@ -332,6 +332,14 @@ func peersFromStorage(rows []storage.WireGuardPeer) []Peer {
 		if groups == nil {
 			groups = []string{}
 		}
+		tunnel := p.TunnelMode
+		if tunnel == "" {
+			tunnel = TunnelFull
+		}
+		routes := p.ExtraRoutes
+		if routes == nil {
+			routes = []string{}
+		}
 		out = append(out, Peer{
 			UserID:            p.UserID,
 			Username:          p.Username,
@@ -341,6 +349,10 @@ func peersFromStorage(rows []storage.WireGuardPeer) []Peer {
 			AccessMode:        mode,
 			AllowedHostGroups: groups,
 			AllowedPorts:      p.AllowedPorts,
+			TunnelMode:        tunnel,
+			ExtraRoutes:       routes,
+			MTU:               p.MTU,
+			ConfigStale:       p.ConfigStale,
 			CreatedAt:         p.CreatedAt.Unix(),
 			RotatedAt:         p.RotatedAt.Unix(),
 		})
@@ -397,8 +409,16 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 	}
 	address := ""
 	groupID := ""
+	accessMode, tunnelMode := "full", TunnelFull
+	allowedGroups, extraRoutes := []string{}, []string{}
+	mtu := 0
 	if current != nil {
 		address, groupID = current.Address, current.FirewallGroupID
+		// Rotacionar a chave não é mudar a política: o perfil do peer
+		// atravessa intacto, senão um "gerar de novo" silenciosamente
+		// devolveria o usuário para full tunnel.
+		accessMode, tunnelMode = current.AccessMode, current.TunnelMode
+		allowedGroups, extraRoutes, mtu = current.AllowedHostGroups, current.ExtraRoutes, current.MTU
 	} else {
 		address, err = NextAddress(c, peersFromStorage(stored))
 		if err != nil {
@@ -416,8 +436,14 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 	}
 	_ = serverPrivate // never leaves this method; public is all clients need
 	peer := Peer{UserID: userID, Username: user.Username, PublicKey: clientPublic,
-		Address: address, FirewallGroupID: groupID}
-	clientConfig, err := RenderClientConfig(c, serverPublic, peer, clientPrivate, endpoint)
+		Address: address, FirewallGroupID: groupID, AccessMode: accessMode,
+		AllowedHostGroups: allowedGroups, TunnelMode: tunnelMode,
+		ExtraRoutes: extraRoutes, MTU: mtu}
+	routes, err := s.resolveRoutes(accessMode, allowedGroups, extraRoutes)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	clientConfig, err := RenderClientConfig(c, serverPublic, peer, clientPrivate, endpoint, routes)
 	if err != nil {
 		return Enrollment{}, err
 	}
@@ -426,7 +452,9 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 		return Enrollment{}, err
 	}
 	row := storage.WireGuardPeer{UserID: userID, PublicKey: clientPublic, Address: address,
-		SecretName: secretName, FirewallGroupID: groupID}
+		SecretName: secretName, FirewallGroupID: groupID, AccessMode: accessMode,
+		AllowedHostGroups: allowedGroups, TunnelMode: tunnelMode,
+		ExtraRoutes: extraRoutes, MTU: mtu}
 	group := storage.FirewallGroup{ID: groupID, Name: "VPN — " + user.Username,
 		ChainName: nftables.GroupChainName(groupID), Enabled: true, CondSaddr: address,
 		Fallthrough: nftables.FallthroughContinue, Kind: nftables.GroupKindWireGuardPeer,
@@ -472,7 +500,127 @@ func (s *Service) Revoke(ctx context.Context, userID string) error {
 	return applyErr
 }
 
-func (s *Service) SetPeerAccess(ctx context.Context, userID, accessMode string, allowedHostGroups []string, allowedPorts string) error {
+// PeerAccess é o perfil que o painel edita de uma vez: o que o peer ALCANÇA
+// (access, aplicado em nftables) e o que ele MANDA para o túnel (tunnel,
+// aplicado na config do cliente).
+type PeerAccess struct {
+	AccessMode        string
+	AllowedHostGroups []string
+	AllowedPorts      string
+	TunnelMode        string
+	ExtraRoutes       []string
+	MTU               int
+}
+
+// resolveRoutes traduz o perfil do peer nos destinos que entram no AllowedIPs
+// do cliente: os hosts dos grupos liberados, mais as rotas extras digitadas.
+//
+// Só o serviço faz isto porque só ele alcança o banco; o render recebe a lista
+// pronta e a revalida antes de escrever.
+func (s *Service) resolveRoutes(accessMode string, allowedHostGroups, extraRoutes []string) ([]string, error) {
+	routes := append([]string(nil), extraRoutes...)
+	if accessMode == "restricted" {
+		for _, id := range allowedHostGroups {
+			group, err := s.db.GetHostGroup(id)
+			if err != nil {
+				return nil, err
+			}
+			if group == nil {
+				continue
+			}
+			routes = append(routes, group.Hosts...)
+		}
+	}
+	return NormalizeRoutes(routes)
+}
+
+// ClientConfig reemite a config do peer SEM rotacionar a chave.
+//
+// É o par necessário do modo de túnel por peer: o WireGuard não empurra rota
+// nenhuma para um cliente já configurado, então mudar o perfil exige entregar o
+// arquivo de novo. Sem este caminho, a única forma de reemitir seria enrolar
+// outra vez — o que troca a chave e derruba o dispositivo que ainda estava
+// funcionando.
+func (s *Service) ClientConfig(ctx context.Context, userID string) (Enrollment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.Config()
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if err := ValidateConfig(c); err != nil {
+		return Enrollment{}, err
+	}
+	endpoint, err := s.resolveEndpoint(c)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	stored, err := s.db.GetWireGuardPeer(userID)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if stored == nil {
+		return Enrollment{}, fmt.Errorf("nenhuma identidade WireGuard para este usuário")
+	}
+	private, err := s.secrets.Get(stored.SecretName)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if private == "" {
+		return Enrollment{}, fmt.Errorf("a chave deste peer não está mais no cofre; gere a configuração novamente")
+	}
+	// A privada guardada tem que corresponder à pública que o servidor conhece.
+	// Sem esta conferência, um cofre restaurado de outro backup entregaria uma
+	// config que o túnel não aceita, e o sintoma seria só um handshake mudo.
+	public, err := PublicKey(private)
+	if err != nil || public != stored.PublicKey {
+		return Enrollment{}, fmt.Errorf("a chave guardada não corresponde ao peer registrado; gere a configuração novamente")
+	}
+	routes, err := s.resolveRoutes(stored.AccessMode, stored.AllowedHostGroups, stored.ExtraRoutes)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	_, serverPublic, err := s.ensureServerKey()
+	if err != nil {
+		return Enrollment{}, err
+	}
+	peer := peersFromStorage([]storage.WireGuardPeer{*stored})[0]
+	clientConfig, err := RenderClientConfig(c, serverPublic, peer, private, endpoint, routes)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if err := s.db.MarkWireGuardConfigIssued(userID); err != nil {
+		return Enrollment{}, err
+	}
+	peer.ConfigStale = false
+	result := Enrollment{Peer: peer, ClientConfig: clientConfig}
+	if s.qr != nil {
+		qr, qrErr := s.qr.Encode(ctx, clientConfig)
+		if qrErr != nil {
+			result.Warning = qrErr.Error()
+		} else {
+			result.QRDataURL = qr
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) SetPeerAccess(ctx context.Context, userID string, access PeerAccess) error {
+	if access.TunnelMode == "" {
+		access.TunnelMode = TunnelFull
+	}
+	if access.TunnelMode != TunnelFull && access.TunnelMode != TunnelSplit {
+		return fmt.Errorf("modo de túnel inválido: use %q ou %q", TunnelFull, TunnelSplit)
+	}
+	if err := ValidateMTU(access.MTU); err != nil {
+		return err
+	}
+	normalized, err := NormalizeRoutes(access.ExtraRoutes)
+	if err != nil {
+		return err
+	}
+	access.ExtraRoutes = normalized
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -484,7 +632,14 @@ func (s *Service) SetPeerAccess(ctx context.Context, userID, accessMode string, 
 		return fmt.Errorf("peer não encontrado")
 	}
 
-	if err := s.db.UpdateWireGuardPeerAccess(userID, accessMode, allowedHostGroups, allowedPorts); err != nil {
+	if err := s.db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
+		AccessMode:        access.AccessMode,
+		AllowedHostGroups: access.AllowedHostGroups,
+		AllowedPorts:      access.AllowedPorts,
+		TunnelMode:        access.TunnelMode,
+		ExtraRoutes:       access.ExtraRoutes,
+		MTU:               access.MTU,
+	}); err != nil {
 		return err
 	}
 

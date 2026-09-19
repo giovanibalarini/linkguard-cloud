@@ -22,6 +22,10 @@ type wireGuardServiceStub struct {
 	updateCalled   bool
 	enrolledUserID string
 	revokedUserID  string
+	reissuedUserID string
+	reissueErr     error
+	accessUserID   string
+	access         wireguard.PeerAccess
 	recorded       error
 }
 
@@ -40,8 +44,14 @@ func (s *wireGuardServiceStub) Revoke(_ context.Context, userID string) error {
 	s.revokedUserID = userID
 	return nil
 }
-func (s *wireGuardServiceStub) SetPeerAccess(_ context.Context, userID, accessMode string, allowedHostGroups []string, allowedPorts string) error {
+func (s *wireGuardServiceStub) SetPeerAccess(_ context.Context, userID string, access wireguard.PeerAccess) error {
+	s.accessUserID = userID
+	s.access = access
 	return nil
+}
+func (s *wireGuardServiceStub) ClientConfig(_ context.Context, userID string) (wireguard.Enrollment, error) {
+	s.reissuedUserID = userID
+	return s.enrollment, s.reissueErr
 }
 func (s *wireGuardServiceStub) RecordIntegrationError(err error) { s.recorded = err }
 
@@ -161,3 +171,98 @@ func TestWireGuardSetPeerAccess(t *testing.T) {
 	}
 }
 
+func TestWireGuardSetPeerAccessGuardaOPerfilDeTunel(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+
+	r := chi.NewRouter()
+	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
+
+	body := `{"access_mode":"restricted","allowed_host_groups":["hg-1"],"allowed_ports":"22",
+	          "tunnel_mode":"split","extra_routes":["10.0.1.0/24"],"mtu":1440}`
+	req := httptest.NewRequest(http.MethodPut, "/api/vpn/peers/u-123/access", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if svc.access.TunnelMode != "split" || svc.access.MTU != 1440 {
+		t.Fatalf("perfil de túnel não chegou ao serviço: %+v", svc.access)
+	}
+	if len(svc.access.ExtraRoutes) != 1 || svc.access.ExtraRoutes[0] != "10.0.1.0/24" {
+		t.Fatalf("rotas extras não chegaram: %+v", svc.access.ExtraRoutes)
+	}
+}
+
+func TestWireGuardSetPeerAccessRecusaTunelERotaInvalidosAntesDoServico(t *testing.T) {
+	casos := map[string]string{
+		"modo inexistente": `{"access_mode":"full","tunnel_mode":"halfsies"}`,
+		"rota injetada":    `{"access_mode":"full","tunnel_mode":"split","extra_routes":["10.0.0.0/8\nPostUp = touch /tmp/pwn"]}`,
+		"mtu impraticável": `{"access_mode":"full","tunnel_mode":"split","mtu":42}`,
+	}
+	for nome, body := range casos {
+		t.Run(nome, func(t *testing.T) {
+			db := newWireGuardHandlerTestDB(t)
+			svc := &wireGuardServiceStub{}
+			h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+			r := chi.NewRouter()
+			r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
+
+			req := httptest.NewRequest(http.MethodPut, "/api/vpn/peers/u-123/access", strings.NewReader(body))
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+			}
+			if svc.accessUserID != "" {
+				t.Fatal("entrada inválida chegou ao serviço")
+			}
+		})
+	}
+}
+
+func TestWireGuardReemiteConfigDoProprioUsuario(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "config-reemitida"}}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment/config", nil)
+	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "local-user"}))
+	w := httptest.NewRecorder()
+
+	h.ReissueSelf(w, req)
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "config-reemitida") {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	// Reemitir serve apenas a si mesmo: o userID vem do token, nunca da URL.
+	if svc.reissuedUserID != "local-user" {
+		t.Fatalf("reemitiu para %q em vez do usuário autenticado", svc.reissuedUserID)
+	}
+	logs, err := db.GetAuditLogs(10)
+	if err != nil {
+		t.Fatalf("GetAuditLogs: %v", err)
+	}
+	if len(logs) != 1 || strings.Contains(logs[0].Details, "config-reemitida") {
+		t.Fatalf("auditoria ausente ou vazou a config: %+v", logs)
+	}
+}
+
+func TestWireGuardReemissaoExigeAutenticacao(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	w := httptest.NewRecorder()
+
+	h.ReissueSelf(w, httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment/config", nil))
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if svc.reissuedUserID != "" {
+		t.Fatal("pedido sem identidade chegou ao serviço")
+	}
+}

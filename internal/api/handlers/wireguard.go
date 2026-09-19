@@ -19,8 +19,9 @@ type wireGuardService interface {
 	Overview(context.Context) (wireguard.Overview, error)
 	UpdateConfig(context.Context, wireguard.Config) error
 	Enroll(context.Context, string) (wireguard.Enrollment, error)
+	ClientConfig(context.Context, string) (wireguard.Enrollment, error)
 	Revoke(context.Context, string) error
-	SetPeerAccess(context.Context, string, string, []string, string) error
+	SetPeerAccess(context.Context, string, wireguard.PeerAccess) error
 	RecordIntegrationError(error)
 }
 
@@ -170,6 +171,9 @@ type peerAccessBody struct {
 	AccessMode        string   `json:"access_mode"`
 	AllowedHostGroups []string `json:"allowed_host_groups"`
 	AllowedPorts      string   `json:"allowed_ports"`
+	TunnelMode        string   `json:"tunnel_mode"`
+	ExtraRoutes       []string `json:"extra_routes"`
+	MTU               int      `json:"mtu"`
 }
 
 func (h *WireGuardHandler) SetPeerAccess(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +195,33 @@ func (h *WireGuardHandler) SetPeerAccess(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "modo de acesso inválido: use 'full' ou 'restricted'")
 		return
 	}
-	if err := h.svc.SetPeerAccess(r.Context(), userID, req.AccessMode, req.AllowedHostGroups, strings.TrimSpace(req.AllowedPorts)); err != nil {
+	req.TunnelMode = strings.TrimSpace(req.TunnelMode)
+	if req.TunnelMode == "" {
+		req.TunnelMode = wireguard.TunnelFull
+	}
+	if req.TunnelMode != wireguard.TunnelFull && req.TunnelMode != wireguard.TunnelSplit {
+		writeError(w, http.StatusBadRequest, "modo de túnel inválido: use 'full' ou 'split'")
+		return
+	}
+	// Rotas e MTU são validados aqui para que um valor digitado errado volte
+	// como 400 com o motivo, e não como falha interna. O serviço revalida.
+	if err := wireguard.ValidateMTU(req.MTU); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, err := wireguard.NormalizeRoutes(req.ExtraRoutes); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	access := wireguard.PeerAccess{
+		AccessMode:        req.AccessMode,
+		AllowedHostGroups: req.AllowedHostGroups,
+		AllowedPorts:      strings.TrimSpace(req.AllowedPorts),
+		TunnelMode:        req.TunnelMode,
+		ExtraRoutes:       req.ExtraRoutes,
+		MTU:               req.MTU,
+	}
+	if err := h.svc.SetPeerAccess(r.Context(), userID, access); err != nil {
 		auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID, "erro: "+err.Error())
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -199,6 +229,30 @@ func (h *WireGuardHandler) SetPeerAccess(w http.ResponseWriter, r *http.Request)
 	if err := h.reconcileIntegrations(r.Context()); err != nil {
 		h.svc.RecordIntegrationError(err)
 	}
-	auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID, "modo: "+req.AccessMode)
+	auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID,
+		"modo: "+req.AccessMode+", túnel: "+req.TunnelMode)
 	writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
+}
+
+// ReissueSelf devolve a configuração do próprio usuário com o perfil atual, sem
+// gerar chave nova.
+//
+// Só serve a si mesmo, de propósito: um admin que pudesse reemitir a config de
+// outro receberia a chave privada dele, e o desenho do produto é que ninguém
+// além do dono jamais a veja. Quando o admin muda o túnel de alguém, o peer
+// aparece como desatualizado e o próprio usuário rebaixa o arquivo.
+func (h *WireGuardHandler) ReissueSelf(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		writeError(w, http.StatusUnauthorized, "autenticação necessária")
+		return
+	}
+	result, err := h.svc.ClientConfig(r.Context(), claims.UserID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	auditAction(h.db, r, "vpn.reissue", "vpn-user:"+claims.UserID, "")
+	// Mesma natureza do enroll: a resposta carrega a chave privada do cliente.
+	writeJSON(w, http.StatusOK, result)
 }

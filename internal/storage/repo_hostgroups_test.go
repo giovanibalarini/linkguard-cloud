@@ -124,7 +124,11 @@ func TestUpdateWireGuardPeerAccess(t *testing.T) {
 	}
 
 	// Update to restricted
-	if err := db.UpdateWireGuardPeerAccess(user.ID, "restricted", []string{"hg_k3s"}, "22, 6443"); err != nil {
+	if err := db.UpdateWireGuardPeerAccess(user.ID, storage.WireGuardPeerAccess{
+		AccessMode:        "restricted",
+		AllowedHostGroups: []string{"hg_k3s"},
+		AllowedPorts:      "22, 6443",
+	}); err != nil {
 		t.Fatalf("UpdateWireGuardPeerAccess: %v", err)
 	}
 

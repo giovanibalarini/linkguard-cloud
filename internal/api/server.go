@@ -650,6 +650,7 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 			r.With(require(auth.PermVPNRead)).Get("/api/vpn", vpnH.Get)
 			r.With(require(auth.PermVPNWrite)).Put("/api/vpn", vpnH.UpdateConfig)
 			r.With(require(auth.PermVPNEnroll)).Post("/api/vpn/enrollment", vpnH.EnrollSelf)
+			r.With(require(auth.PermVPNEnroll)).Post("/api/vpn/enrollment/config", vpnH.ReissueSelf)
 			r.With(require(auth.PermVPNEnroll)).Delete("/api/vpn/enrollment", vpnH.RevokeSelf)
 			r.With(require(auth.PermVPNWrite)).Delete("/api/vpn/peers/{userID}", vpnH.RevokePeer)
 			r.With(require(auth.PermVPNWrite)).Put("/api/vpn/peers/{userID}/access", vpnH.SetPeerAccess)

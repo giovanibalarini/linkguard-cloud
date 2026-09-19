@@ -232,6 +232,7 @@ var schemaMigrations = []migration{
 	{20, "stress test: lease de recuperação", upStressRecoveryLease},
 	{21, "QoS: journal durável de operações", upQoSOperationLease},
 	{22, "host_groups: grupos de ativos para firewall e ZTNA", upHostGroups},
+	{23, "wireguard: modo de túnel, rotas e MTU por peer", upWireGuardSplitTunnel},
 }
 
 func upWireGuard(tx *sql.Tx) error {
@@ -261,6 +262,49 @@ func upWireGuard(tx *sql.Tx) error {
 			rotated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`); err != nil {
 		return err
+	}
+	return nil
+}
+
+// upWireGuardSplitTunnel dá a cada peer o próprio modo de túnel.
+//
+// Os dois carimbos de tempo são o que fecha o ciclo: WireGuard não empurra rota
+// nenhuma para um cliente já configurado, então quando o admin mexe no modo, a
+// config que o usuário tem na mão fica velha e ninguém fica sabendo.
+// routes_updated_at avança a cada mudança; config_issued_at avança a cada
+// emissão. Os dois nascem em 0 de propósito: no upgrade, ninguém é marcado como
+// desatualizado sem que nada tenha mudado.
+func upWireGuardSplitTunnel(tx *sql.Tx) error {
+	var tableExists, hasTunnelMode bool
+	rows, err := tx.Query(`PRAGMA table_info(wireguard_peers)`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			tableExists = true
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dfltValue any
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err == nil {
+				if name == "tunnel_mode" {
+					hasTunnelMode = true
+				}
+			}
+		}
+	}
+	if !tableExists || hasTunnelMode {
+		return nil
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE wireguard_peers ADD COLUMN tunnel_mode TEXT NOT NULL DEFAULT 'full'`,
+		`ALTER TABLE wireguard_peers ADD COLUMN extra_routes TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE wireguard_peers ADD COLUMN mtu INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE wireguard_peers ADD COLUMN routes_updated_at INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE wireguard_peers ADD COLUMN config_issued_at INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
 	}
 	return nil
 }

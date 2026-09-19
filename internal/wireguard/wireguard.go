@@ -21,6 +21,28 @@ const (
 	ServerSecret  = "wireguard_server_private_v1"
 )
 
+// TunnelMode decide o AllowedIPs que vai na config DO CLIENTE, ou seja, o que a
+// máquina dele sequer manda para dentro do túnel. É roteamento, não controle de
+// acesso: quem garante o que o peer alcança é o grupo nftables criado por peer
+// (AccessMode/AllowedHostGroups). Os dois são deliberadamente independentes —
+// há quem queira acesso restrito a dois servidores E toda a navegação passando
+// pelo firewall, para ganhar blocklist, dnstap e QoS no road-warrior.
+//
+// Vazio conta como TunnelFull: é o valor de todo peer enrolado antes desta
+// coluna existir, e é o que a config que eles já têm na mão diz.
+const (
+	TunnelFull  = "full"  // AllowedIPs = 0.0.0.0/0 — tudo pelo túnel
+	TunnelSplit = "split" // só a rede do túnel e os destinos liberados
+)
+
+// Limites do MTU do cliente. 0 significa "não escreve a linha", deixando o
+// padrão do cliente valer. O piso é o mínimo que o IPv6 exige; o teto cobre
+// jumbo frames de nuvem.
+const (
+	MTUMin = 1280
+	MTUMax = 9000
+)
+
 type Config struct {
 	Enabled        bool   `json:"enabled"`
 	ListenPort     int    `json:"listen_port"`
@@ -38,6 +60,10 @@ type Peer struct {
 	AccessMode        string   `json:"access_mode,omitempty"`
 	AllowedHostGroups []string `json:"allowed_host_groups,omitempty"`
 	AllowedPorts      string   `json:"allowed_ports,omitempty"`
+	TunnelMode        string   `json:"tunnel_mode,omitempty"`
+	ExtraRoutes       []string `json:"extra_routes,omitempty"`
+	MTU               int      `json:"mtu,omitempty"`
+	ConfigStale       bool     `json:"config_stale,omitempty"`
 	CreatedAt         int64    `json:"created_at,omitempty"`
 	RotatedAt         int64    `json:"rotated_at,omitempty"`
 	Online            bool     `json:"online"`
@@ -163,7 +189,83 @@ func RenderServerConfig(c Config, private string, peers []Peer) (string, error) 
 	return b.String(), nil
 }
 
-func RenderClientConfig(c Config, serverPublic string, p Peer, private, endpoint string) (string, error) {
+// ValidateMTU aceita 0 (não escreve a linha, vale o padrão do cliente) ou um
+// valor dentro dos limites praticáveis.
+func ValidateMTU(mtu int) error {
+	if mtu == 0 {
+		return nil
+	}
+	if mtu < MTUMin || mtu > MTUMax {
+		return fmt.Errorf("MTU inválido: use 0 para o padrão do cliente ou um valor entre %d e %d", MTUMin, MTUMax)
+	}
+	return nil
+}
+
+// NormalizeRoutes valida cada destino e devolve a forma canônica, ordenada e
+// sem repetição.
+//
+// O valor devolvido NUNCA é o texto que entrou: cada item volta reimpresso por
+// netip. É isso que torna impossível injetar uma linha no .conf por um host
+// group ou por uma rota extra — um "10.0.0.0/8\nPostUp = ..." não sobrevive ao
+// ParsePrefix, e o que é aceito sai reescrito pelo netip, sem os caracteres
+// originais.
+func NormalizeRoutes(routes []string) ([]string, error) {
+	seen := make(map[string]bool, len(routes))
+	out := make([]string, 0, len(routes))
+	for _, raw := range routes {
+		route := strings.TrimSpace(raw)
+		if route == "" {
+			continue
+		}
+		var canonical string
+		if prefix, err := netip.ParsePrefix(route); err == nil && prefix.Addr().Is4() {
+			canonical = prefix.Masked().String()
+		} else if addr, err := netip.ParseAddr(route); err == nil && addr.Is4() {
+			canonical = netip.PrefixFrom(addr, 32).String()
+		} else {
+			return nil, fmt.Errorf("destino inválido para a rota do túnel: %q", raw)
+		}
+		if seen[canonical] {
+			continue
+		}
+		seen[canonical] = true
+		out = append(out, canonical)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// ClientAllowedIPs monta o AllowedIPs do cliente.
+//
+// No modo split a rede do túnel entra SEMPRE e em primeiro lugar: sem ela o
+// cliente não alcança nem o próprio servidor, e o "DNS =" que esta mesma config
+// aponta para o endereço do túnel deixaria de resolver.
+func ClientAllowedIPs(c Config, mode string, routes []string) (string, error) {
+	if mode != TunnelSplit {
+		return "0.0.0.0/0", nil
+	}
+	server, err := netip.ParsePrefix(strings.TrimSpace(c.Address))
+	if err != nil {
+		return "", fmt.Errorf("endereço do túnel inválido")
+	}
+	tunnel := server.Masked().String()
+	normalized, err := NormalizeRoutes(routes)
+	if err != nil {
+		return "", err
+	}
+	out := []string{tunnel}
+	for _, route := range normalized {
+		if route != tunnel {
+			out = append(out, route)
+		}
+	}
+	return strings.Join(out, ", "), nil
+}
+
+// RenderClientConfig emite a config do cliente. As rotas chegam já resolvidas
+// pelo serviço (host groups liberados + rotas extras do peer) porque só ele
+// alcança o banco; aqui elas são revalidadas antes de virar texto.
+func RenderClientConfig(c Config, serverPublic string, p Peer, private, endpoint string, routes []string) (string, error) {
 	if err := ValidateConfig(c); err != nil {
 		return "", err
 	}
@@ -179,9 +281,23 @@ func RenderClientConfig(c Config, serverPublic string, p Peer, private, endpoint
 	if !validEndpointHost(endpoint) {
 		return "", fmt.Errorf("endpoint inválido")
 	}
+	if err := ValidateMTU(p.MTU); err != nil {
+		return "", err
+	}
+	allowed, err := ClientAllowedIPs(c, p.TunnelMode, routes)
+	if err != nil {
+		return "", err
+	}
 	server, _ := netip.ParsePrefix(c.Address)
-	return fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = %s\nDNS = %s\n\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = 0.0.0.0/0\nPersistentKeepalive = 25\n",
-		private, p.Address, server.Addr(), serverPublic, net.JoinHostPort(endpoint, fmt.Sprint(c.ListenPort))), nil
+	var b strings.Builder
+	b.WriteString("[Interface]\n")
+	fmt.Fprintf(&b, "PrivateKey = %s\nAddress = %s\nDNS = %s\n", private, p.Address, server.Addr())
+	if p.MTU > 0 {
+		fmt.Fprintf(&b, "MTU = %d\n", p.MTU)
+	}
+	fmt.Fprintf(&b, "\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = %s\nPersistentKeepalive = 25\n",
+		serverPublic, net.JoinHostPort(endpoint, fmt.Sprint(c.ListenPort)), allowed)
+	return b.String(), nil
 }
 
 func NextAddress(c Config, peers []Peer) (string, error) {

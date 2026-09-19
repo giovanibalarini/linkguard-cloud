@@ -112,6 +112,11 @@ func (h *HostGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Quem libera este grupo em split tunnel tem os hosts dele dentro do
+	// próprio AllowedIPs. Mudar a lista muda a regra do firewall na hora, mas
+	// não o arquivo que o usuário já baixou: marcá-lo como desatualizado é o
+	// que evita o acesso liberado que simplesmente não funciona.
+	_ = h.db.MarkWireGuardRoutesChangedByHostGroup(id)
 	if h.vpn != nil {
 		_ = h.vpn.Reconcile(r.Context())
 	}
@@ -125,6 +130,11 @@ func (h *HostGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "id é obrigatório")
 		return
 	}
+	// A marcação vem ANTES de apagar: depois, a associação que diz quem usava
+	// este grupo já não existe para ser consultada. Se a exclusão falhar, o
+	// preço é alguém baixar uma config que não mudou — melhor que o contrário,
+	// que é ficar com uma rota morta e nenhum aviso.
+	_ = h.db.MarkWireGuardRoutesChangedByHostGroup(id)
 	if err := h.db.DeleteHostGroup(id); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -135,4 +145,3 @@ func (h *HostGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	auditAction(h.db, r, "hostgroup.delete", "hostgroup:"+id, "")
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
-

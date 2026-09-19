@@ -119,4 +119,3 @@ func TestHostGroupHandlerCRUD(t *testing.T) {
 		t.Fatalf("Get after delete status = %d, want 404", w.Code)
 	}
 }
-

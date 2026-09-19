@@ -8,6 +8,7 @@ import {
   KeyRound,
   Lock,
   RefreshCw,
+  Route,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -37,6 +38,13 @@ interface VPNPeer {
   access_mode?: 'full' | 'restricted';
   allowed_host_groups?: string[];
   allowed_ports?: string;
+  tunnel_mode?: 'full' | 'split';
+  extra_routes?: string[];
+  mtu?: number;
+  // config_stale: o perfil mudou depois que o usuário baixou o arquivo. O
+  // WireGuard não empurra rota para um cliente já configurado, então a única
+  // saída é ele baixar de novo.
+  config_stale?: boolean;
   created_at?: number;
   rotated_at?: number;
   online?: boolean;
@@ -100,6 +108,9 @@ export default function Vpn() {
   const [accessMode, setAccessMode] = useState<'full' | 'restricted'>('full');
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [allowedPorts, setAllowedPorts] = useState('');
+  const [tunnelMode, setTunnelMode] = useState<'full' | 'split'>('full');
+  const [extraRoutes, setExtraRoutes] = useState('');
+  const [mtu, setMtu] = useState('');
   const [savingAccess, setSavingAccess] = useState(false);
 
   const load = useCallback(async () => {
@@ -134,6 +145,9 @@ export default function Vpn() {
     setAccessMode(peer.access_mode === 'restricted' ? 'restricted' : 'full');
     setSelectedGroups(peer.allowed_host_groups || []);
     setAllowedPorts(peer.allowed_ports || '');
+    setTunnelMode(peer.tunnel_mode === 'split' ? 'split' : 'full');
+    setExtraRoutes((peer.extra_routes || []).join(', '));
+    setMtu(peer.mtu ? String(peer.mtu) : '');
   };
 
   const toggleGroup = (groupId: string) => {
@@ -147,10 +161,15 @@ export default function Vpn() {
     if (!accessPeer) return;
     setSavingAccess(true);
     try {
+      const parsedRoutes = extraRoutes.split(/[\s,]+/).filter(Boolean);
+      const parsedMtu = mtu.trim() === '' ? 0 : Number(mtu);
       await client.put(`/api/vpn/peers/${accessPeer.user_id}/access`, {
         access_mode: accessMode,
         allowed_host_groups: accessMode === 'restricted' ? selectedGroups : [],
         allowed_ports: accessMode === 'restricted' ? allowedPorts.trim() : '',
+        tunnel_mode: tunnelMode,
+        extra_routes: tunnelMode === 'split' ? parsedRoutes : [],
+        mtu: Number.isFinite(parsedMtu) ? parsedMtu : 0,
       });
       setMessage({ kind: 'ok', text: t('vpn.peer.accessSaved') });
       setAccessPeer(null);
@@ -197,6 +216,19 @@ export default function Vpn() {
       // query strings, logs or a follow-up GET response.
       setEnrollment(data);
       setMessage({ kind: data.apply_error ? 'warn' : 'ok', text: t('vpn.enrollment.created') });
+      await load();
+    });
+  };
+
+  // Reemitir devolve o arquivo com o perfil atual e a MESMA chave: rotacionar
+  // derrubaria o dispositivo que ainda estava funcionando.
+  const reissue = () => {
+    run(async () => {
+      const { data } = await client.post<VPNEnrollment>('/api/vpn/enrollment/config', null, {
+        timeout: INSTALL_TIMEOUT_MS,
+      });
+      setEnrollment(data);
+      setMessage({ kind: 'ok', text: t('vpn.enrollment.reissued') });
       await load();
     });
   };
@@ -333,10 +365,26 @@ export default function Vpn() {
         <Panel title={<span className="flex items-center gap-2 text-white font-semibold"><KeyRound className="w-4 h-4 text-blue-400" /> {t('vpn.enrollment.title')}</span>}>
           <p className="text-sm text-gray-400">{t('vpn.enrollment.explain')}</p>
           {ownPeer && <p className="mt-2 text-xs text-gray-500">{t('vpn.enrollment.current', { address: ownPeer.address })}</p>}
+          {ownPeer?.config_stale && (
+            <p className="mt-2 flex items-start gap-2 text-xs text-amber-300">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              {t('vpn.enrollment.staleWarning')}
+            </p>
+          )}
           <div className="mt-4 flex flex-wrap gap-2">
             <button onClick={enroll} disabled={busy || overview?.config.enabled === false} className="btn-primary disabled:opacity-50">
               {ownPeer ? t('vpn.enrollment.rotate') : t('vpn.enrollment.create')}
             </button>
+            {ownPeer && (
+              <button
+                onClick={reissue}
+                disabled={busy || overview?.config.enabled === false}
+                className={`btn-secondary disabled:opacity-50 ${ownPeer.config_stale ? 'text-amber-300' : ''}`}
+                title={t('vpn.enrollment.reissueHint')}
+              >
+                <Download className="w-4 h-4" /> {t('vpn.enrollment.reissue')}
+              </button>
+            )}
             {ownPeer && (
               <button onClick={() => revoke(ownPeer, true)} disabled={busy} className="btn-secondary text-red-400 disabled:opacity-50">
                 <Trash2 className="w-4 h-4" /> {t('vpn.peer.revokeMine')}
@@ -467,6 +515,33 @@ export default function Vpn() {
                               {t('vpn.peer.accessFull')}
                             </span>
                           )}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-900 text-gray-300 border border-gray-800"
+                              title={
+                                peer.tunnel_mode === 'split'
+                                  ? (peer.extra_routes || []).join(', ')
+                                  : t('vpn.peer.tunnelFullHint')
+                              }
+                            >
+                              <Route className="w-3 h-3 text-blue-400" />
+                              {peer.tunnel_mode === 'split'
+                                ? t('vpn.peer.tunnelSplit')
+                                : t('vpn.peer.tunnelFull')}
+                            </span>
+                            {peer.mtu ? (
+                              <span className="text-[10px] font-mono text-gray-500">MTU {peer.mtu}</span>
+                            ) : null}
+                            {peer.config_stale && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                                title={t('vpn.peer.configStaleHint')}
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                {t('vpn.peer.configStale')}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-3 whitespace-nowrap">
@@ -697,6 +772,92 @@ export default function Vpn() {
                   </div>
                 </div>
               )}
+
+              <div className="space-y-3 pt-3 border-t border-gray-800">
+                <div>
+                  <div className="text-xs font-semibold text-gray-200">{t('vpn.peer.tunnelTitle')}</div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{t('vpn.peer.tunnelDesc')}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      tunnelMode === 'full'
+                        ? 'border-blue-500/40 bg-blue-500/5 text-white'
+                        : 'border-gray-800 bg-gray-900/50 text-gray-300 hover:border-gray-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="tunnelMode"
+                      value="full"
+                      checked={tunnelMode === 'full'}
+                      onChange={() => setTunnelMode('full')}
+                      className="mt-1 text-blue-500 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-xs font-semibold">{t('vpn.peer.tunnelFull')}</div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">{t('vpn.peer.tunnelFullDesc')}</div>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      tunnelMode === 'split'
+                        ? 'border-blue-500/40 bg-blue-500/5 text-white'
+                        : 'border-gray-800 bg-gray-900/50 text-gray-300 hover:border-gray-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="tunnelMode"
+                      value="split"
+                      checked={tunnelMode === 'split'}
+                      onChange={() => setTunnelMode('split')}
+                      className="mt-1 text-blue-500 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-xs font-semibold">{t('vpn.peer.tunnelSplit')}</div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">{t('vpn.peer.tunnelSplitDesc')}</div>
+                    </div>
+                  </label>
+                </div>
+
+                {tunnelMode === 'split' && (
+                  <div className="animate-in fade-in duration-150">
+                    <label className="block text-xs font-medium text-gray-300 mb-1">
+                      {t('vpn.peer.extraRoutesLabel')}
+                    </label>
+                    <input
+                      type="text"
+                      value={extraRoutes}
+                      onChange={(e) => setExtraRoutes(e.target.value)}
+                      placeholder={t('vpn.peer.extraRoutesPlaceholder')}
+                      className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1">{t('vpn.peer.extraRoutesHelp')}</p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">
+                    {t('vpn.peer.mtuLabel')}
+                  </label>
+                  <input
+                    type="number"
+                    value={mtu}
+                    onChange={(e) => setMtu(e.target.value)}
+                    placeholder={t('vpn.peer.mtuPlaceholder')}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">{t('vpn.peer.mtuHelp')}</p>
+                </div>
+
+                <p className="flex items-start gap-2 text-[11px] text-amber-300/90">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  {t('vpn.peer.tunnelReissueNote')}
+                </p>
+              </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-gray-800">
                 <button

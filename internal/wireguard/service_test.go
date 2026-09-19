@@ -453,3 +453,148 @@ func TestOverviewEnrichesPeerTelemetry(t *testing.T) {
 	}
 }
 
+// enrolaUsuario deixa o serviço com a VPN ligada e um peer pronto.
+func enrolaUsuario(t *testing.T, svc *Service, db *storage.DB, username string) (string, Enrollment) {
+	t.Helper()
+	user := &storage.User{Username: username}
+	if err := db.CreateUser(user, "hash", nil); err != nil {
+		t.Fatal(err)
+	}
+	c := DefaultConfig()
+	c.Enabled = true
+	c.EndpointHost = "vpn.example.net"
+	if err := svc.UpdateConfig(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	enrollment, err := svc.Enroll(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	return user.ID, enrollment
+}
+
+func TestSplitTunnelDerivaAsRotasDosGruposLiberados(t *testing.T) {
+	svc, db, _, _ := newServiceTest(t)
+	userID, primeira := enrolaUsuario(t, svc, db, "ana")
+
+	// Quem acabou de enrolar recebe full tunnel, como sempre foi.
+	if !strings.Contains(primeira.ClientConfig, "AllowedIPs = 0.0.0.0/0") {
+		t.Fatalf("enrolamento novo deveria ser full tunnel:\n%s", primeira.ClientConfig)
+	}
+
+	grupo := &storage.HostGroup{Name: "Cluster K3s", Hosts: []string{"10.0.1.20", "10.0.1.21"}}
+	if err := db.CreateHostGroup(grupo); err != nil {
+		t.Fatalf("CreateHostGroup: %v", err)
+	}
+	if err := svc.SetPeerAccess(context.Background(), userID, PeerAccess{
+		AccessMode:        "restricted",
+		AllowedHostGroups: []string{grupo.ID},
+		AllowedPorts:      "22,6443",
+		TunnelMode:        TunnelSplit,
+		ExtraRoutes:       []string{"192.168.50.0/24"},
+		MTU:               1440,
+	}); err != nil {
+		t.Fatalf("SetPeerAccess: %v", err)
+	}
+
+	// A config nova sai com as rotas dos hosts liberados — sem isso o acesso
+	// estaria liberado no firewall e não funcionaria no cliente.
+	reemitida, err := svc.ClientConfig(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("ClientConfig: %v", err)
+	}
+	for _, esperado := range []string{
+		"10.7.0.0/24", "10.0.1.20/32", "10.0.1.21/32", "192.168.50.0/24", "MTU = 1440",
+	} {
+		if !strings.Contains(reemitida.ClientConfig, esperado) {
+			t.Fatalf("falta %q na config reemitida:\n%s", esperado, reemitida.ClientConfig)
+		}
+	}
+	if strings.Contains(reemitida.ClientConfig, "0.0.0.0/0") {
+		t.Fatalf("split tunnel não pode mandar tudo:\n%s", reemitida.ClientConfig)
+	}
+}
+
+func TestReemitirMantemAChaveEEnrolarDeNovoPreservaOPerfil(t *testing.T) {
+	svc, db, sec, _ := newServiceTest(t)
+	userID, primeira := enrolaUsuario(t, svc, db, "bruno")
+
+	peer, err := db.GetWireGuardPeer(userID)
+	if err != nil || peer == nil {
+		t.Fatalf("peer = %+v, %v", peer, err)
+	}
+	privadaOriginal, err := sec.Get(peer.SecretName)
+	if err != nil || privadaOriginal == "" {
+		t.Fatalf("segredo = %q, %v", privadaOriginal, err)
+	}
+
+	if err := svc.SetPeerAccess(context.Background(), userID, PeerAccess{
+		AccessMode: "full",
+		TunnelMode: TunnelSplit,
+		MTU:        1420,
+	}); err != nil {
+		t.Fatalf("SetPeerAccess: %v", err)
+	}
+
+	// Reemitir entrega o arquivo novo com a MESMA chave: o dispositivo que já
+	// estava funcionando não pode cair só porque a rota mudou.
+	reemitida, err := svc.ClientConfig(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("ClientConfig: %v", err)
+	}
+	if !strings.Contains(reemitida.ClientConfig, privadaOriginal) {
+		t.Fatal("a reemissão trocou a chave do cliente")
+	}
+	if reemitida.ClientConfig == primeira.ClientConfig {
+		t.Fatal("a reemissão devolveu a config antiga")
+	}
+	depois, err := db.GetWireGuardPeer(userID)
+	if err != nil {
+		t.Fatalf("GetWireGuardPeer: %v", err)
+	}
+	if depois.ConfigStale {
+		t.Fatal("depois de reemitir a config não pode seguir desatualizada")
+	}
+
+	// E rotacionar a chave não é mudar a política: o perfil atravessa.
+	rotacionada, err := svc.Enroll(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if !strings.Contains(rotacionada.ClientConfig, "MTU = 1420") ||
+		!strings.Contains(rotacionada.ClientConfig, "AllowedIPs = 10.7.0.0/24") {
+		t.Fatalf("rotacionar a chave voltou o peer para full tunnel:\n%s", rotacionada.ClientConfig)
+	}
+	final, err := db.GetWireGuardPeer(userID)
+	if err != nil {
+		t.Fatalf("GetWireGuardPeer: %v", err)
+	}
+	if final.PublicKey == peer.PublicKey {
+		t.Fatal("Enroll deveria ter rotacionado a chave")
+	}
+}
+
+func TestSetPeerAccessRecusaPerfilInvalidoSemGravar(t *testing.T) {
+	svc, db, _, _ := newServiceTest(t)
+	userID, _ := enrolaUsuario(t, svc, db, "carla")
+
+	casos := map[string]PeerAccess{
+		"rota injetada":    {AccessMode: "full", TunnelMode: TunnelSplit, ExtraRoutes: []string{"10.0.0.0/8\nPostUp = touch /tmp/pwn"}},
+		"mtu impraticável": {AccessMode: "full", TunnelMode: TunnelSplit, MTU: 42},
+		"modo inexistente": {AccessMode: "full", TunnelMode: "halfsies"},
+	}
+	for nome, caso := range casos {
+		t.Run(nome, func(t *testing.T) {
+			if err := svc.SetPeerAccess(context.Background(), userID, caso); err == nil {
+				t.Fatal("o serviço aceitou um perfil inválido")
+			}
+			peer, err := db.GetWireGuardPeer(userID)
+			if err != nil {
+				t.Fatalf("GetWireGuardPeer: %v", err)
+			}
+			if peer.TunnelMode != "full" || peer.MTU != 0 || len(peer.ExtraRoutes) != 0 {
+				t.Fatalf("perfil inválido chegou ao banco: %+v", peer)
+			}
+		})
+	}
+}

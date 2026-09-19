@@ -74,7 +74,7 @@ func TestRenderServerAndClientConfigsKeepPrivateKeysSeparated(t *testing.T) {
 	if strings.Contains(server, clientPriv) || !strings.Contains(server, clientPub) {
 		t.Fatal("server config must contain only the client's public key")
 	}
-	client, err := RenderClientConfig(c, serverPub, peer, clientPriv, "vpn.example.net")
+	client, err := RenderClientConfig(c, serverPub, peer, clientPriv, "vpn.example.net", nil)
 	if err != nil {
 		t.Fatalf("RenderClientConfig: %v", err)
 	}
@@ -83,6 +83,11 @@ func TestRenderServerAndClientConfigsKeepPrivateKeysSeparated(t *testing.T) {
 	}
 	if !strings.Contains(client, "DNS = 10.7.0.1") || !strings.Contains(client, "Endpoint = vpn.example.net:51820") {
 		t.Fatalf("client config lacks tunnel DNS/endpoint:\n%s", client)
+	}
+	// Peer sem modo declarado continua full tunnel: é o que a config que os
+	// peers já enrolados têm na mão diz.
+	if !strings.Contains(client, "AllowedIPs = 0.0.0.0/0") {
+		t.Fatalf("peer sem modo deveria seguir full tunnel:\n%s", client)
 	}
 }
 

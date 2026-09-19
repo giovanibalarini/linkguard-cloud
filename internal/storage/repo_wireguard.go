@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,18 +26,49 @@ type WireGuardConfig struct {
 // WireGuardPeer ties one local panel user to one tunnel identity and one
 // firewall group. SecretName is deliberately excluded from JSON.
 type WireGuardPeer struct {
-	UserID            string    `json:"user_id"`
-	Username          string    `json:"username"`
-	PublicKey         string    `json:"public_key"`
-	Address           string    `json:"address"`
-	SecretName        string    `json:"-"`
-	FirewallGroupID   string    `json:"firewall_group_id"`
-	AccessMode        string    `json:"access_mode"`
-	AllowedHostGroups []string  `json:"allowed_host_groups"`
-	AllowedPorts      string    `json:"allowed_ports"`
-	CreatedAt         time.Time `json:"created_at"`
-	RotatedAt         time.Time `json:"rotated_at"`
+	UserID            string   `json:"user_id"`
+	Username          string   `json:"username"`
+	PublicKey         string   `json:"public_key"`
+	Address           string   `json:"address"`
+	SecretName        string   `json:"-"`
+	FirewallGroupID   string   `json:"firewall_group_id"`
+	AccessMode        string   `json:"access_mode"`
+	AllowedHostGroups []string `json:"allowed_host_groups"`
+	AllowedPorts      string   `json:"allowed_ports"`
+	TunnelMode        string   `json:"tunnel_mode"`
+	ExtraRoutes       []string `json:"extra_routes"`
+	MTU               int      `json:"mtu"`
+	// Escrituração interna, em nanossegundos: segundos empatam quando a
+	// emissão e a mudança caem no mesmo instante, e o empate esconderia uma
+	// config velha. Fora do JSON porque a verdade exposta é ConfigStale.
+	RoutesUpdatedAt int64     `json:"-"`
+	ConfigIssuedAt  int64     `json:"-"`
+	ConfigStale     bool      `json:"config_stale"`
+	CreatedAt       time.Time `json:"created_at"`
+	RotatedAt       time.Time `json:"rotated_at"`
 }
+
+// WireGuardPeerAccess é o conjunto de campos que o painel edita de uma vez no
+// perfil de um peer: o que ele PODE alcançar (access) e o que ele MANDA para
+// dentro do túnel (tunnel). Viajam juntos porque são salvos no mesmo formulário
+// e precisam de um único UPDATE — meia mudança aplicada deixaria a regra
+// nftables e a config do cliente discordando.
+type WireGuardPeerAccess struct {
+	AccessMode        string
+	AllowedHostGroups []string
+	AllowedPorts      string
+	TunnelMode        string
+	ExtraRoutes       []string
+	MTU               int
+}
+
+// wireGuardPeerColumns está num só lugar porque a lista é lida por quatro
+// consultas e o scanner é um só: uma coluna acrescentada em três delas e
+// esquecida na quarta é um erro de execução, não de compilação.
+const wireGuardPeerColumns = `p.user_id, u.username, p.public_key, p.address, p.secret_name,
+		       p.firewall_group_id, p.access_mode, p.allowed_host_groups, p.allowed_ports,
+		       p.tunnel_mode, p.extra_routes, p.mtu, p.routes_updated_at, p.config_issued_at,
+		       p.created_at, p.rotated_at`
 
 func (db *DB) GetWireGuardConfig() (*WireGuardConfig, error) {
 	var c WireGuardConfig
@@ -79,26 +111,35 @@ func (db *DB) SaveWireGuardConfig(c *WireGuardConfig) error {
 
 func scanWireGuardPeer(scanner interface{ Scan(...any) error }) (*WireGuardPeer, error) {
 	var p WireGuardPeer
-	var allowedGroupsJSON string
+	var allowedGroupsJSON, extraRoutesJSON string
 	if err := scanner.Scan(&p.UserID, &p.Username, &p.PublicKey, &p.Address, &p.SecretName,
-		&p.FirewallGroupID, &p.AccessMode, &allowedGroupsJSON, &p.AllowedPorts, &p.CreatedAt, &p.RotatedAt); err != nil {
+		&p.FirewallGroupID, &p.AccessMode, &allowedGroupsJSON, &p.AllowedPorts,
+		&p.TunnelMode, &extraRoutesJSON, &p.MTU, &p.RoutesUpdatedAt, &p.ConfigIssuedAt,
+		&p.CreatedAt, &p.RotatedAt); err != nil {
 		return nil, err
 	}
 	if p.AccessMode == "" {
 		p.AccessMode = "full"
 	}
+	if p.TunnelMode == "" {
+		p.TunnelMode = "full"
+	}
 	_ = json.Unmarshal([]byte(allowedGroupsJSON), &p.AllowedHostGroups)
 	if p.AllowedHostGroups == nil {
 		p.AllowedHostGroups = []string{}
 	}
+	_ = json.Unmarshal([]byte(extraRoutesJSON), &p.ExtraRoutes)
+	if p.ExtraRoutes == nil {
+		p.ExtraRoutes = []string{}
+	}
+	// A config que o usuário tem na mão é anterior à última mudança de rota.
+	p.ConfigStale = p.RoutesUpdatedAt > p.ConfigIssuedAt
 	return &p, nil
 }
 
 func (db *DB) GetWireGuardPeer(userID string) (*WireGuardPeer, error) {
 	p, err := scanWireGuardPeer(db.conn.QueryRow(`
-		SELECT p.user_id, u.username, p.public_key, p.address, p.secret_name,
-		       p.firewall_group_id, p.access_mode, p.allowed_host_groups, p.allowed_ports,
-		       p.created_at, p.rotated_at
+		SELECT `+wireGuardPeerColumns+`
 		  FROM wireguard_peers p JOIN users u ON u.id = p.user_id
 		 WHERE p.user_id = ?`, userID))
 	if err == sql.ErrNoRows {
@@ -109,9 +150,7 @@ func (db *DB) GetWireGuardPeer(userID string) (*WireGuardPeer, error) {
 
 func (db *DB) ListWireGuardPeers() ([]WireGuardPeer, error) {
 	rows, err := db.conn.Query(`
-		SELECT p.user_id, u.username, p.public_key, p.address, p.secret_name,
-		       p.firewall_group_id, p.access_mode, p.allowed_host_groups, p.allowed_ports,
-		       p.created_at, p.rotated_at
+		SELECT ` + wireGuardPeerColumns + `
 		  FROM wireguard_peers p JOIN users u ON u.id = p.user_id
 		 ORDER BY u.username, p.user_id`)
 	if err != nil {
@@ -149,9 +188,7 @@ func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuar
 
 	var old *WireGuardPeer
 	row := tx.QueryRow(`
-		SELECT p.user_id, u.username, p.public_key, p.address, p.secret_name,
-		       p.firewall_group_id, p.access_mode, p.allowed_host_groups, p.allowed_ports,
-		       p.created_at, p.rotated_at
+		SELECT `+wireGuardPeerColumns+`
 		  FROM wireguard_peers p JOIN users u ON u.id = p.user_id
 		 WHERE p.user_id = ?`, p.UserID)
 	if prior, scanErr := scanWireGuardPeer(row); scanErr == nil {
@@ -167,6 +204,16 @@ func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuar
 		if p.AllowedPorts == "" {
 			p.AllowedPorts = prior.AllowedPorts
 		}
+		if p.TunnelMode == "" {
+			p.TunnelMode = prior.TunnelMode
+		}
+		if len(p.ExtraRoutes) == 0 {
+			p.ExtraRoutes = prior.ExtraRoutes
+		}
+		if p.MTU == 0 {
+			p.MTU = prior.MTU
+		}
+		p.RoutesUpdatedAt = prior.RoutesUpdatedAt
 		g.ID = prior.FirewallGroupID
 		if _, err := tx.Exec(`
 			UPDATE firewall_groups
@@ -212,15 +259,27 @@ func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuar
 	if p.AccessMode == "" {
 		p.AccessMode = "full"
 	}
+	if p.TunnelMode == "" {
+		p.TunnelMode = "full"
+	}
 	if p.AllowedHostGroups == nil {
 		p.AllowedHostGroups = []string{}
 	}
+	if p.ExtraRoutes == nil {
+		p.ExtraRoutes = []string{}
+	}
+	// Enrolar entrega a config nova ao usuário agora mesmo: é a emissão.
+	p.ConfigIssuedAt = now.UnixNano()
+	p.ConfigStale = p.RoutesUpdatedAt > p.ConfigIssuedAt
 	groupsJSON, _ := json.Marshal(p.AllowedHostGroups)
+	routesJSON, _ := json.Marshal(p.ExtraRoutes)
 	if _, err := tx.Exec(`
 		INSERT INTO wireguard_peers
 			(user_id, public_key, address, secret_name, firewall_group_id,
-			 access_mode, allowed_host_groups, allowed_ports, created_at, rotated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 access_mode, allowed_host_groups, allowed_ports,
+			 tunnel_mode, extra_routes, mtu, routes_updated_at, config_issued_at,
+			 created_at, rotated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			public_key=excluded.public_key, address=excluded.address,
 			secret_name=excluded.secret_name,
@@ -228,9 +287,14 @@ func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuar
 			access_mode=excluded.access_mode,
 			allowed_host_groups=excluded.allowed_host_groups,
 			allowed_ports=excluded.allowed_ports,
+			tunnel_mode=excluded.tunnel_mode,
+			extra_routes=excluded.extra_routes,
+			mtu=excluded.mtu,
+			config_issued_at=excluded.config_issued_at,
 			rotated_at=excluded.rotated_at`,
 		p.UserID, p.PublicKey, p.Address, p.SecretName, p.FirewallGroupID,
 		p.AccessMode, string(groupsJSON), p.AllowedPorts,
+		p.TunnelMode, string(routesJSON), p.MTU, p.RoutesUpdatedAt, p.ConfigIssuedAt,
 		p.CreatedAt, p.RotatedAt); err != nil {
 		return nil, err
 	}
@@ -240,22 +304,51 @@ func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuar
 	return old, nil
 }
 
-func (db *DB) UpdateWireGuardPeerAccess(userID, accessMode string, allowedHostGroups []string, allowedPorts string) error {
-	if accessMode != "full" && accessMode != "restricted" {
-		accessMode = "full"
+// UpdateWireGuardPeerAccess grava o perfil inteiro do peer num único UPDATE.
+//
+// routes_updated_at só avança quando algo que muda a config DO CLIENTE muda de
+// fato. Mexer apenas nas portas do ZTNA, por exemplo, não invalida o arquivo que
+// o usuário já baixou — e marcar como desatualizado o que não está ensinaria o
+// admin a ignorar o aviso.
+func (db *DB) UpdateWireGuardPeerAccess(userID string, a WireGuardPeerAccess) error {
+	if a.AccessMode != "full" && a.AccessMode != "restricted" {
+		a.AccessMode = "full"
 	}
-	if allowedHostGroups == nil {
-		allowedHostGroups = []string{}
+	if a.TunnelMode != "full" && a.TunnelMode != "split" {
+		a.TunnelMode = "full"
 	}
-	groupsJSON, err := json.Marshal(allowedHostGroups)
+	if a.AllowedHostGroups == nil {
+		a.AllowedHostGroups = []string{}
+	}
+	if a.ExtraRoutes == nil {
+		a.ExtraRoutes = []string{}
+	}
+	groupsJSON, err := json.Marshal(a.AllowedHostGroups)
 	if err != nil {
 		return err
 	}
+	routesJSON, err := json.Marshal(a.ExtraRoutes)
+	if err != nil {
+		return err
+	}
+	prior, err := db.GetWireGuardPeer(userID)
+	if err != nil {
+		return err
+	}
+	if prior == nil {
+		return fmt.Errorf("peer não encontrado")
+	}
+	routesUpdatedAt := prior.RoutesUpdatedAt
+	if clientConfigChanged(*prior, a) {
+		routesUpdatedAt = time.Now().UnixNano()
+	}
 	res, err := db.conn.Exec(`
 		UPDATE wireguard_peers
-		   SET access_mode = ?, allowed_host_groups = ?, allowed_ports = ?
+		   SET access_mode = ?, allowed_host_groups = ?, allowed_ports = ?,
+		       tunnel_mode = ?, extra_routes = ?, mtu = ?, routes_updated_at = ?
 		 WHERE user_id = ?`,
-		accessMode, string(groupsJSON), strings.TrimSpace(allowedPorts), userID)
+		a.AccessMode, string(groupsJSON), strings.TrimSpace(a.AllowedPorts),
+		a.TunnelMode, string(routesJSON), a.MTU, routesUpdatedAt, userID)
 	if err != nil {
 		return err
 	}
@@ -265,6 +358,83 @@ func (db *DB) UpdateWireGuardPeerAccess(userID, accessMode string, allowedHostGr
 	}
 	if affected == 0 {
 		return fmt.Errorf("peer não encontrado")
+	}
+	return nil
+}
+
+// clientConfigChanged diz se a mudança altera o ARQUIVO que o cliente tem na
+// mão. No modo full o AllowedIPs é 0.0.0.0/0 aconteça o que acontecer com os
+// host groups, então mexer no ZTNA ali não desatualiza config nenhuma.
+func clientConfigChanged(prior WireGuardPeer, next WireGuardPeerAccess) bool {
+	if prior.TunnelMode != next.TunnelMode || prior.MTU != next.MTU {
+		return true
+	}
+	if next.TunnelMode != "split" {
+		return false
+	}
+	if prior.AccessMode != next.AccessMode {
+		return true
+	}
+	return !sameStringSet(prior.AllowedHostGroups, next.AllowedHostGroups) ||
+		!sameStringSet(prior.ExtraRoutes, next.ExtraRoutes)
+}
+
+// sameStringSet compara ignorando a ordem: a ordem em que o admin marcou as
+// caixas do formulário não é uma mudança de rota.
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	x := append([]string(nil), a...)
+	y := append([]string(nil), b...)
+	sort.Strings(x)
+	sort.Strings(y)
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// MarkWireGuardConfigIssued registra que o usuário acabou de receber a config.
+func (db *DB) MarkWireGuardConfigIssued(userID string) error {
+	_, err := db.conn.Exec(
+		`UPDATE wireguard_peers SET config_issued_at = ? WHERE user_id = ?`,
+		time.Now().UnixNano(), userID)
+	return err
+}
+
+// MarkWireGuardRoutesChangedByHostGroup desatualiza a config dos peers em modo
+// split que liberam este host group.
+//
+// Sem isto, acrescentar um servidor a um grupo mudaria a regra do firewall na
+// hora e deixaria o cliente sem a rota para ele — o acesso estaria liberado e
+// não funcionaria, que é o pior dos dois mundos para depurar.
+func (db *DB) MarkWireGuardRoutesChangedByHostGroup(groupID string) error {
+	if strings.TrimSpace(groupID) == "" {
+		return nil
+	}
+	peers, err := db.ListWireGuardPeers()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UnixNano()
+	for _, p := range peers {
+		if p.TunnelMode != "split" || p.AccessMode != "restricted" {
+			continue
+		}
+		for _, id := range p.AllowedHostGroups {
+			if id != groupID {
+				continue
+			}
+			if _, err := db.conn.Exec(
+				`UPDATE wireguard_peers SET routes_updated_at = ? WHERE user_id = ?`,
+				now, p.UserID); err != nil {
+				return err
+			}
+			break
+		}
 	}
 	return nil
 }
@@ -279,9 +449,7 @@ func (db *DB) DeleteWireGuardPeer(userID string) (*WireGuardPeer, error) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	p, err := scanWireGuardPeer(tx.QueryRow(`
-		SELECT p.user_id, u.username, p.public_key, p.address, p.secret_name,
-		       p.firewall_group_id, p.access_mode, p.allowed_host_groups, p.allowed_ports,
-		       p.created_at, p.rotated_at
+		SELECT `+wireGuardPeerColumns+`
 		  FROM wireguard_peers p JOIN users u ON u.id = p.user_id
 		 WHERE p.user_id = ?`, userID))
 	if err == sql.ErrNoRows {

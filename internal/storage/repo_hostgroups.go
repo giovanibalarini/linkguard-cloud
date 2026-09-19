@@ -189,4 +189,3 @@ func (db *DB) DeleteHostGroup(id string) error {
 	}
 	return nil
 }
-
