@@ -1,4 +1,4 @@
-// Package backupcrypt encrypts and decrypts the LinkGuard FW backup file.
+// Package backupcrypt encrypts and decrypts the LinkGuard Cloud backup file.
 // AES-256-GCM with a key derived from a user passphrase via scrypt — pure
 // algorithm, no knowledge of HTTP, storage, or what BackupData looks like.
 package backupcrypt

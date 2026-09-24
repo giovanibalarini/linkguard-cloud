@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/hosts"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // HostsHandler handles the LAN host inventory.

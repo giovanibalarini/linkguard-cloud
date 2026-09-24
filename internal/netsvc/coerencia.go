@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // A coerência do que o admin digita na tela de DHCP/DNS (issue #161).

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // fakeOverviewExec answers `nft -a list table inet linkguard` with a fixed

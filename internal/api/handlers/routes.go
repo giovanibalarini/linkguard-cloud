@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/routes"
+	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
 )
 
 // RoutesHandler handles routing table requests.

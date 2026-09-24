@@ -45,8 +45,8 @@ cfg.nav.retention:
   en: "Traffic retention"
 
 cfg.about.title:
-  pt: "Sobre o LinkGuard FW"
-  en: "About LinkGuard FW"
+  pt: "Sobre o LinkGuard Cloud"
+  en: "About LinkGuard Cloud"
 cfg.about.version:
   pt: "Versão"
   en: "Version"

@@ -3,7 +3,7 @@ package monitoring
 import (
 	"encoding/json"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const configKey = "monitoring"

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/dnstap"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // nftFalso é o kernel de mentira: guarda os lotes que recebeu e devolve o que

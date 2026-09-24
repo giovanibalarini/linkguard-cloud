@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/backup"
-	"github.com/giovanibalarini/linkguard-fw/internal/backupcrypt"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func openTestDB(t *testing.T) *storage.DB {

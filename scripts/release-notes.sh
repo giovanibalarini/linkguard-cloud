@@ -20,7 +20,7 @@
 # momento possível para descobrir que o `sed` estava errado.
 #
 # Uso:
-#   scripts/release-notes.sh v1.0.106 giovanibalarini/linkguard-fw <sha>
+#   scripts/release-notes.sh v1.0.106 giovanibalarini/linkguard-cloud <sha>
 #
 # Saída: markdown no stdout.
 

@@ -3,9 +3,9 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/ddns"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ddns"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // DDNSHandler expõe o DNS dinâmico por link (#129).

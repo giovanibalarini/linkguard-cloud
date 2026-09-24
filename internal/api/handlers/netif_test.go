@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/netif"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netif"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // fakeEmptyIfaceExec is a firewall.Executor test double for netif.Service

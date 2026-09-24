@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
-const repo = "giovanibalarini/linkguard-fw"
+const repo = "giovanibalarini/linkguard-cloud"
 const defaultAPIBase = "https://api.github.com"
 
 // Asset is one release asset. ID is used to download via the API asset endpoint
@@ -59,11 +59,11 @@ type CheckResult struct {
 // roda numa unidade transiente (ver Apply), que enxerga OUTRO /tmp — um caminho
 // em /tmp seria entregue a ela e simplesmente não existiria. Medido na VM, não
 // deduzido: com PrivateTmp, a unidade transiente não vê o arquivo; em
-// /var/lib/linkguard-fw, vê.
+// /var/lib/linkguard-cloud, vê.
 //
 // E este caminho já está em ReadWritePaths=, então o serviço pode escrever nele
 // sem afrouxar nada.
-const spoolDir = "/var/lib/linkguard-fw"
+const spoolDir = "/var/lib/linkguard-cloud"
 
 // Service performs update checks and installs.
 type Service struct {
@@ -210,7 +210,7 @@ func (s *Service) Apply(ctx context.Context) error {
 	out, err := s.exec.Execute(ctx, "systemd-run",
 		"--collect", "--wait", "--quiet",
 		"--unit", "linkguard-selfupdate",
-		"--description", "LinkGuard FW self-update",
+		"--description", "LinkGuard Cloud self-update",
 		"dpkg", "-i", path)
 	if err == nil {
 		return nil
@@ -220,7 +220,7 @@ func (s *Service) Apply(ctx context.Context) error {
 	// primeira versão desta correção introduziu.
 	//
 	// O caminho de SUCESSO passa por aqui: o postinst reinicia o
-	// linkguard-fw.service, e o cliente do `systemd-run --wait` é filho DESTE
+	// linkguard-cloud.service, e o cliente do `systemd-run --wait` é filho DESTE
 	// processo, no MESMO cgroup — ele morre junto, com "signal: terminated". O
 	// dpkg em si não morre: a unidade transiente tem cgroup próprio e conclui
 	// sozinha (medido na VM: `Unpacking 1.0.125 over 1.0.100` e
@@ -247,7 +247,7 @@ func (s *Service) Apply(ctx context.Context) error {
 // É a fonte da verdade sobre o resultado da instalação, e a única que não
 // depende de o nosso processo continuar vivo para observar o desfecho.
 func (s *Service) installedVersion(ctx context.Context) (string, error) {
-	out, err := s.exec.ExecuteRead(ctx, "dpkg-query", "-W", "-f=${Version}", "linkguard-fw")
+	out, err := s.exec.ExecuteRead(ctx, "dpkg-query", "-W", "-f=${Version}", "linkguard-cloud")
 	if err != nil {
 		return "", err
 	}

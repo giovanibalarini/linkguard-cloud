@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 )
 
 // A reserva de DHCP com endereço IPv6 (issue #152).

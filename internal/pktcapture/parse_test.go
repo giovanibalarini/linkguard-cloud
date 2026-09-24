@@ -137,7 +137,7 @@ func TestParseLineARP(t *testing.T) {
 }
 
 func TestParseLinesIgnoraRuido(t *testing.T) {
-	out := `reading from file /var/lib/linkguard-fw/captures/x.pcap, link-type EN10MB (Ethernet), snapshot length 96
+	out := `reading from file /var/lib/linkguard-cloud/captures/x.pcap, link-type EN10MB (Ethernet), snapshot length 96
 1755610000.123456 IP 192.168.3.50.44210 > 142.250.1.1.443: Flags [S], seq 1, win 64240, length 0
 
 12 packets captured`

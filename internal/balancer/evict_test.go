@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // recExec records write commands and serves canned read output so the balancer's

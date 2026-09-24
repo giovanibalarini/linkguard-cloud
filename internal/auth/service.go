@@ -11,8 +11,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const tokenExpiry = 24 * time.Hour

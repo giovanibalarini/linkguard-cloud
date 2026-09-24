@@ -1,5 +1,5 @@
 // Package sysprep is the single place that knows what has to exist on the
-// filesystem BEFORE linkguard-fw.service is allowed to start.
+// filesystem BEFORE linkguard-cloud.service is allowed to start.
 //
 // Why this is a package and not three copies of the same shell:
 //
@@ -8,7 +8,7 @@
 // STARTS, and an unprefixed ReadWritePaths= entry that does not exist at
 // that moment does not merely get skipped — namespace setup fails and the
 // unit dies with 226/NAMESPACE, in a restart loop, without executing a
-// single line of the binary (and firing OnFailure=linkguard-notify-down on
+// single line of the binary (and firing OnFailure=linkguard-cloud-notify-down on
 // every attempt). Prefixing the entry with `-` avoids the crash but does NOT
 // create a mount: a directory that appears later (because apt installed the
 // package that owns it) stays read-only for the already-running process.
@@ -17,17 +17,17 @@
 // `deploy/install.sh` and `make install` produced a machine where the
 // service could not start at all — reproduced on the bare test VM:
 //
-//	linkguard-fw.service: Failed to set up mount namespacing:
+//	linkguard-cloud.service: Failed to set up mount namespacing:
 //	/etc/nftables.conf: No such file or directory
-//	linkguard-fw.service: Main process exited, code=exited, status=226/NAMESPACE
+//	linkguard-cloud.service: Main process exited, code=exited, status=226/NAMESPACE
 //
 // All three installation paths now call the same code: the binary itself,
-// via `linkguard-fw --prepare-system`. The .deb can do that because postinst
+// via `linkguard-cloud --prepare-system`. The .deb can do that because postinst
 // runs after the binary is unpacked; install.sh and `make install` do it
 // right after copying the binary into place.
 //
 // Existe um QUARTO chamador, e ele não é um instalador: a própria unidade,
-// em `ExecStartPre=-+/usr/local/bin/linkguard-fw --prepare-system-at-start`.
+// em `ExecStartPre=-+/usr/local/bin/linkguard-cloud --prepare-system-at-start`.
 // Ele existe porque um dos caminhos — /etc/nftables.conf — é conffile do
 // pacote `nftables` e não pode ser criado de dentro de uma transação do
 // dpkg. Ver o tipo Stage.
@@ -94,7 +94,7 @@ const (
 // Creating it empty is safe: the first Persist() rewrites the whole file, and
 // this header is exactly what Persist() generates on top.
 const nftablesConfSeed = "#!/usr/sbin/nft -f\n\n" +
-	"# Arquivo gerenciado pelo LinkGuard FW.\n" +
+	"# Arquivo gerenciado pelo LinkGuard Cloud.\n" +
 	"# Vazio até o primeiro apply de firewall.\n"
 
 // Entry is one filesystem object the service needs in place before it starts.
@@ -135,11 +135,11 @@ type Entry struct {
 // Entries is the whole contract, in the order they are created.
 var Entries = []Entry{
 	{
-		Path: "/var/lib/linkguard-fw", Dir: true, Mode: 0o750,
+		Path: "/var/lib/linkguard-cloud", Dir: true, Mode: 0o750,
 		Why: "estado do LinkGuard (banco, marcadores de aplicação)",
 	},
 	{
-		Path: "/etc/linkguard-fw", Dir: true, Mode: 0o750,
+		Path: "/etc/linkguard-cloud", Dir: true, Mode: 0o750,
 		Why: "configuração do LinkGuard",
 	},
 	{
@@ -163,7 +163,7 @@ var Entries = []Entry{
 	{
 		// OnlyAtServiceStart: este é o único caminho da lista que pertence a
 		// OUTRO pacote (é conffile do `nftables`). Criá-lo no postinst fazia
-		// `apt install ./linkguard-fw_*.deb` numa máquina pelada parar no
+		// `apt install ./linkguard-cloud_*.deb` numa máquina pelada parar no
 		// prompt de conffile do dpkg — ver Stage.
 		Path: NftablesConfPath, Dir: false, Mode: 0o644, Seed: nftablesConfSeed,
 		Why:                "regras do firewall; sem ele a unidade morre em 226/NAMESPACE e nunca chega a instalar o nftables",
@@ -181,7 +181,7 @@ var Entries = []Entry{
 		// Mesma armadilha do /etc/kea, reproduzida na VM com o serviço no ar
 		// desde antes do chrony existir na máquina:
 		//
-		//   # nsenter -t $(pidof linkguard-fw) -m -- \
+		//   # nsenter -t $(pidof linkguard-cloud) -m -- \
 		//       sh -c 'echo > /etc/chrony/conf.d/linkguard.conf'
 		//   sh: cannot create ...: Read-only file system
 		//
@@ -283,7 +283,7 @@ func SandboxHint(path string, err error) string {
 	return fmt.Sprintf("o LinkGuard não consegue escrever em %s (%v). "+
 		"Isso costuma acontecer quando o caminho passou a existir depois que o serviço subiu: "+
 		"o sandbox do systemd (ProtectSystem=strict) só enxerga como gravável o que já existia no start. "+
-		"Reinicie o serviço uma vez — systemctl restart linkguard-fw — e aplique de novo; "+
+		"Reinicie o serviço uma vez — systemctl restart linkguard-cloud — e aplique de novo; "+
 		"a configuração não vai valer até isso ser resolvido", path, err)
 }
 

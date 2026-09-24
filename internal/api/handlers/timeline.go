@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 // TimelineHandler serves the correlated diagnostic timeline: gauges (with

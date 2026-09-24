@@ -8,10 +8,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/platform"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // TestMainLigaOEixoDasRegrasAPlataforma é um guarda de deriva no mesmo espírito

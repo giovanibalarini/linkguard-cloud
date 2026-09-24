@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // newTestDB is already defined in storage_test.go (same package); reused here.

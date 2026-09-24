@@ -10,7 +10,7 @@ import "net/http"
 // e nada nele pode ser editado ou apagado. Devolvê-lo junto da lista faria a
 // tela oferecer as ações de link sobre uma coisa que não é link — e, pior,
 // convidaria a próxima pessoa a "só criar a linha para simplificar", que é
-// exatamente a armadilha que cmd/linkguard-fw/uplink.go existe para não cair.
+// exatamente a armadilha que cmd/linkguard-cloud/uplink.go existe para não cair.
 //
 // SOMENTE LEITURA, e sem rota de escrita nenhuma: o que se muda aqui é a
 // realidade da máquina, não um registro.
@@ -41,7 +41,7 @@ const (
 // UplinkHandler serve o uplink efetivo desta máquina.
 //
 // A FONTE ENTRA COMO FUNÇÃO, pelo mesmo motivo de SetFluxos e SetDomainRouting:
-// quem sabe responder isto é cmd/linkguard-fw, que tem o instantâneo da
+// quem sabe responder isto é cmd/linkguard-cloud, que tem o instantâneo da
 // plataforma E o banco, e a camada HTTP não pode importar internal/platform
 // para descobrir sozinha. Lida a cada requisição, nunca capturada no boot —
 // cadastrar um link muda a resposta, e a tela tem de ver a mudança na próxima

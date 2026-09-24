@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // Alvo de regra por domínio (#123): a lista que o admin mantém.

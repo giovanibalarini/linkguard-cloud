@@ -1,7 +1,7 @@
-// Package linkguardfw is the root package for LinkGuard FW.
+// Package linkguardcloud is the root package for LinkGuard Cloud.
 // It embeds the compiled frontend web assets so that the binary
 // is fully self-contained.
-package linkguardfw
+package linkguardcloud
 
 import "embed"
 

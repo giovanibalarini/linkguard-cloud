@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/monitoring"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // TestUpdatesReturnsEmptyPackagesNotNull guards the same JSON contract the

@@ -9,7 +9,7 @@ import (
 
 func TestWriteInternalErrorNeverLeaksRawErrorText(t *testing.T) {
 	w := httptest.NewRecorder()
-	writeInternalError(w, errors.New("stat /var/lib/linkguard-fw/linkguard.db: permission denied"))
+	writeInternalError(w, errors.New("stat /var/lib/linkguard-cloud/linkguard.db: permission denied"))
 	if w.Code != 500 {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}

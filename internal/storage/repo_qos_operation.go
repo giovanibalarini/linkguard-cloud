@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/qos"
+	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
 )
 
 // SaveQoSOperationLease inserts recovery evidence before the first kernel

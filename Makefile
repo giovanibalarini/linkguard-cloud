@@ -1,13 +1,13 @@
 .PHONY: all build build-frontend build-backend deb deb-from-binary install clean test lint
 
-BINARY_NAME   := linkguard-fw
+BINARY_NAME   := linkguard-cloud
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_DIR     := dist
 WEB_DIR       := web
 INSTALL_DIR   := /usr/local/bin
 SERVICE_DIR   := /etc/systemd/system
-DATA_DIR      := /var/lib/linkguard-fw
-CONFIG_DIR    := /etc/linkguard-fw
+DATA_DIR      := /var/lib/linkguard-cloud
+CONFIG_DIR    := /etc/linkguard-cloud
 
 GO_BUILD_FLAGS := -ldflags="-X main.version=$(VERSION) -s -w"
 
@@ -28,12 +28,12 @@ build-frontend:
 build-backend:
 	@echo ">>> Building backend binary..."
 	@mkdir -p $(BUILD_DIR)
-	go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/linkguard-fw/
+	go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/linkguard-cloud/
 
 ## build-dev: build without optimisations for development
 build-dev:
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/linkguard-fw/
+	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/linkguard-cloud/
 
 # ─── Package ─────────────────────────────────────────────────────────────────
 
@@ -59,13 +59,13 @@ build-dev:
 # propósito.
 #
 # Com a base em Depends, `dpkg -i` numa máquina pelada para no meio: o pacote
-# fica em `iU` ("dependency problems prevent configuration of linkguard-fw"),
+# fica em `iU` ("dependency problems prevent configuration of linkguard-cloud"),
 # o serviço nunca sobe e não sobra painel nenhum para explicar o que houve. E
 # o postinst também não pode resolver isso sozinho — o dpkg segura o
 # /var/lib/dpkg/lock-frontend durante toda a execução, então qualquer apt-get
 # chamado de dentro de um script do pacote morre com "Could not get lock".
 #
-# Em Recommends: `apt install ./linkguard-fw_*.deb` continua instalando tudo
+# Em Recommends: `apt install ./linkguard-cloud_*.deb` continua instalando tudo
 # (o apt instala Recommends por padrão), e `dpkg -i` puro instala E configura
 # — o serviço sobe e o próprio LinkGuard garante a base no primeiro boot
 # (internal/bootstrapdeps), que é a premissa do produto: instalar o LinkGuard
@@ -94,12 +94,13 @@ deb-from-binary:
 	@mkdir -p $(PKG_DIR)/usr/local/bin
 	@mkdir -p $(PKG_DIR)/lib/systemd/system
 	@install -m 0755 $(DEB_BINARY)                          $(PKG_DIR)/usr/local/bin/$(BINARY_NAME)
-	@install -m 0644 deploy/linkguard-fw.service            $(PKG_DIR)/lib/systemd/system/linkguard-fw.service
-	@install -m 0644 deploy/linkguard-notify-down.service    $(PKG_DIR)/lib/systemd/system/linkguard-notify-down.service
-	@printf 'Package: $(BINARY_NAME)\nVersion: $(DEB_VERSION)\nArchitecture: $(DEB_ARCH)\nMaintainer: giovanibalarini <giovanibalarini@users.noreply.github.com>\nSection: net\nPriority: optional\nRecommends: $(DEB_RECOMMENDS)\nHomepage: https://github.com/giovanibalarini/linkguard-fw\nDescription: Linux Firewall Management Tool\n A web-based firewall management tool for Linux.\n' \
+	@install -m 0644 deploy/linkguard-cloud.service            $(PKG_DIR)/lib/systemd/system/linkguard-cloud.service
+	@install -m 0644 deploy/linkguard-cloud-notify-down.service    $(PKG_DIR)/lib/systemd/system/linkguard-cloud-notify-down.service
+	@printf 'Package: $(BINARY_NAME)\nVersion: $(DEB_VERSION)\nArchitecture: $(DEB_ARCH)\nMaintainer: giovanibalarini <giovanibalarini@users.noreply.github.com>\nSection: net\nPriority: optional\nRecommends: $(DEB_RECOMMENDS)\nConflicts: linkguard-fw\nReplaces: linkguard-fw\nHomepage: https://github.com/giovanibalarini/linkguard-cloud\nDescription: Firewall, NAT e VPN para VMs de nuvem\n LinkGuard Cloud: o gateway de uma conta de nuvem, gerenciado por painel web.\n' \
 		> $(PKG_DIR)/DEBIAN/control
 	@cp deploy/deb/postinst $(PKG_DIR)/DEBIAN/postinst && chmod 0755 $(PKG_DIR)/DEBIAN/postinst
 	@cp deploy/deb/prerm    $(PKG_DIR)/DEBIAN/prerm    && chmod 0755 $(PKG_DIR)/DEBIAN/prerm
+	@cp deploy/deb/preinst  $(PKG_DIR)/DEBIAN/preinst  && chmod 0755 $(PKG_DIR)/DEBIAN/preinst
 	@dpkg-deb --build --root-owner-group $(PKG_DIR) $(BUILD_DIR)/$(PKG).deb
 	@echo ">>> Package ready: $(BUILD_DIR)/$(PKG).deb"
 
@@ -123,28 +124,28 @@ test-coverage:
 
 ## install: install the binary and systemd service (requires root)
 install: build
-	@echo ">>> Installing LinkGuard FW..."
+	@echo ">>> Installing LinkGuard Cloud..."
 	install -m 0755 $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
 	# Mesma chamada que o postinst do .deb e o deploy/install.sh fazem — os
 	# três caminhos de instalação têm que deixar a máquina no MESMO estado.
 	# A lista de caminhos mora em internal/sysprep. Sem isto o serviço fica
 	# em loop de 226/NAMESPACE numa máquina pelada.
 	$(INSTALL_DIR)/$(BINARY_NAME) --prepare-system
-	install -m 0644 deploy/linkguard-fw.service $(SERVICE_DIR)/linkguard-fw.service
+	install -m 0644 deploy/linkguard-cloud.service $(SERVICE_DIR)/linkguard-cloud.service
 	@if [ ! -f $(CONFIG_DIR)/config.json ]; then \
 		$(INSTALL_DIR)/$(BINARY_NAME) --config $(CONFIG_DIR)/config.json --init-config 2>/dev/null || true; \
 		echo ">>> Default config created at $(CONFIG_DIR)/config.json"; \
 	fi
 	systemctl daemon-reload
 	@echo ">>> Installation complete."
-	@echo ">>> Run: systemctl enable --now linkguard-fw"
+	@echo ">>> Run: systemctl enable --now linkguard-cloud"
 
 ## uninstall: remove the binary and service (requires root)
 uninstall:
-	systemctl stop linkguard-fw 2>/dev/null || true
-	systemctl disable linkguard-fw 2>/dev/null || true
+	systemctl stop linkguard-cloud 2>/dev/null || true
+	systemctl disable linkguard-cloud 2>/dev/null || true
 	rm -f $(INSTALL_DIR)/$(BINARY_NAME)
-	rm -f $(SERVICE_DIR)/linkguard-fw.service
+	rm -f $(SERVICE_DIR)/linkguard-cloud.service
 	systemctl daemon-reload
 	@echo ">>> Uninstalled. Data preserved at $(DATA_DIR) and $(CONFIG_DIR)."
 
@@ -177,7 +178,7 @@ clean-all: clean
 
 ## help: print this help
 help:
-	@echo "LinkGuard FW - Linux Firewall Management Tool"
+	@echo "LinkGuard Cloud - Linux Firewall Management Tool"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""

@@ -1,6 +1,6 @@
 # Política de segurança
 
-O LinkGuard FW é um appliance de firewall. Ele roda **como root**, gerencia as
+O LinkGuard Cloud é um appliance de firewall. Ele roda **como root**, gerencia as
 regras de `nftables` da máquina, o DHCP, o DNS recursivo e o NTP, e expõe um
 painel web na LAN. Uma falha aqui não é um bug de aplicação — é acesso ao
 roteador da rede de alguém.
@@ -16,7 +16,7 @@ disponível — em instalações que estão rodando neste momento.
 
 Use o canal privado do GitHub:
 
-**[Security → Report a vulnerability](https://github.com/giovanibalarini/linkguard-fw/security/advisories/new)**
+**[Security → Report a vulnerability](https://github.com/giovanibalarini/linkguard-cloud/security/advisories/new)**
 
 O relato fica visível apenas para os mantenedores. Se preferir, o mesmo caminho
 está em `Security` → `Advisories` → `Report a vulnerability`, na barra do
@@ -87,7 +87,7 @@ que estão detalhadas no README:
    instalar o LinkGuard é entregar a máquina a ele.
 2. **A instalação cria um usuário administrador com senha aleatória.** Ela
    aparece no log da primeira execução e fica em
-   `/etc/linkguard-fw/initial-admin-password` (modo 0600). Entre no painel,
+   `/etc/linkguard-cloud/initial-admin-password` (modo 0600). Entre no painel,
    troque a senha em Configurações → Segurança e apague o arquivo.
 
    Instalações anteriores à v1.0.83 nasciam com `admin`/`admin`. Se a sua é uma

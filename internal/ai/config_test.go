@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/ai"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ai"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func newTestDB(t *testing.T) *storage.DB {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/config"
+	"github.com/giovanibalarini/linkguard-cloud/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // pendingJSON é o pendente como o painel o recebe. Declarado aqui, e não

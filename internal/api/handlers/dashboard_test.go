@@ -3,16 +3,16 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/giovanibalarini/linkguard-fw/internal/dashboard"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func newDashboardTestHandler(t *testing.T) (*handlers.DashboardHandler, *storage.DB) {

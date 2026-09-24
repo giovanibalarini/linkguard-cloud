@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/dnstap"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
 )
 
 // O mapa endereço → nome (issue #116).

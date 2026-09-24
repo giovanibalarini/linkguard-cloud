@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // TestEnsureForwardingEnablesAndPersists verifies ip_forward is turned on live

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 func TestGetHistoryUnknownRangeDefaultsTo12h(t *testing.T) {

@@ -54,11 +54,11 @@ func Default() *Config {
 	return &Config{
 		ListenAddr:           "127.0.0.1",
 		Port:                 8080,
-		DBPath:               "/var/lib/linkguard-fw/linkguard.db",
+		DBPath:               "/var/lib/linkguard-cloud/linkguard.db",
 		JWTSecret:            "change-me-in-production",
 		TLSEnabled:           false,
-		TLSCert:              "/etc/linkguard-fw/tls/cert.pem",
-		TLSKey:               "/etc/linkguard-fw/tls/key.pem",
+		TLSCert:              "/etc/linkguard-cloud/tls/cert.pem",
+		TLSKey:               "/etc/linkguard-cloud/tls/key.pem",
 		DryRun:               true,
 		Debug:                false,
 		MonitorInterval:      30,
@@ -68,7 +68,7 @@ func Default() *Config {
 		FailThreshold:        3,
 		RecoverThreshold:     2,
 		FailoverCooldownSecs: 60,
-		LogFile:              "/var/log/linkguard-fw/linkguard.log",
+		LogFile:              "/var/log/linkguard-cloud/linkguard.log",
 	}
 }
 

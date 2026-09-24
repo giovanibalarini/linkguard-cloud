@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/qos"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 type qosHandlerExec struct {

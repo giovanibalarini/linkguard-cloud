@@ -3,7 +3,7 @@ package backupcrypt_test
 import (
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
 )
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {

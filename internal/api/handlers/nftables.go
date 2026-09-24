@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // NftablesHandler exposes the native nftables ruleset and its backups. This

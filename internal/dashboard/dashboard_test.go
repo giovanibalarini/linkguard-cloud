@@ -3,8 +3,8 @@ package dashboard_test
 import (
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	. "github.com/giovanibalarini/linkguard-fw/internal/dashboard"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	. "github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 )
 
 // Toda permissão declarada pelos widgets tem que existir de fato no catálogo de

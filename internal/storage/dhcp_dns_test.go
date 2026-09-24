@@ -3,7 +3,7 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Esta máquina serve DHCP e DNS para a LAN inteira: uma reserva perdida tira um

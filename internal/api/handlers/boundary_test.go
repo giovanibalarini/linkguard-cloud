@@ -95,7 +95,7 @@ import (
 // APPLIANCE, não a dos andaimes que a testam.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const modulePrefix = "github.com/giovanibalarini/linkguard-fw/"
+const modulePrefix = "github.com/giovanibalarini/linkguard-cloud/"
 
 // forbiddenDirectImports é a Regra 1 — a regra literal da issue #27. O valor
 // do mapa é a frase que o autor da mudança vai ler quando ficar vermelho: uma

@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netif/networkd"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netif/networkd"
 )
 
 // maxIfaceName is IFNAMSIZ-1, o limite rígido do kernel Linux pro nome de

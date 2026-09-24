@@ -10,12 +10,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/netif/networkd"
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netif/networkd"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const interfaceAliasSettingKey = "interface_aliases" // same key as internal/api/handlers/system.go — do not duplicate the mechanism, only this small read

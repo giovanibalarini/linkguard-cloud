@@ -23,8 +23,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // AccountingSysctl is the kernel knob that makes conntrack keep per-flow byte

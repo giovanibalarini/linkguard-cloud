@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 type domainReconcileSpy struct {

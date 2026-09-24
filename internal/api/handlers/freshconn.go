@@ -47,7 +47,7 @@ type connInfo struct {
 
 // ConnContext carimba cada conexão aceita com o instante do accept.
 //
-// Vai em http.Server.ConnContext (ver cmd/linkguard-fw). É o único jeito de o
+// Vai em http.Server.ConnContext (ver cmd/linkguard-cloud). É o único jeito de o
 // handler saber a idade da conexão que o atende: o *http.Request não carrega
 // isso, e o RemoteAddr não distingue duas conexões do mesmo cliente.
 func ConnContext(ctx context.Context, _ net.Conn) context.Context {

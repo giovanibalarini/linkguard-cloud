@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Mutation é uma alteração de firewall que precisa passar pela ordem.

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // prereqMsg is the sentence the provider produces when the DHCP package is

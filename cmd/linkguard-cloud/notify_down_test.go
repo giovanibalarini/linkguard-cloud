@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/notify"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Este arquivo cobre o caminho do --notify-down pelo CÓDIGO DE SAÍDA, que é a
@@ -23,7 +23,7 @@ import (
 // saía 0 de qualquer jeito.
 
 // notifyDownDB prepara um banco descartável e aponta secretKeyPath para dentro
-// do t.TempDir(), para que o teste nunca toque em /etc/linkguard-fw.
+// do t.TempDir(), para que o teste nunca toque em /etc/linkguard-cloud.
 func notifyDownDB(t *testing.T) (dbPath string) {
 	t.Helper()
 	dir := t.TempDir()

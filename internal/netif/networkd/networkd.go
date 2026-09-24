@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 const defaultNetworkDir = "/etc/systemd/network"

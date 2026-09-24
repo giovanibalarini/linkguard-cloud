@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/hostquota"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hostquota"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // HostQuotaHandler expõe a cota de dados por aparelho da LAN — issue #126,

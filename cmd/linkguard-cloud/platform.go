@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/platform"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // detectPlatformOnBoot descobre em que máquina o produto está e NUNCA derruba

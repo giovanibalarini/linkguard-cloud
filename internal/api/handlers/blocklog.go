@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/blocklog"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/blocklog"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // BlockLogSettingKey é onde mora a escolha do admin de registrar bloqueios.
-// Exportada porque o boot (cmd/linkguard-fw) lê a mesma chave para ligar a
+// Exportada porque o boot (cmd/linkguard-cloud) lê a mesma chave para ligar a
 // fonte do nftables — duas cópias da string seriam duas verdades.
 const BlockLogSettingKey = "firewall_log_blocks"
 

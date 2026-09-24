@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // Os testes deste arquivo prendem os defeitos achados na revisão da #115. Cada

@@ -99,7 +99,7 @@ Build automático do commit e0c9fd9.`;
 
 {
   const r = parseReleases([{
-    tag: 'v1.0.110', name: 'LinkGuard FW v1.0.110',
+    tag: 'v1.0.110', name: 'LinkGuard Cloud v1.0.110',
     published_at: '2026-08-18T00:19:29Z',
     html_url: 'https://github.com/x/y/releases/tag/v1.0.110',
     body: '### Correções\n\n- (web) algo', prerelease: false,

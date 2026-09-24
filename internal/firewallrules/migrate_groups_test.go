@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // migrateExec grava os comandos já separados em argumentos, para que um
@@ -81,7 +81,7 @@ func newTestService(t *testing.T, db *storage.DB) *Service {
 
 // newBootedService devolve o serviço no estado em que o boot o deixa antes
 // de qualquer migração: os dois grupos do sistema já criados (é o PRIMEIRO
-// passo da sequência em cmd/linkguard-fw/main.go, justamente porque as
+// passo da sequência em cmd/linkguard-cloud/main.go, justamente porque as
 // migrações reconciliam por dentro). O histórico do exec vem zerado, para o
 // teste só enxergar os comandos que ele mesmo provocou.
 //

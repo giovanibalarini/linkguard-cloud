@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/keaunbound"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/keaunbound"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // Config drift watchers.
@@ -61,7 +61,7 @@ func (c *Collector) SetBootPersistSource(src BootPersistSource) { c.bootPersist 
 //
 // COMO O ITEM APAGA, MEDIDO (validação em VM de 2026-08-13, cenário 5): o
 // operador devolve a permissão de escrita e REINICIA O SERVIÇO
-// (`systemctl restart linkguard-fw`). Aplicar outra regra não apaga o item — a
+// (`systemctl restart linkguard-cloud`). Aplicar outra regra não apaga o item — a
 // unidade tem `ProtectSystem=strict` com `ReadWritePaths=-/etc/nftables.conf`, e
 // um caminho ausente no start do serviço não entra gravável no namespace, de
 // modo que o processo já rodando continua enxergando o arquivo como somente
@@ -126,7 +126,7 @@ func (c *Collector) checkBootPersist() {
 //
 // FUNÇÃO INJETADA, e não internal/platform importado aqui: a resposta certa
 // numa VM de nuvem sem link cadastrado é o uplink que o produto derivou
-// sozinho, e quem sabe isso é cmd/linkguard-fw. Ausente resolve para o laço de
+// sozinho, e quem sabe isso é cmd/linkguard-cloud. Ausente resolve para o laço de
 // sempre sobre a tabela `links`, que é o comportamento de todo binário anterior
 // a esta entrega.
 //

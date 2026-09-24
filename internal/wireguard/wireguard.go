@@ -177,7 +177,7 @@ func RenderServerConfig(c Config, private string, peers []Peer) (string, error) 
 	ordered := append([]Peer(nil), peers...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Address < ordered[j].Address })
 	var b strings.Builder
-	b.WriteString("# Managed by LinkGuard FW — do not edit by hand.\n[Interface]\n")
+	b.WriteString("# Managed by LinkGuard Cloud — do not edit by hand.\n[Interface]\n")
 	fmt.Fprintf(&b, "Address = %s\nListenPort = %d\nPrivateKey = %s\n", c.Address, c.ListenPort, private)
 	for _, p := range ordered {
 		if err := validatePeer(c, p); err != nil {

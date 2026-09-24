@@ -43,7 +43,7 @@ func EnsureSelfSigned(certPath, keyPath string) error {
 	}
 	tmpl := x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "LinkGuard FW", Organization: []string{"LinkGuard FW"}},
+		Subject:               pkix.Name{CommonName: "LinkGuard Cloud", Organization: []string{"LinkGuard Cloud"}},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().AddDate(10, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

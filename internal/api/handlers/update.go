@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/updater"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/updater"
 )
 
 const githubTokenKey = "github_update_token"

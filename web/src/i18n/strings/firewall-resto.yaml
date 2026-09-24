@@ -11,7 +11,7 @@
 # (accept, drop, reject, continue, forward, input, ct state new, jump, chain,
 # ruleset, table inet linkguard), nomes de chain (mark_hosts), protocolos
 # (tcp, udp, icmp), caminhos (/etc/nftables.conf), comandos
-# (systemctl restart linkguard-fw), nomes próprios (LinkGuard, WAN1, WAN2,
+# (systemctl restart linkguard-cloud), nomes próprios (LinkGuard, WAN1, WAN2,
 # docker, libvirt), siglas (SSH, DNS, DHCP, MAC, NTP, IP) e unidades (KB).
 
 # ─── Página do Firewall / cabeçalho ─────────────────────────────────────────

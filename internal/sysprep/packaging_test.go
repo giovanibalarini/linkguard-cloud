@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/bootstrapdeps"
+	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
 )
 
 // Estes testes leem os arquivos de empacotamento de verdade. Eles existem
@@ -51,7 +51,7 @@ func readRepoFile(t *testing.T, rel string) string {
 func readWritePaths(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	for _, line := range strings.Split(readRepoFile(t, "deploy/linkguard-fw.service"), "\n") {
+	for _, line := range strings.Split(readRepoFile(t, "deploy/linkguard-cloud.service"), "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "ReadWritePaths=") {
 			continue
@@ -143,7 +143,7 @@ func TestTudoQuePreparamosEstaNaUnidade(t *testing.T) {
 func TestOsTresInstaladoresPreparamOSistema(t *testing.T) {
 	for _, f := range []string{"deploy/deb/postinst", "deploy/install.sh", "Makefile"} {
 		if !strings.Contains(readRepoFile(t, f), "--prepare-system") {
-			t.Errorf("%s não chama `linkguard-fw --prepare-system`: essa instalação deixa o "+
+			t.Errorf("%s não chama `linkguard-cloud --prepare-system`: essa instalação deixa o "+
 				"serviço sem os caminhos que a unidade exige", f)
 		}
 	}
@@ -154,7 +154,7 @@ func TestOsTresInstaladoresPreparamOSistema(t *testing.T) {
 func execStartPre(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	for _, line := range strings.Split(readRepoFile(t, "deploy/linkguard-fw.service"), "\n") {
+	for _, line := range strings.Split(readRepoFile(t, "deploy/linkguard-cloud.service"), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "ExecStartPre=") {
 			out = append(out, strings.TrimPrefix(line, "ExecStartPre="))
@@ -303,7 +303,7 @@ func TestABaseFicaEmRecommendsNuncaEmDepends(t *testing.T) {
 	for _, pkg := range bootstrapdeps.BasePackages {
 		if !recommends[pkg] {
 			t.Errorf("%s está em bootstrapdeps.BasePackages (o LinkGuard instala sozinho no boot) "+
-				"mas não em Recommends: — `apt install ./linkguard-fw.deb` não o traria", pkg)
+				"mas não em Recommends: — `apt install ./linkguard-cloud.deb` não o traria", pkg)
 		}
 	}
 	// Os pacotes sob demanda: o admin que instala pelo apt (o caminho normal)

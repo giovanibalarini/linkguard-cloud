@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const (
@@ -449,11 +449,11 @@ func (s *Service) DiskCleared(pct float64) error {
 		fmt.Sprintf("Uso de disco voltou a %.1f%%.", pct), "")
 }
 
-// AppDown raises a critical alert that the linkguard-fw service itself stopped
+// AppDown raises a critical alert that the linkguard-cloud service itself stopped
 // (called from the --notify-down subcommand via systemd OnFailure).
 func (s *Service) AppDown() error {
 	return s.Create(TypeAppDown, SeverityCritical, "LinkGuard caiu",
-		"O serviço linkguard-fw parou inesperadamente.", "")
+		"O serviço linkguard-cloud parou inesperadamente.", "")
 }
 
 // LinkDegraded raises a warning when a link is degraded. latencyMs and
@@ -845,7 +845,7 @@ func (s *Service) WANInterfaceOK() error {
 func (s *Service) FirewallBootPersistFailed(detail string) error {
 	return s.Create(TypeFirewallBootPersistFailed, SeverityWarning, "Regras não gravadas para o próximo boot",
 		"O firewall em vigor não foi gravado no arquivo de boot; as regras valem agora, mas um reboot não as traria de volta: "+detail+
-			". Para resolver: devolva a permissão de escrita em /etc/nftables.conf e reinicie o serviço (systemctl restart linkguard-fw). Aplicar outra regra NÃO resolve.", "")
+			". Para resolver: devolva a permissão de escrita em /etc/nftables.conf e reinicie o serviço (systemctl restart linkguard-cloud). Aplicar outra regra NÃO resolve.", "")
 }
 
 // FirewallBootPersistOK fecha FirewallBootPersistFailed e anuncia a volta.

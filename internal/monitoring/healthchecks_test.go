@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func newTestCollector() *Collector {
@@ -506,7 +506,7 @@ func fakeBootID(id string) func() (string, error) {
 }
 
 // TestCheckBootTimeSkipsWhenSameBootID reproduces the production bug this
-// fix targets: a `systemctl restart linkguard-fw` (e.g. from every package
+// fix targets: a `systemctl restart linkguard-cloud` (e.g. from every package
 // deploy's postinst) does NOT reboot the machine, so the kernel's boot_id
 // is unchanged from the last time checkBootTime persisted it. In that case
 // the process must not measure/alert on the kernel's (large, stale-looking)

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const settingKey = "notifications"
@@ -186,7 +186,7 @@ func (s *Service) send(ctx context.Context, cfg Config, severity, title, message
 // Test sends a sample notification to one channel ("webhook"|"telegram"|"email")
 // using the provided config, returning the channel error (nil on success).
 func (s *Service) Test(ctx context.Context, channel string, cfg Config) error {
-	const t = "LinkGuard FW — teste de notificação"
+	const t = "LinkGuard Cloud — teste de notificação"
 	const m = "Se você recebeu esta mensagem, o canal está configurado corretamente. ✅"
 	switch channel {
 	case "webhook":
@@ -207,7 +207,7 @@ func (s *Service) sendWebhook(ctx context.Context, c WebhookCfg, severity, title
 		"severity":  severity,
 		"title":     title,
 		"message":   message,
-		"source":    "linkguard-fw",
+		"source":    "linkguard-cloud",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 	// O esquema é conferido antes de a URL virar requisição (alerta
@@ -220,7 +220,7 @@ func (s *Service) sendWebhook(ctx context.Context, c WebhookCfg, severity, title
 	// defesa contra SSRF, e fingir que é seria pior do que não ter.
 	//
 	// O que ele fecha é outra coisa: sem checagem, o http.Client aceita
-	// esquemas que não são requisição de rede. Um "file:///etc/linkguard-fw/
+	// esquemas que não são requisição de rede. Um "file:///etc/linkguard-cloud/
 	// secret.key" gravado aí — por engano, por um script de provisionamento ou
 	// por um backup restaurado de outra máquina — faria o processo LER UM
 	// ARQUIVO LOCAL como root e mandar o conteúdo no corpo da resposta de teste

@@ -30,11 +30,11 @@ import (
 
 // importsQueCortam mapeia caminho de import → por que ele não pode entrar aqui.
 var importsQueCortam = map[string]string{
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables":      "escrever no ruleset vivo é o corte; ver LiveSnapshotSettingKey e survival.go",
-	"github.com/giovanibalarini/linkguard-fw/internal/hosts":         "hosts.SetBlocked tranca o aparelho, e o que estourou a cota pode ser o do admin",
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall":      "o executor central aplica regra; medir e avisar não aplica regra nenhuma",
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules": "regra de firewall por cota é o corte com outro nome",
-	"github.com/giovanibalarini/linkguard-fw/internal/iptables":      "idem nftables, pela porta antiga",
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables":      "escrever no ruleset vivo é o corte; ver LiveSnapshotSettingKey e survival.go",
+	"github.com/giovanibalarini/linkguard-cloud/internal/hosts":         "hosts.SetBlocked tranca o aparelho, e o que estourou a cota pode ser o do admin",
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall":      "o executor central aplica regra; medir e avisar não aplica regra nenhuma",
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules": "regra de firewall por cota é o corte com outro nome",
+	"github.com/giovanibalarini/linkguard-cloud/internal/iptables":      "idem nftables, pela porta antiga",
 	"os/exec": "este pacote não executa processo: nem tc, nem nft, nem ip. Se precisar, o desenho está errado",
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 func TestDryRunExecutor(t *testing.T) {

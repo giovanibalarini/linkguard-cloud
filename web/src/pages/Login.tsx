@@ -43,7 +43,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600/20 mb-4">
             <ShieldCheck className="w-8 h-8 text-blue-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white">LinkGuard FW</h1>
+          <h1 className="text-2xl font-bold text-white">LinkGuard Cloud</h1>
           <p className="text-gray-500 mt-1">{t('login.subtitle')}</p>
         </div>
 

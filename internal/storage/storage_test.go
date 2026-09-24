@@ -2,14 +2,14 @@ package storage_test
 
 import (
 	"database/sql"
-	"github.com/giovanibalarini/linkguard-fw/internal/dashboard"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 	"path/filepath"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func newTestDB(t *testing.T) *storage.DB {

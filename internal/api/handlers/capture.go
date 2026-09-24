@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/pktcapture"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/pktcapture"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // CaptureHandler expõe a captura de pacotes sob demanda (issue #114).

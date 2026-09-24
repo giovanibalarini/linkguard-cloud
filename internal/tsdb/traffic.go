@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
 )
 
 // UsageSink recebe os MESMOS deltas de byte que viram taxa nas séries.

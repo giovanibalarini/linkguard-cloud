@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
 )
 
 // hostsVM é a linha do /etc/nsswitch.conf da VM de validação: o `resolve`

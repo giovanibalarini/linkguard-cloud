@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/dnslog"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnslog"
 )
 
 // DNSLogHandler exposes recent DNS queries parsed from the unbound journal.

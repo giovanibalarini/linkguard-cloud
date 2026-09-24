@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/stresstest"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/stresstest"
 )
 
 // StressTestHandler drives on-demand link fault-injection tests.

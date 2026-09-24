@@ -1,0 +1,48 @@
+#!/bin/sh
+set -e
+
+# Migração a partir do linkguard-fw.
+#
+# O linkguard-cloud nasceu do linkguard-fw (o produto on-prem) em 24/09/2026 e
+# declara Conflicts + Replaces sobre ele: numa caixa que roda o linkguard-fw,
+# instalar este pacote remove o antigo. Pela ordem do dpkg (Debian Policy 6.6),
+# o prerm do linkguard-fw já parou e desabilitou o serviço antigo quando este
+# script roda, então o banco está consistente para ser copiado.
+#
+# COPIA, não move: se algo der errado, reinstalar o linkguard-fw encontra o
+# estado dele onde sempre esteve. A tabela nftables (`inet linkguard`) e o
+# WireGuard (/etc/wireguard/linkguard.conf) têm o mesmo nome nos dois produtos
+# e não são tocados: parar o serviço não apaga regra, então o NAT continua
+# passando durante a troca.
+#
+# Os caminhos são sobrescrevíveis só para o teste de pacote exercitar este
+# arquivo de verdade; o dpkg nunca define estas variáveis.
+OLD_DATA="${LINKGUARD_OLD_DATA_DIR:-/var/lib/linkguard-fw}"
+OLD_CONF="${LINKGUARD_OLD_CONFIG_DIR:-/etc/linkguard-fw}"
+NEW_DATA="${LINKGUARD_DATA_DIR:-/var/lib/linkguard-cloud}"
+NEW_CONF="${LINKGUARD_CONFIG_DIR:-/etc/linkguard-cloud}"
+
+case "$1" in
+  install|upgrade)
+    if [ -d "${OLD_DATA}" ] && [ ! -e "${NEW_DATA}" ]; then
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl stop linkguard-fw 2>/dev/null || true
+      fi
+      cp -a "${OLD_DATA}" "${NEW_DATA}"
+      if [ -d "${OLD_CONF}" ] && [ ! -e "${NEW_CONF}" ]; then
+        cp -a "${OLD_CONF}" "${NEW_CONF}"
+        if [ -f "${NEW_CONF}/config.json" ]; then
+          sed -i "s#${OLD_DATA}/#${NEW_DATA}/#g" "${NEW_CONF}/config.json"
+        fi
+      fi
+      # O postinst lê este marcador para ligar o serviço novo: uma caixa com
+      # estado do linkguard-fw é uma caixa em produção, e o prerm do pacote
+      # antigo já desabilitou o serviço dele.
+      : > "${NEW_DATA}/.migrado-do-linkguard-fw"
+      echo "[INFO] Estado do linkguard-fw copiado para ${NEW_DATA} e ${NEW_CONF}."
+      echo "[INFO] O original continua em ${OLD_DATA} e ${OLD_CONF} até você apagá-lo."
+    fi
+    ;;
+esac
+
+exit 0

@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/bootstrapdeps"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/sysprep"
+	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/sysprep"
 )
 
 // reChronyServer guards values rendered into the chrony drop-in via string

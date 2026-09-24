@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Tipos de alerta desta feature. Nomes estáveis: viram linha no banco.

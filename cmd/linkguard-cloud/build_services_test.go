@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/config"
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/platform"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/config"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Este arquivo é o que a issue #24 pede por último: uma afirmação sobre a

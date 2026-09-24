@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 type domainRoutingReconciler interface {
@@ -79,7 +79,7 @@ func clampLimit(raw string, def, max int) int {
 //
 // FUNÇÃO, E NÃO PACOTE IMPORTADO. A resposta certa depende da PLATAFORMA — numa
 // VM de nuvem sem link cadastrado ela é o uplink que o produto derivou sozinho,
-// e quem sabe isso é cmd/linkguard-fw —, mas a camada HTTP não pode importar
+// e quem sabe isso é cmd/linkguard-cloud —, mas a camada HTTP não pode importar
 // internal/platform para descobrir: o teto de imports internos por arquivo do
 // TestPackageBoundary existe justamente para ela não acumular domínio. É a
 // mesma disciplina de SetFluxos e SetDomainRouting.
@@ -109,7 +109,7 @@ func wansDe(src fonteDeWANs, db *storage.DB) ([]string, error) {
 // independently-written queries against the same links table.
 //
 // É O RAMO DE AUSÊNCIA de wansDe, e só isso: quem tem a fonte ligada passa por
-// wansEfetivas, em cmd/linkguard-fw/uplink.go, que é a derivação canônica do
+// wansEfetivas, em cmd/linkguard-cloud/uplink.go, que é a derivação canônica do
 // produto e a única que conhece o uplink implícito.
 func enabledWANInterfaces(db *storage.DB) ([]string, error) {
 	ls, err := db.GetLinks()

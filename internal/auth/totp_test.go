@@ -48,7 +48,7 @@ func TestTOTPSkewWindow(t *testing.T) {
 }
 
 func TestOtpauthURL(t *testing.T) {
-	u := OtpauthURL("ABCD", "admin", "LinkGuard FW")
+	u := OtpauthURL("ABCD", "admin", "LinkGuard Cloud")
 	for _, want := range []string{"otpauth://totp/", "secret=ABCD", "issuer=LinkGuard", "digits=6", "period=30"} {
 		if !contains(u, want) {
 			t.Errorf("otpauth URL missing %q: %s", want, u)

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // Amostragem da série de consumo por host (issue #113).

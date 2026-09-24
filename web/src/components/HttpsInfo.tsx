@@ -26,9 +26,9 @@ export default function HttpsInfo() {
 
       {!secure && (
         <div className="text-sm text-gray-400 space-y-2">
-          <p>{t('cfg.https.enable')}<code className="text-blue-300">/etc/linkguard-fw/config.json</code>{t('cfg.https.enable.tail')}</p>
+          <p>{t('cfg.https.enable')}<code className="text-blue-300">/etc/linkguard-cloud/config.json</code>{t('cfg.https.enable.tail')}</p>
           <pre className="bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs font-mono text-gray-300 overflow-x-auto">{`"tls_enabled": true`}</pre>
-          <p>{t('cfg.https.restart')}<code className="text-blue-300">systemctl restart linkguard-fw</code>.</p>
+          <p>{t('cfg.https.restart')}<code className="text-blue-300">systemctl restart linkguard-cloud</code>.</p>
           <p className="text-gray-500 text-xs">
             {t('cfg.https.cert')}<b>{t('cfg.https.cert.strong')}</b>{t('cfg.https.cert.tail')}<code>tls_cert</code>{t('cfg.https.cert.and')}<code>tls_key</code>{t('cfg.https.cert.tail2')}<code className="text-blue-300">https://…</code>.
           </p>

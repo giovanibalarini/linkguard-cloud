@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/ddns"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ddns"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // O índice do alvo por domínio (#123), terceira parte: a decisão.

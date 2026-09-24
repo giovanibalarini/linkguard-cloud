@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
 )
 
 // HealthHandler handles health check requests.

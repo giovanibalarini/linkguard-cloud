@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // ─── filtro ──────────────────────────────────────────────────────────────────
@@ -319,8 +319,8 @@ func TestMensagemDeFalhaExplicaAppArmor(t *testing.T) {
 	// Arquivo ausente depois de um tcpdump que "rodou" é a falha mais confusa
 	// desta feature. A mensagem tem de citar as duas causas reais em vez de
 	// repassar o erro cru.
-	msg := captureFailureMessage(nil, os.ErrNotExist, "/var/lib/linkguard-fw/captures")
-	for _, termo := range []string{"AppArmor", "tcpdump", "/var/lib/linkguard-fw/captures"} {
+	msg := captureFailureMessage(nil, os.ErrNotExist, "/var/lib/linkguard-cloud/captures")
+	for _, termo := range []string{"AppArmor", "tcpdump", "/var/lib/linkguard-cloud/captures"} {
 		if !strings.Contains(msg, termo) {
 			t.Errorf("a mensagem não cita %q: %s", termo, msg)
 		}

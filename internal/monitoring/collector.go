@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/metrics"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
-	"github.com/giovanibalarini/linkguard-fw/internal/sysupdates"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/metrics"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/sysupdates"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 // Collector gathers system and link metrics and updates Prometheus gauges.

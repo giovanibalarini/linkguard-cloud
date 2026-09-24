@@ -48,7 +48,7 @@ const masqueradeChain = "postrouting"
 // A RECUSA COM LISTA VAZIA CONTINUA SENDO A PRIMEIRA COISA QUE ESTA FUNÇÃO FAZ,
 // e continua certa. Numa VM de nuvem recém-instalada a lista deixou de chegar
 // vazia — quem a preenche é o uplink derivado da plataforma, em
-// cmd/linkguard-fw/uplink.go —, e foi isso que mudou, não a guarda.
+// cmd/linkguard-cloud/uplink.go —, e foi isso que mudou, não a guarda.
 func (s *Service) ReconcileMasquerade(ctx context.Context, wanInterfaces []string) error {
 	if s.exec.IsDryRun() {
 		return nil

@@ -24,7 +24,7 @@ import (
 // O SOCKET VIVE ONDE O UNBOUND ALCANÇA. O pacote do Debian compila com
 // `--with-dnstap-socket-path=/run/dnstap.sock`, e o unbound roda com o perfil
 // AppArmor do pacote — que é a razão de o caminho ser esse e não um dentro de
-// /var/lib/linkguard-fw. Mudar o caminho exigiria mexer no perfil alheio, que é
+// /var/lib/linkguard-cloud. Mudar o caminho exigiria mexer no perfil alheio, que é
 // a mesma armadilha que a captura de pacotes já pagou com o tcpdump.
 
 const (
@@ -41,7 +41,7 @@ const (
 	// EscreverRegraAppArmor. O perfil de fábrica permite exatamente três
 	// caminhos em /run (unbound.pid, unbound.ctl e systemd/notify), nenhum de
 	// dnstap: sem a regra, nem o caminho compilado por padrão funcionaria.
-	SocketPath = "/run/linkguard-fw/dnstap.sock"
+	SocketPath = "/run/linkguard-cloud/dnstap.sock"
 
 	// intervaloLimpeza é de quanto em quanto tempo as entradas vencidas saem.
 	intervaloLimpeza = 5 * time.Minute
@@ -212,7 +212,7 @@ func (s *Servico) avisarObservador(r *Resposta) {
 const CaminhoRegraAppArmor = "/etc/apparmor.d/local/usr.sbin.unbound"
 
 // RegraAppArmor é o conteúdo escrito.
-const RegraAppArmor = `# Escrito pelo LinkGuard FW (issue #116).
+const RegraAppArmor = `# Escrito pelo LinkGuard Cloud (issue #116).
 # Sem esta linha o unbound não consegue entregar as respostas de DNS ao coletor,
 # e o mapa endereço → nome fica vazio para sempre — sem erro visível, porque
 # quem recusa é o AppArmor e não o unbound.

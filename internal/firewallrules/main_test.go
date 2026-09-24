@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // TestMain tira do caminho, para TODO teste deste binário (os dois pacotes de

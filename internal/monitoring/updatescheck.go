@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/sysupdates"
+	"github.com/giovanibalarini/linkguard-cloud/internal/sysupdates"
 )
 
 // updatesLastRunSettingKey persists the unix timestamp of the last check so

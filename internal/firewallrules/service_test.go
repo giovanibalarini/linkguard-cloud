@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // fakeExec is a minimal firewall.Executor: it answers ListUserRules'
@@ -58,7 +58,7 @@ func newTestDB(t *testing.T) *storage.DB {
 
 // newTestService constrói o serviço já com os dois grupos do sistema na
 // lista — que é como toda máquina fica logo no começo do boot, antes de
-// qualquer coisa que reconcilie (ver a ordem em cmd/linkguard-fw/main.go).
+// qualquer coisa que reconcilie (ver a ordem em cmd/linkguard-cloud/main.go).
 //
 // Sem eles, Reconcile se recusa a reconstruir a chain forward, e com razão:
 // uma forward montada a partir de uma lista sem os grupos do sistema sairia

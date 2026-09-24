@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // ForwardingSysctl is the kernel knob that lets the box route packets between

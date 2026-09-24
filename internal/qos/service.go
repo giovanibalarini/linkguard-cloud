@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/google/uuid"
 )
 

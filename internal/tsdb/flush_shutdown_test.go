@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 // O defeito: Run saía no ctx.Done() sem gravar nada, e o balde da janela

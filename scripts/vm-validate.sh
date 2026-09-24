@@ -10,7 +10,7 @@
 # não chamar funções Go.
 #
 # Uso:
-#   scripts/vm-validate.sh --deb dist/linkguard-fw_X_amd64.deb
+#   scripts/vm-validate.sh --deb dist/linkguard-cloud_X_amd64.deb
 #   scripts/vm-validate.sh --deb novo.deb --from-deb antigo.deb   # + upgrade
 #
 # --from-deb liga a bateria de upgrade: instala o pacote antigo primeiro, anota
@@ -135,18 +135,18 @@ install_deb() { # install_deb ARQUIVO ROTULO
     bad "instalação do .deb ($label) falhou" "$(tail -5 /tmp/lgv_install)"
     return 1
   fi
-  vm "systemctl enable --now linkguard-fw" >/dev/null 2>&1 || true
+  vm "systemctl enable --now linkguard-cloud" >/dev/null 2>&1 || true
 
   # O padrão do produto é escutar em 127.0.0.1. Dentro da VM isso é o loopback
   # da guest, e o hostfwd do qemu entrega na NIC (10.0.2.15) — então o painel
   # fica inalcançável do host. Abrir o listen_addr é o que uma instalação real
   # faz de qualquer jeito (o painel precisa ser alcançável da LAN), e não muda
   # nenhum comportamento que este script verifica.
-  vm "sed -i 's/\"listen_addr\": \"127.0.0.1\"/\"listen_addr\": \"0.0.0.0\"/' /etc/linkguard-fw/config.json && systemctl restart linkguard-fw" >/dev/null 2>&1
+  vm "sed -i 's/\"listen_addr\": \"127.0.0.1\"/\"listen_addr\": \"0.0.0.0\"/' /etc/linkguard-cloud/config.json && systemctl restart linkguard-cloud" >/dev/null 2>&1
 
   wait_api || {
     bad "o painel não respondeu depois de instalar ($label)" \
-        "$(vm 'systemctl is-active linkguard-fw; ss -tlnp | grep 9997 || echo "nada escutando em 9997"' 2>&1 | tr '\n' ' ')"
+        "$(vm 'systemctl is-active linkguard-cloud; ss -tlnp | grep 9997 || echo "nada escutando em 9997"' 2>&1 | tr '\n' ' ')"
     return 1
   }
   ok "serviço no ar e /api/health respondendo ($label)"
@@ -162,13 +162,13 @@ battery_fresh() {
 
   # A1 — a senha inicial existe, é aleatória e o arquivo é 0600.
   local mode initial
-  mode=$(vm "stat -c %a /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r')
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  mode=$(vm "stat -c %a /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   if [[ "$mode" == "600" ]]; then ok "senha inicial gravada com modo 0600"
   else bad "modo do arquivo de senha inicial é '$mode', esperado 600"; fi
   if [[ ${#initial} -ge 16 ]]; then ok "senha inicial tem ${#initial} caracteres (aleatória)"
   else bad "senha inicial curta ou ausente: '${initial}'"; fi
-  if vm "journalctl -u linkguard-fw --no-pager | grep -qi 'PRIMEIRA EXECU'"; then
+  if vm "journalctl -u linkguard-cloud --no-pager | grep -qi 'PRIMEIRA EXECU'"; then
     ok "a senha inicial também foi para o log do serviço"
   else bad "o log não registrou a senha inicial"; fi
 
@@ -344,7 +344,7 @@ battery_confirm_revert() {
   fi
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria C não roda"; return; }
@@ -486,7 +486,7 @@ for g in json.load(sys.stdin).get('groups',[]):
   # uma mudança cujo estado anterior já tinha sido restaurado.
   api POST /api/nftables/groups "$tok" \
     '{"name":"Bateria C restart","scope":"input","fallthrough":"continue","cond_saddr":"10.9.9.0/24"}' >/dev/null
-  vm "systemctl restart linkguard-fw" >/dev/null 2>&1
+  vm "systemctl restart linkguard-cloud" >/dev/null 2>&1
   wait_api || { bad "o serviço não voltou depois do restart"; return; }
   tok=$(login admin "$initial"); [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$(body GET /api/nftables/pending "$tok" | jqk pending.id)" ]]; then
@@ -529,12 +529,12 @@ battery_upgrade() {
 
   # A senha da versão anterior depende de QUAL versão ela é. Até a v1.0.93 toda
   # instalação nascia com admin/admin; da v1.0.94 em diante a senha é gerada e
-  # fica em /etc/linkguard-fw/initial-admin-password. O script precisa servir
+  # fica em /etc/linkguard-cloud/initial-admin-password. O script precisa servir
   # aos dois casos, senão ele passa a só conseguir testar upgrades a partir de
   # pacotes antigos — e é justamente o upgrade a partir do ATUAL que interessa
   # daqui para a frente.
   local basepw tok
-  basepw=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  basepw=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   if [[ -n "$basepw" ]]; then
     tok=$(login admin "$basepw")
     [[ -n "$tok" ]] && ok "versão anterior: entra com a senha gerada na instalação"
@@ -555,7 +555,7 @@ battery_upgrade() {
   # Estado da base, para as asserções pós-upgrade compararem contra ele em vez
   # de contra uma suposição.
   local pwfile_antes base_conhece_mw
-  pwfile_antes=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  pwfile_antes=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   if body GET /api/permissions "$tok" | grep -q 'monitoring.write'; then
     base_conhece_mw="sim"
     printf '       (a base já conhece monitoring.write — a migração já rodou nela)\n'
@@ -575,7 +575,7 @@ battery_upgrade() {
   # senha NOVA — isso significaria ter recriado ou sobrescrito a conta. Por isso
   # a comparação é do conteúdo, capturado antes de subir a versão nova.
   local pwfile_depois
-  pwfile_depois=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  pwfile_depois=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   if [[ "$pwfile_depois" == "$pwfile_antes" ]]; then
     if [[ -z "$pwfile_antes" ]]; then ok "o upgrade não criou arquivo de senha inicial (a conta já existia)"
     else ok "o arquivo de senha inicial ficou intacto no upgrade"; fi
@@ -628,7 +628,7 @@ battery_upgrade() {
   fi
   if grep -qx 'monitoring.write' <<<"$before"; then
     body PUT "/api/roles/$op_role" "$tok" '{"name":"Operador VM","description":"operacional","permissions":["monitoring.read","firewall.write"]}' >/dev/null
-    vm "systemctl restart linkguard-fw" >/dev/null 2>&1
+    vm "systemctl restart linkguard-cloud" >/dev/null 2>&1
     wait_api || { bad "o serviço não voltou depois do restart"; return; }
     tok=$(login admin "$basepw")
     after=$(role_perms "$tok" "$op_role")
@@ -663,7 +663,7 @@ battery_policy() {
   head_ "D. Postura padrão do firewall"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria D não roda"; return; }
@@ -756,7 +756,7 @@ battery_policy() {
     ok "a postura restritiva foi gravada no ruleset de boot"
   else bad "o /etc/nftables.conf não tem a postura restritiva — o bloqueio sumiria no próximo boot"; fi
 
-  vm "systemctl restart linkguard-fw" >/dev/null 2>&1
+  vm "systemctl restart linkguard-cloud" >/dev/null 2>&1
   wait_api || { bad "o serviço não voltou depois do restart"; return; }
   tok=$(login admin "$initial"); [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ "$(body GET /api/nftables/policy "$tok" | jqk forward)" == "accept" ]]; then
@@ -809,7 +809,7 @@ battery_capture() {
   head_ "E. Captura de pacotes"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria E não roda"; return; }
@@ -875,7 +875,7 @@ battery_capture() {
 
   # E8 — e é um pcap de verdade, legível, com o snaplen que prometemos.
   local leitura
-  leitura=$(vm "tcpdump -r /var/lib/linkguard-fw/captures/*.pcap -nn -c 1 2>&1 | head -2" | tr -d '\r')
+  leitura=$(vm "tcpdump -r /var/lib/linkguard-cloud/captures/*.pcap -nn -c 1 2>&1 | head -2" | tr -d '\r')
   if grep -q 'snapshot length 96' <<<"$leitura"; then
     ok "o arquivo é um pcap válido, com snapshot length 96"
   else bad "o .pcap não abriu como esperado" "$leitura"; fi
@@ -883,9 +883,9 @@ battery_capture() {
   # E9 — o dono do diretório. O tcpdump do Debian rebaixa privilégio para o
   # usuário `tcpdump` antes de abrir o arquivo; se o diretório não for dele, a
   # captura "funciona" e o arquivo não aparece.
-  if vm "stat -c %U /var/lib/linkguard-fw/captures" | tr -d '\r' | grep -qE 'tcpdump|root'; then
+  if vm "stat -c %U /var/lib/linkguard-cloud/captures" | tr -d '\r' | grep -qE 'tcpdump|root'; then
     ok "o diretório de capturas tem dono compatível com o rebaixamento do tcpdump"
-  else bad "dono inesperado do diretório de capturas: $(vm 'stat -c %U /var/lib/linkguard-fw/captures')"; fi
+  else bad "dono inesperado do diretório de capturas: $(vm 'stat -c %U /var/lib/linkguard-cloud/captures')"; fi
 
   # E10 — download, que é o que sai da máquina.
   st=$(status GET /api/traffic/capture/file "$tok")
@@ -911,7 +911,7 @@ battery_quota() {
   head_ "F. Franquia por link"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria F não roda"; return; }
@@ -1013,7 +1013,7 @@ battery_accounting() {
   head_ "G. Contabilidade por host"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria G não roda"; return; }
@@ -1156,7 +1156,7 @@ battery_host_quota() {
   head_ "Y. Cota por aparelho"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d "\\r\\n")
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d "\\r\\n")
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   # PULAR, e não só FALHAR: sem isto o resumo conta cobertura que não houve.
@@ -1478,7 +1478,7 @@ for q in json.load(sys.stdin):
   # fronteira. Então é o endereço físico dele que ela procura numa linha de
   # notificação — imune a qualquer bateria vizinha, porque o MAC é sorteado.
   local envio
-  envio=$(vm "journalctl -u linkguard-fw --since '-5 min' --no-pager 2>/dev/null | grep -i notif | grep -ci '$mac' || true" | tr -d "\\r" | tail -1)
+  envio=$(vm "journalctl -u linkguard-cloud --since '-5 min' --no-pager 2>/dev/null | grep -i notif | grep -ci '$mac' || true" | tr -d "\\r" | tail -1)
   if [[ "${envio:-0}" == "0" ]]; then ok "o aviso de cota não levou a identidade do aparelho para fora da caixa"
   else bad "a identidade do aparelho apareceu em $envio linha(s) de notificação, com o portão fechado"; fi
 
@@ -1507,7 +1507,7 @@ battery_replyrouting() {
   head_ "H. Roteamento de retorno por WAN"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria H não roda"; return; }
@@ -1583,7 +1583,7 @@ for l in json.load(sys.stdin):
   else ok "sem a marcação o cliente fica sem resposta (o defeito, reproduzido)"; fi
 
   # H7 — e a reconciliação devolve.
-  vm "systemctl restart linkguard-fw" >/dev/null 2>&1
+  vm "systemctl restart linkguard-cloud" >/dev/null 2>&1
   sleep 8
   if vm "ip netns exec wan2sim ping -c 3 -W 2 -I 203.0.113.5 10.66.0.1 >/dev/null 2>&1 && echo ok" | grep -q ok; then
     ok "a reconciliação do boot devolve o caminho de volta"
@@ -1609,7 +1609,7 @@ battery_dnsleak() {
   head_ "I. Fuga de DNS"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria I não roda"; return; }
@@ -1781,7 +1781,7 @@ battery_schedule() {
   head_ "K. Janela de horário do grupo"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria K não roda"; return; }
@@ -1864,7 +1864,7 @@ battery_blocklog() {
   head_ "L. Registro de bloqueios"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria L não roda"; return; }
@@ -1958,7 +1958,7 @@ battery_ddns() {
   head_ "M. DNS dinâmico"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria M não roda"; return; }
@@ -2119,7 +2119,7 @@ battery_waninput() {
   head_ "N. Proteção de entrada das WANs"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria N não roda"; return; }
@@ -2298,7 +2298,7 @@ battery_bloqueio_familias() {
   head_ "O. Bloqueio de host nas duas famílias"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria O não roda"; return; }
@@ -2490,7 +2490,7 @@ battery_portforward_wan2() {
   head_ "P. Encaminhamento de porta por WAN secundária"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria P não roda"; return; }
@@ -2619,7 +2619,7 @@ battery_fechar_gerencia() {
   head_ "Q. Fechar a gerência na WAN"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria Q não roda"; return; }
@@ -2731,7 +2731,7 @@ battery_reserva_dhcp() {
   head_ "R. Reserva de DHCP que trava tudo"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria R não roda"; return; }
@@ -2843,7 +2843,7 @@ battery_contencao() {
   head_ "S. Contenção de tentativa repetida"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria S não roda"; return; }
@@ -3016,7 +3016,7 @@ battery_mapa_dns() {
   head_ "T. Mapa endereço → nome"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria T não roda"; return; }
@@ -3058,11 +3058,11 @@ print(json.loads(sys.argv[1]).get('ligado'))" "$resp" 2>/dev/null)
   # de pé e o unbound ser recusado pelo AppArmor sem que nada apareça no log de
   # nenhum dos dois. O perfil de fábrica permite exatamente três caminhos em
   # /run, e nenhum é de dnstap — nem o que o pacote compilou por padrão.
-  if vm "ls -l /run/linkguard-fw/dnstap.sock 2>/dev/null | grep -q srw"; then
-    ok "o coletor está ouvindo em /run/linkguard-fw/dnstap.sock"
+  if vm "ls -l /run/linkguard-cloud/dnstap.sock 2>/dev/null | grep -q srw"; then
+    ok "o coletor está ouvindo em /run/linkguard-cloud/dnstap.sock"
   else
     bad "o socket do coletor não existe: o unbound não tem onde entregar" \
-        "$(vm "journalctl -u linkguard-fw --since '5 min ago' --no-pager | grep -i dnstap | tail -1" | tr -d '\r' | head -c 200)"
+        "$(vm "journalctl -u linkguard-cloud --since '5 min ago' --no-pager | grep -i dnstap | tail -1" | tr -d '\r' | head -c 200)"
   fi
   if vm "grep -q 'dnstap.sock' /etc/apparmor.d/local/usr.sbin.unbound 2>/dev/null"; then
     ok "o AppArmor do unbound foi autorizado no ponto de extensão local"
@@ -3146,7 +3146,7 @@ battery_metricas_host() {
   head_ "U. Métricas por aparelho"
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   [[ -n "$tok" ]] || { bad "sem sessão administrativa; a bateria U não roda"; return; }
@@ -3314,7 +3314,7 @@ battery_comportamento() {
   }
 
   local initial tok
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$tok" ]]; then
@@ -3348,8 +3348,8 @@ battery_comportamento() {
   # próprio arranjo desta suíte já edita config.json, então ele não é imutável.
   # Semear no banco errado imprimiria "o produto não alertou" sobre um banco que
   # o produto nunca leu.
-  BANCO=$(vm "python3 -c \"import json;print(json.load(open('/etc/linkguard-fw/config.json')).get('db_path',''))\" 2>/dev/null" | tr -d '\r' | tail -1)
-  [[ -n "$BANCO" ]] || BANCO="/var/lib/linkguard-fw/linkguard.db"
+  BANCO=$(vm "python3 -c \"import json;print(json.load(open('/etc/linkguard-cloud/config.json')).get('db_path',''))\" 2>/dev/null" | tr -d '\r' | tail -1)
+  [[ -n "$BANCO" ]] || BANCO="/var/lib/linkguard-cloud/linkguard.db"
 
   # ── O ajudante que lê e semeia o banco da VM ───────────────────────────────
   #
@@ -3641,7 +3641,7 @@ PYEOF
   # O PID de agora. A histerese vive na memória do processo: se ele reiniciar no
   # meio, alertar de novo passa a ser o comportamento CERTO, e a V6 não pode
   # acusar ninguém.
-  local pid1; pid1=$(vm "systemctl show -p MainPID --value linkguard-fw" | tr -d '\r' | tail -1)
+  local pid1; pid1=$(vm "systemctl show -p MainPID --value linkguard-cloud" | tr -d '\r' | tail -1)
 
   # ── A passada do detector ──────────────────────────────────────────────────
   #
@@ -3674,7 +3674,7 @@ PYEOF
   # morto e detector calado produzem o mesmo silêncio, e só um deles é defeito
   # do recurso.
   if [[ "$n_novo" -eq 0 && "$n_alto" -eq 0 ]]; then
-    local vivo; vivo=$(vm "systemctl is-active linkguard-fw" | tr -d '\r' | tail -1)
+    local vivo; vivo=$(vm "systemctl is-active linkguard-cloud" | tr -d '\r' | tail -1)
     if [[ "$vivo" != "active" ]] || ! wait_api; then
       bad "o serviço não está no ar; o silêncio dos detectores não pode ser cobrado dele" "systemctl is-active: $vivo"
       encerra_v "o serviço caiu durante a bateria"
@@ -3734,7 +3734,7 @@ PYEOF
     ok "consumo de 8x o normal daquela hora virou alerta"
   elif [[ "$n_alto" -eq 0 ]]; then
     bad "o aparelho com 8x o próprio normal não gerou alerta de consumo" \
-        "$(vm "journalctl -u linkguard-fw --since '15 min ago' --no-pager | grep -iE 'comportamento|panic|alert created' | tail -2" | tr -d '\r' | head -c 200)"
+        "$(vm "journalctl -u linkguard-cloud --since '15 min ago' --no-pager | grep -iE 'comportamento|panic|alert created' | tail -2" | tr -d '\r' | head -c 200)"
   else
     bad "o mesmo aparelho gerou $n_alto alertas de consumo numa passada só"
   fi
@@ -3869,7 +3869,7 @@ print(len({(a.get('type'),(a.get('link_id') or '').lower()) for a in d} & alvo))
     [[ "$n_alto2" == "$n_alto3" && "$n_alto2" =~ ^[0-9]+$ ]] && break
   done
 
-  local pid2; pid2=$(vm "systemctl show -p MainPID --value linkguard-fw" | tr -d '\r' | tail -1)
+  local pid2; pid2=$(vm "systemctl show -p MainPID --value linkguard-cloud" | tr -d '\r' | tail -1)
   if [[ ! "$n_alto2" =~ ^[0-9]+$ || "$n_alto2" != "$n_alto3" ]]; then
     pular "V6. A histerese cala o segundo pico" \
           "não consegui uma leitura estável dos alertas depois da passada da testemunha (leituras: '$n_alto2' e '$n_alto3')"
@@ -4005,7 +4005,7 @@ for l in json.load(sys.stdin):
   }
 
   local initial
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$tok" ]]; then
@@ -4379,7 +4379,7 @@ print(' '.join(sorted(n.get('interface','') for n in nh)))" 2>/dev/null
 
   # ── Sessão ─────────────────────────────────────────────────────────────────
   local initial
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$tok" ]]; then
@@ -5319,7 +5319,7 @@ for c in (d.get('conversas') or []):
 
   # ── Sessão ─────────────────────────────────────────────────────────────────
   local initial
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$tok" ]]; then
@@ -5629,7 +5629,7 @@ PYEOF
   done
   if [[ -z "$chain" ]]; then
     bad "ligar respondeu 200 e a chain não existe no kernel: a tela diria LIGADO sobre uma medição que não está lá" \
-        "$(vm "nft list tables 2>&1; journalctl -u linkguard-fw --since '2 min ago' --no-pager | grep -i -e conversa -e flows | tail -3" | tr -d '\r' | tr '\n' ' ' | head -c 260)"
+        "$(vm "nft list tables 2>&1; journalctl -u linkguard-cloud --since '2 min ago' --no-pager | grep -i -e conversa -e flows | tail -3" | tr -d '\r' | tr '\n' ' ' | head -c 260)"
     M_Z2=1
     encerra_z "a medição não montou no kernel"
     return
@@ -6308,7 +6308,7 @@ battery_alvo_por_dominio() {
   }
 
   local initial
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial"); [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$tok" ]]; then bad "sem sessão administrativa; a bateria D2 não roda"; encerra_d "sem sessão"; return; fi
 
@@ -6615,7 +6615,7 @@ print('')" 2>/dev/null | head -1)
 #      isso, ou continua afirmando que a fila está ligada?
 #
 # A terceira é a mais importante, e é onde esta bateria espera encontrar
-# problema: `grep 'qos\.' cmd/linkguard-fw/main.go` não devolve nada, ou seja
+# problema: `grep 'qos\.' cmd/linkguard-cloud/main.go` não devolve nada, ou seja
 # o boot não reconcilia fila nenhuma. Toda feature de kernel deste produto é
 # reconciliada no boot — EnsureAccounting, EnsureMSSClamp, EnsureConnMark —
 # justamente porque estrutura que não é recriada some em silêncio.
@@ -6671,7 +6671,7 @@ battery_controle_de_fila() {
   }
 
   local initial
-  initial=$(vm "cat /etc/linkguard-fw/initial-admin-password 2>/dev/null" | tr -d '\r\n')
+  initial=$(vm "cat /etc/linkguard-cloud/initial-admin-password 2>/dev/null" | tr -d '\r\n')
   tok=$(login admin "$initial")
   [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   if [[ -z "$tok" ]]; then
@@ -6781,7 +6781,7 @@ for l in json.load(sys.stdin):
   # É a diferença entre uma feature que não persiste e uma feature que mente.
   status PUT "/api/links/$idq/qos" "$tok" '{"enabled":true,"upload_mbps":25,"download_mbps":50}' >/dev/null 2>&1
   sleep 3
-  vm "systemctl restart linkguard-fw" >/dev/null 2>&1
+  vm "systemctl restart linkguard-cloud" >/dev/null 2>&1
   wait_api || { bad "o serviço não voltou depois do restart"; encerra_q "o serviço não voltou"; return; }
   tok=$(login admin "$initial"); [[ -z "$tok" ]] && tok=$(login admin "NovaSenhaForte123")
   sleep 3

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // Caminhos das sondas locais. Não precisam ser substituíveis: quem testa

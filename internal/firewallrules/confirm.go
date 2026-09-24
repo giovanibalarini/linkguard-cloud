@@ -29,8 +29,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -875,7 +875,7 @@ func (s *Service) SecondsLeft(p *storage.PendingChange) int {
 }
 
 // RevertPendingOnBoot é a verificação que roda no boot, ANTES de qualquer
-// reconciliação (ver cmd/linkguard-fw/main.go).
+// reconciliação (ver cmd/linkguard-cloud/main.go).
 //
 // Ela reverte o pendente TENHA ELE EXPIRADO OU NÃO, e essa é a decisão
 // registrada na spec §5.1 — não um descuido:

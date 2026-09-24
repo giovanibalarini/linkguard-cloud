@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 )
 
 // recExec records write commands and lets tests control the kea config-test.
@@ -1112,7 +1112,7 @@ func TestReloadConfigsSaysToRestartWhenTheConfigDirIsOutsideTheSandbox(t *testin
 		t.Fatalf("erro = %T (%v), quero um netsvc.PrereqError", err, err)
 	}
 	msg := err.Error()
-	for _, want := range []string{filepath.Dir(s.keaConf), "Reinicie o serviço", "systemctl restart linkguard-fw"} {
+	for _, want := range []string{filepath.Dir(s.keaConf), "Reinicie o serviço", "systemctl restart linkguard-cloud"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("a mensagem tem que citar %q, obtive %q", want, msg)
 		}

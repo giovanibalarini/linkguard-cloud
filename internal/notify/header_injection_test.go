@@ -166,11 +166,11 @@ func TestWebhookURLAceitaDestinoInternoDeProposito(t *testing.T) {
 }
 
 // O que ela fecha: esquemas que não são requisição de rede. Um
-// "file:///etc/linkguard-fw/secret.key" faria o processo ler um arquivo local
+// "file:///etc/linkguard-cloud/secret.key" faria o processo ler um arquivo local
 // COMO ROOT e devolver o conteúdo no teste de notificação que o painel exibe.
 func TestWebhookURLRecusaEsquemaQueNaoEHTTP(t *testing.T) {
 	for _, u := range []string{
-		"file:///etc/linkguard-fw/secret.key",
+		"file:///etc/linkguard-cloud/secret.key",
 		"file:///etc/shadow",
 		"gopher://interno:70/",
 		"ftp://arquivo.local/x",

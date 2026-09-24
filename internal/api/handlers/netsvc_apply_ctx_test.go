@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 )
 
 // ctxProbeProvider records what the apply actually got as a context.

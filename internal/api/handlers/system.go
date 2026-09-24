@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 const interfaceAliasSettingKey = "interface_aliases"

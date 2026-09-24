@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/iptables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/iptables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // IptablesHandler handles iptables-related requests.

@@ -36,7 +36,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // BasePackages is what LinkGuard cannot do its job without: the packet
@@ -516,11 +516,11 @@ func installed(ctx context.Context, exec firewall.Executor, pkg string) bool {
 // conffile prompt". They are still required, and the reason is worth stating
 // precisely, because the mechanism moved:
 //
-// /etc/nftables.conf has to exist before linkguard-fw.service starts (it is an
+// /etc/nftables.conf has to exist before linkguard-cloud.service starts (it is an
 // unprefixed ReadWritePaths= entry; missing, the unit dies in 226/NAMESPACE).
 // No INSTALLER creates it — the postinst deliberately does not, since creating
 // a conffile of another package from inside the dpkg transaction is what made
-// `apt install ./linkguard-fw_*.deb` stop at the prompt in the first place
+// `apt install ./linkguard-cloud_*.deb` stop at the prompt in the first place
 // (see deploy/deb/postinst and sysprep.Stage). What creates it is the unit's
 // own ExecStartPre=-+ `--prepare-system-at-start`, i.e. sysprep.Prepare with
 // StageServiceStart, outside any dpkg transaction.

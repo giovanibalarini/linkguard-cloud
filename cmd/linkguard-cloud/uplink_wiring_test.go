@@ -21,7 +21,7 @@ import (
 // incremento existe para consertar: chain de NAT vazia e nada saindo. Estes
 // testes são o que torna esse esquecimento visível.
 
-// mainAST parseia cmd/linkguard-fw/main.go.
+// mainAST parseia cmd/linkguard-cloud/main.go.
 func mainAST(t *testing.T) *ast.File {
 	t.Helper()
 	_, thisFile, ok := localizar()

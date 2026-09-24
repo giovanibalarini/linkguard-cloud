@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/routes"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
 )
 
 // mockExec simulates ip output for testing.

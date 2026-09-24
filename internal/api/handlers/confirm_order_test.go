@@ -37,9 +37,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // ─── Instrumentação: parar o tempo no meio de uma mutação ─────────────────

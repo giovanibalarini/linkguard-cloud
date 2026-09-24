@@ -22,7 +22,7 @@ func (e execSS) WriteFile(string, []byte, os.FileMode) error { return nil }
 func TestSSHPortsLeOndeOSshdEscuta(t *testing.T) {
 	// Saída real de `ss -lntpH` numa caixa Debian 13 com sshd dual-stack.
 	const saida = `LISTEN 0      128          0.0.0.0:22        0.0.0.0:*    users:(("sshd",pid=820,fd=6))
-LISTEN 0      4096               *:9997            *:*    users:(("linkguard-fw",pid=193352,fd=11))
+LISTEN 0      4096               *:9997            *:*    users:(("linkguard-cloud",pid=193352,fd=11))
 LISTEN 0      128             [::]:22           [::]:*    users:(("sshd",pid=820,fd=7))
 `
 	if got := SSHPorts(context.Background(), execSS{saida}); !reflect.DeepEqual(got, []int{22}) {
@@ -55,7 +55,7 @@ func TestSSHPortsNaoChutaQuandoNaoSabe(t *testing.T) {
 	if got := SSHPorts(context.Background(), execSS{""}); len(got) != 0 {
 		t.Errorf("sem saída do ss devia devolver vazio, veio %v", got)
 	}
-	semSSH := `LISTEN 0 4096 *:9997 *:* users:(("linkguard-fw",pid=1,fd=11))`
+	semSSH := `LISTEN 0 4096 *:9997 *:* users:(("linkguard-cloud",pid=1,fd=11))`
 	if got := SSHPorts(context.Background(), execSS{semSSH}); len(got) != 0 {
 		t.Errorf("sem sshd na lista devia devolver vazio, veio %v", got)
 	}

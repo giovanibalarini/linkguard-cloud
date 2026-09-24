@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
 )
 
 type updatesExec struct{ out string }

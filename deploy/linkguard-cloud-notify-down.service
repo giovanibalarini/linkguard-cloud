@@ -1,0 +1,6 @@
+[Unit]
+Description=LinkGuard Cloud - send outage notification when the main service fails
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/linkguard-cloud --notify-down --config /etc/linkguard-cloud/config.json

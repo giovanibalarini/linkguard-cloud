@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // AuthHandler handles authentication requests.

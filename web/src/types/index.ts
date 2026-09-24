@@ -1,4 +1,4 @@
-// API type definitions for LinkGuard FW
+// API type definitions for LinkGuard Cloud
 
 export type LinkStatus = 'online' | 'offline' | 'degraded' | 'unknown';
 export type AlertSeverity = 'info' | 'warning' | 'critical';

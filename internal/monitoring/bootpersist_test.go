@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // O item "Regras no próximo boot" (§10 da validação em VM). O que estes testes
@@ -300,7 +300,7 @@ func TestBootPersistEndToEndWithARealUnwritableDir(t *testing.T) {
 // systemd — `ProtectSystem=strict` com `ReadWritePaths=-/etc/nftables.conf`, e um
 // caminho que não existia no start do serviço não entra gravável no namespace.
 //
-// Só `systemctl restart linkguard-fw` resolve. Estes testes guardam a instrução
+// Só `systemctl restart linkguard-cloud` resolve. Estes testes guardam a instrução
 // nas superfícies que o operador lê, porque a primeira coisa que ele tentaria é
 // justamente a que não funciona — e, sem a instrução, ele conclui que o produto
 // está quebrado numa máquina que só alcança por SSH.
@@ -322,7 +322,7 @@ func TestBootPersistAlertTellsTheOperatorToRestartTheService(t *testing.T) {
 	if al == nil {
 		t.Fatal("pré-condição: o alerta tinha que estar aberto")
 	}
-	if !strings.Contains(al.Message, "systemctl restart linkguard-fw") {
+	if !strings.Contains(al.Message, "systemctl restart linkguard-cloud") {
 		t.Errorf("o alerta tem que nomear o comando que resolve — mexer numa regra NÃO resolve (cenário 5 da validação em VM). Veio: %q", al.Message)
 	}
 	if !strings.Contains(strings.ToLower(al.Message), "aplicar outra regra") {
@@ -369,7 +369,7 @@ func TestBootPersistScreensTellTheOperatorToRestartTheService(t *testing.T) {
 	}
 
 	// O comando é literal e NÃO se traduz — é o que o operador digita.
-	if strings.Count(todos, "systemctl restart linkguard-fw") < 2 {
+	if strings.Count(todos, "systemctl restart linkguard-cloud") < 2 {
 		t.Errorf("o painel não manda reiniciar o serviço nos dois idiomas.\n" +
 			"Sem isso o operador tenta a mutação, vê que não resolve e conclui que o produto está quebrado.")
 	}

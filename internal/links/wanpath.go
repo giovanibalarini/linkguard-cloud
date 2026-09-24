@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Identidade de caminho de volta de uma WAN (issue #120).

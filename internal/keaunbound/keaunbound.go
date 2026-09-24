@@ -22,12 +22,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/bootstrapdeps"
-	"github.com/giovanibalarini/linkguard-fw/internal/dnstap"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/sysprep"
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/sysprep"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // DNSTapSocketPath é onde o coletor do produto escuta (#116).
@@ -41,7 +41,7 @@ import (
 // unbound.ctl e systemd/notify — e nenhum é de dnstap. A regra que autoriza
 // este socket é escrita pelo produto no ponto de extensão documentado do perfil
 // (ver internal/dnstap.EscreverRegraAppArmor).
-const DNSTapSocketPath = "/run/linkguard-fw/dnstap.sock"
+const DNSTapSocketPath = "/run/linkguard-cloud/dnstap.sock"
 
 const (
 	KeaConfPath      = "/etc/kea/kea-dhcp4.conf"
@@ -56,7 +56,7 @@ const (
 	unboundCheckBinDefault = "/usr/sbin/unbound-checkconf"
 
 	// The Debian packages this backend IS. They are Recommends: (not
-	// Depends:) of linkguard-fw on purpose — see the Makefile's deb target —
+	// Depends:) of linkguard-cloud on purpose — see the Makefile's deb target —
 	// so a box can legitimately arrive without them, and LinkGuard brings
 	// them in when the admin turns DHCP/DNS on (ensurePackages).
 	keaPackage     = "kea-dhcp4-server"
@@ -93,7 +93,7 @@ const (
 	// daemon. On a box upgrading from before this file existed the marker is
 	// absent, so the first apply restarts unbound once — a sub-second DNS
 	// blip, on the safe side of the question.
-	unboundActivatedMarker = "/var/lib/linkguard-fw/unbound-applied.conf"
+	unboundActivatedMarker = "/var/lib/linkguard-cloud/unbound-applied.conf"
 )
 
 // Service is the Kea+unbound Provider. Config paths and the Kea binary are
@@ -889,7 +889,7 @@ func (s *Service) interfaceExiste(ctx context.Context, iface string) error {
 // access under /etc/kea/ — a file in /tmp is invisible to it regardless of
 // Unix permissions, and `kea-dhcp4 -t` fails with "Unable to open file".
 // /etc/kea is already writable by this process (see ReadWritePaths in
-// deploy/linkguard-fw.service), so no new capability is needed.
+// deploy/linkguard-cloud.service), so no new capability is needed.
 func (s *Service) validateKea(ctx context.Context, content string) error {
 	f, err := os.CreateTemp(filepath.Dir(s.keaConf), "kea-validate-*.conf")
 	if err != nil {
@@ -1076,7 +1076,7 @@ func GenerateKeaConfig(c netsvc.Config, reservations []netsvc.Reservation, ntpSe
 		}},
 	}}
 	out, _ := json.MarshalIndent(cfg, "", "  ")
-	return "// Managed by LinkGuard FW — do not edit by hand.\n" + string(out) + "\n"
+	return "// Managed by LinkGuard Cloud — do not edit by hand.\n" + string(out) + "\n"
 }
 
 // ParseKeaLeases parses Kea's memfile CSV. Columns:
@@ -1179,7 +1179,7 @@ func GenerateUnboundConfig(c netsvc.Config, blocked []string) (string, []string,
 	var b strings.Builder
 	w := func(s string) { b.WriteString(s); b.WriteString("\n") }
 
-	w("# Managed by LinkGuard FW — do not edit by hand.")
+	w("# Managed by LinkGuard Cloud — do not edit by hand.")
 	w("server:")
 	if c.Gateway != "" {
 		if net.ParseIP(c.Gateway) == nil {

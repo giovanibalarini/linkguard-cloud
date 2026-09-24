@@ -32,8 +32,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/dnstap"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // ConfigSettingKey é a chave em "settings". Ausente resolve para DESLIGADO,

@@ -44,8 +44,8 @@ func TestCompareVersions(t *testing.T) {
 func TestDebURLMatchesArch(t *testing.T) {
 	s := &Service{}
 	rel := Release{Assets: []Asset{
-		{Name: "linkguard-fw_1.0.38_amd64.deb", BrowserDownloadURL: "https://x/amd64"},
-		{Name: "linkguard-fw_1.0.38_arm64.deb", BrowserDownloadURL: "https://x/arm64"},
+		{Name: "linkguard-cloud_1.0.38_amd64.deb", BrowserDownloadURL: "https://x/amd64"},
+		{Name: "linkguard-cloud_1.0.38_arm64.deb", BrowserDownloadURL: "https://x/arm64"},
 	}}
 	if s.debURL(rel) == "" {
 		t.Fatal("expected a matching deb URL for the test arch")
@@ -70,7 +70,7 @@ func TestCheckSendsTokenForPrivateRepo(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		fmt.Fprintf(w, `{"tag_name":"v9.9.9","html_url":"h","assets":[{"id":1,"name":"linkguard-fw_9.9.9_%s.deb","browser_download_url":"b"}]}`, debArch())
+		fmt.Fprintf(w, `{"tag_name":"v9.9.9","html_url":"h","assets":[{"id":1,"name":"linkguard-cloud_9.9.9_%s.deb","browser_download_url":"b"}]}`, debArch())
 	}))
 	defer srv.Close()
 
@@ -94,21 +94,21 @@ func TestCheckSendsTokenForPrivateRepo(t *testing.T) {
 func TestApplyDownloadsViaAssetAPIAndVerifies(t *testing.T) {
 	debBytes := []byte("fake-debian-package-contents")
 	sum := sha256.Sum256(debBytes)
-	debName := "linkguard-fw_9.9.9_" + debArch() + ".deb"
+	debName := "linkguard-cloud_9.9.9_" + debArch() + ".deb"
 	var assetAccept, assetAuth string
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"tag_name":"v9.9.9","html_url":"h","assets":[
 			{"id":1,"name":%q,"browser_download_url":"b"},
 			{"id":2,"name":"sha256sums.txt","browser_download_url":"s"}]}`, debName)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
 		assetAccept = r.Header.Get("Accept")
 		assetAuth = r.Header.Get("Authorization")
 		w.Write(debBytes)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", hex.EncodeToString(sum[:]), debName)
 	})
 	srv := httptest.NewServer(mux)
@@ -158,18 +158,18 @@ func TestApplyDownloadsViaAssetAPIAndVerifies(t *testing.T) {
 func TestApplyEntregaOCaminhoDoSpool(t *testing.T) {
 	debBytes := []byte("pacote")
 	sum := sha256.Sum256(debBytes)
-	debName := "linkguard-fw_9.9.9_" + debArch() + ".deb"
+	debName := "linkguard-cloud_9.9.9_" + debArch() + ".deb"
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"tag_name":"v9.9.9","html_url":"h","assets":[
 			{"id":1,"name":%q,"browser_download_url":"b"},
 			{"id":2,"name":"sha256sums.txt","browser_download_url":"s"}]}`, debName)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(debBytes)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", hex.EncodeToString(sum[:]), debName)
 	})
 	srv := httptest.NewServer(mux)
@@ -196,8 +196,8 @@ func TestApplyEntregaOCaminhoDoSpool(t *testing.T) {
 // máquina de verdade.
 func TestSpoolPadraoEhOCompartilhado(t *testing.T) {
 	s := NewService(&recExec{}, "1.0.0", nil)
-	if s.spool != "/var/lib/linkguard-fw" {
-		t.Errorf("spool padrão = %q; esperado /var/lib/linkguard-fw, que é o que o unit declara em ReadWritePaths", s.spool)
+	if s.spool != "/var/lib/linkguard-cloud" {
+		t.Errorf("spool padrão = %q; esperado /var/lib/linkguard-cloud, que é o que o unit declara em ReadWritePaths", s.spool)
 	}
 	// E ele não pode voltar a ser /tmp: com PrivateTmp=yes o arquivo ficaria
 	// invisível para a unidade transiente que roda o dpkg.
@@ -208,16 +208,16 @@ func TestSpoolPadraoEhOCompartilhado(t *testing.T) {
 
 // TestVerifyChecksumMismatchAborts ensures a tampered package is rejected.
 func TestApplyChecksumMismatchAborts(t *testing.T) {
-	debName := "linkguard-fw_9.9.9_" + debArch() + ".deb"
+	debName := "linkguard-cloud_9.9.9_" + debArch() + ".deb"
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"tag_name":"v9.9.9","assets":[
 			{"id":1,"name":%q},{"id":2,"name":"sha256sums.txt"}]}`, debName)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("real-bytes"))
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", strings.Repeat("0", 64), debName) // wrong hash
 	})
 	srv := httptest.NewServer(mux)
@@ -259,17 +259,17 @@ func servidorDeRelease(t *testing.T) *httptest.Server {
 	t.Helper()
 	debBytes := []byte("pacote")
 	sum := sha256.Sum256(debBytes)
-	debName := "linkguard-fw_9.9.9_" + debArch() + ".deb"
+	debName := "linkguard-cloud_9.9.9_" + debArch() + ".deb"
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"tag_name":"v9.9.9","html_url":"h","assets":[
 			{"id":1,"name":%q,"browser_download_url":"b"},
 			{"id":2,"name":"sha256sums.txt","browser_download_url":"s"}]}`, debName)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/1", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(debBytes)
 	})
-	mux.HandleFunc("/repos/giovanibalarini/linkguard-fw/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/giovanibalarini/linkguard-cloud/releases/assets/2", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", hex.EncodeToString(sum[:]), debName)
 	})
 	srv := httptest.NewServer(mux)
@@ -280,7 +280,7 @@ func servidorDeRelease(t *testing.T) *httptest.Server {
 // TestApplyNaoAcusaFalhaQuandoOPacoteEntrou é a regressão do defeito que a
 // PRIMEIRA versão desta correção introduziu, e que só apareceu na VM.
 //
-// O caminho de SUCESSO devolve erro: o postinst reinicia o linkguard-fw, e o
+// O caminho de SUCESSO devolve erro: o postinst reinicia o linkguard-cloud, e o
 // cliente do `systemd-run --wait` é filho deste processo, no mesmo cgroup —
 // morre junto, com "signal: terminated". O dpkg não morre (a unidade transiente
 // tem cgroup próprio e conclui).

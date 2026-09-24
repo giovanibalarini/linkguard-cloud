@@ -73,8 +73,8 @@ jobs:
             echo ">>> Building linux/${ARCH}..."
             GOOS=linux GOARCH="${ARCH}" go build \
               -ldflags="-X main.version=${{ steps.version.outputs.version }} -s -w" \
-              -o "dist/linkguard-fw-linux-${ARCH}" \
-              ./cmd/linkguard-fw/
+              -o "dist/linkguard-cloud-linux-${ARCH}" \
+              ./cmd/linkguard-cloud/
           done
 
       # O empacotamento é delegado ao Makefile de propósito: ele é a fonte
@@ -94,17 +94,17 @@ jobs:
             make deb-from-binary \
               VERSION="${{ steps.version.outputs.deb_version }}" \
               DEB_ARCH="${ARCH}" \
-              DEB_BINARY="dist/linkguard-fw-linux-${ARCH}"
+              DEB_BINARY="dist/linkguard-cloud-linux-${ARCH}"
           done
 
       - name: Generate checksums
         run: |
           cd dist
           sha256sum \
-            linkguard-fw-linux-amd64 \
-            linkguard-fw-linux-arm64 \
-            "linkguard-fw_${{ steps.version.outputs.deb_version }}_amd64.deb" \
-            "linkguard-fw_${{ steps.version.outputs.deb_version }}_arm64.deb" \
+            linkguard-cloud-linux-amd64 \
+            linkguard-cloud-linux-arm64 \
+            "linkguard-cloud_${{ steps.version.outputs.deb_version }}_amd64.deb" \
+            "linkguard-cloud_${{ steps.version.outputs.deb_version }}_arm64.deb" \
             > sha256sums.txt
           cat sha256sums.txt
 
@@ -130,10 +130,10 @@ jobs:
           cat release-notes.md
 
           FILES=(
-            dist/linkguard-fw-linux-amd64
-            dist/linkguard-fw-linux-arm64
-            "dist/linkguard-fw_${DEB_VER}_amd64.deb"
-            "dist/linkguard-fw_${DEB_VER}_arm64.deb"
+            dist/linkguard-cloud-linux-amd64
+            dist/linkguard-cloud-linux-arm64
+            "dist/linkguard-cloud_${DEB_VER}_amd64.deb"
+            "dist/linkguard-cloud_${DEB_VER}_arm64.deb"
             dist/sha256sums.txt
           )
 
@@ -141,7 +141,7 @@ jobs:
             gh release upload "${TAG}" "${FILES[@]}" --clobber
           else
             gh release create "${TAG}" "${FILES[@]}" \
-              --title "LinkGuard FW ${TAG}" \
+              --title "LinkGuard Cloud ${TAG}" \
               --notes-file release-notes.md \
               --latest
           fi

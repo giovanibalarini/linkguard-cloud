@@ -1,4 +1,4 @@
-// Package backup owns the LinkGuard FW configuration snapshot: what goes into
+// Package backup owns the LinkGuard Cloud configuration snapshot: what goes into
 // a backup, and how it's encrypted/decrypted. Kept separate from
 // internal/api/handlers so both the HTTP handler and the Scheduler (which
 // runs with no HTTP request in sight) can share the exact same logic without
@@ -10,9 +10,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/backupcrypt"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // PassphraseSecretName is the internal/secrets entry holding the backup
@@ -101,7 +101,7 @@ func DecryptRestore(ciphertext []byte, passphrase string) (BackupData, error) {
 		return BackupData{}, fmt.Errorf("backup decifrado não é um JSON válido: %w", err)
 	}
 	if data.Kind != "linkguard-fw-backup" {
-		return BackupData{}, errors.New("isto não parece um backup do LinkGuard FW")
+		return BackupData{}, errors.New("isto não parece um backup do LinkGuard Cloud")
 	}
 	return data, nil
 }

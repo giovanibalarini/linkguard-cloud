@@ -11,13 +11,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	"github.com/giovanibalarini/linkguard-fw/internal/backup"
-	"github.com/giovanibalarini/linkguard-fw/internal/backupcrypt"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 type fakeEmailSender struct{ err error }
@@ -577,7 +577,7 @@ func TestSendNowUsesScheduler(t *testing.T) {
 
 // ─── Críticos 2 e 3: estado local da máquina não viaja no backup ────────────
 //
-// nft_live_snapshot é lido no bootstrap (cmd/linkguard-fw/main.go) e
+// nft_live_snapshot é lido no bootstrap (cmd/linkguard-cloud/main.go) e
 // entregue a `nft -f` como root, com um "flush ruleset" antes — restaurar
 // um backup significaria deixar um arquivo controlar o firewall inteiro da
 // máquina de destino. firewall_rules_imported é a trava da importação

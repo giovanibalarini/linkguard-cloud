@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // Onde o SSH realmente escuta (#119).

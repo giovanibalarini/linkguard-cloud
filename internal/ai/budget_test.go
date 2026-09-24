@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/ai"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ai"
 )
 
 func TestBudgetGuardAllowsUnderBudget(t *testing.T) {

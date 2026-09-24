@@ -51,8 +51,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // revertMerge é o que a reversão vai aplicar, mais o que ela precisa contar.

@@ -162,7 +162,7 @@ export default function Settings() {
               </p>
               <div className="bg-gray-800 rounded-lg p-4">
                 <p className="text-gray-400 text-sm font-mono">
-                  {t('cfg.general.defaultPath')} <span className="text-blue-400">/etc/linkguard-fw/config.json</span>
+                  {t('cfg.general.defaultPath')} <span className="text-blue-400">/etc/linkguard-cloud/config.json</span>
                 </p>
               </div>
               <div className="space-y-3 text-sm text-gray-400">
@@ -220,7 +220,7 @@ export default function Settings() {
                   {t('cfg.retention.active')} <span className="text-white font-mono">{retentionProfile}</span>
                 </p>
                 <p>
-                  {t('cfg.retention.storage')} <span className="text-blue-400 font-mono">/var/lib/linkguard-fw/linkguard.db</span>
+                  {t('cfg.retention.storage')} <span className="text-blue-400 font-mono">/var/lib/linkguard-cloud/linkguard.db</span>
                 </p>
                 <p>
                   {t('cfg.retention.table')} <span className="text-blue-400 font-mono">traffic_samples</span>

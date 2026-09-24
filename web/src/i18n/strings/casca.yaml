@@ -5,7 +5,7 @@
 # Prefixo obrigatório: shell.*
 # Termos que NÃO são traduzidos e por isso não têm chave: nomes próprios
 # (LinkGuard, GitHub, admin), siglas (SSH, PAT, DHCP), nomes de comando e de
-# serviço (linkguard-fw), o prefixo do token (ghp_) e os nomes dos idiomas no
+# serviço (linkguard-cloud), o prefixo do token (ghp_) e os nomes dos idiomas no
 # seletor (Português/English), que precisam ser legíveis nos dois idiomas.
 
 # ─── Menu lateral / barra de topo ────────────────────────────────────────────

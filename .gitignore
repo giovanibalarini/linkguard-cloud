@@ -31,10 +31,10 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# LinkGuard FW specific
-linkguard-fw
-!cmd/linkguard-fw/
-!cmd/linkguard-fw/main.go
+# LinkGuard Cloud specific
+linkguard-cloud
+!cmd/linkguard-cloud/
+!cmd/linkguard-cloud/main.go
 web/node_modules/
 
 # Estado incremental do tsc. É um cache LOCAL da máquina que compilou: ele

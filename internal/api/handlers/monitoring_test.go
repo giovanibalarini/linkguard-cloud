@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/monitoring"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func openTestDB(t *testing.T) *storage.DB {

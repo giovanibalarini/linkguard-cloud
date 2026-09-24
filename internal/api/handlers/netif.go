@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/netif"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netif"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // NetifHandler handles the read-only interface inventory (Phase 1).

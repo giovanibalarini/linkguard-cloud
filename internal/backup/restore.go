@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/monitoring"
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/platform"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/timesync"
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // Result reports what a restore applied.
@@ -88,7 +88,7 @@ var knownSettingsValidators = map[string]func(raw string) error{
 // real backup unrestorable. "This doesn't travel" is the right semantics,
 // not "this is invalid".
 //
-//   - nft_live_snapshot: read at bootstrap (cmd/linkguard-fw/main.go) and
+//   - nft_live_snapshot: read at bootstrap (cmd/linkguard-cloud/main.go) and
 //     handed to `nft -f` as root. Restoring it would let a backup file
 //     redefine THIS machine's linkguard table from another machine's state —
 //     including on a fresh install, the documented restore scenario, where

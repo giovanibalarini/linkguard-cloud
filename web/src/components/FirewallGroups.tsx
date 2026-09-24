@@ -372,7 +372,7 @@ export default function FirewallGroups({ ifaces, canWrite, onMsg }: Props) {
               exatamente isso primeiro, vê que não muda nada e conclui que o
               produto está quebrado. */}
           <p className="mt-2 text-amber-200/80">
-            <span className="font-medium text-amber-300">{t('fw.groups.howToFix')}</span> {t('fw.groups.restorePermission')} <code className="font-mono text-xs">/etc/nftables.conf</code> {t('fw.groups.andThen')} <span className="font-medium text-amber-300">{t('fw.groups.restartService')}</span> — <code className="font-mono text-xs break-all">systemctl restart linkguard-fw</code>. {t('fwx.boot.restartNote')}
+            <span className="font-medium text-amber-300">{t('fw.groups.howToFix')}</span> {t('fw.groups.restorePermission')} <code className="font-mono text-xs">/etc/nftables.conf</code> {t('fw.groups.andThen')} <span className="font-medium text-amber-300">{t('fw.groups.restartService')}</span> — <code className="font-mono text-xs break-all">systemctl restart linkguard-cloud</code>. {t('fwx.boot.restartNote')}
           </p>
         </div>
       )}

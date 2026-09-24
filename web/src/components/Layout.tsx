@@ -99,7 +99,7 @@ export default function Layout() {
   const currentItem = [...allItems]
     .sort((a, b) => b.to.length - a.to.length)
     .find((n) => (n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)));
-  const currentLabel = currentItem ? t(currentItem.label) : 'LinkGuard FW';
+  const currentLabel = currentItem ? t(currentItem.label) : 'LinkGuard Cloud';
 
   const itemAdvancedVisible = (item: NavItem) => {
     if (!item.advanced) return true;
@@ -151,7 +151,7 @@ export default function Layout() {
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-7 h-7 text-blue-500" />
             <div>
-              <p className="text-white font-bold text-sm">LinkGuard FW</p>
+              <p className="text-white font-bold text-sm">LinkGuard Cloud</p>
               <p className="text-gray-500 text-xs">{t('app.tagline')}</p>
             </div>
           </div>

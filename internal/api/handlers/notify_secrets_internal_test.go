@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/notify"
+	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
 )
 
 // storedConfig é a configuração já gravada: a senha real do SMTP corporativo,

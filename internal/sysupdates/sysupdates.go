@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // securityOrigin is the APT origin marker Debian stamps on security

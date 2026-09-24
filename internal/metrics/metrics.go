@@ -1,4 +1,4 @@
-// Package metrics exposes Prometheus metrics for LinkGuard FW.
+// Package metrics exposes Prometheus metrics for LinkGuard Cloud.
 package metrics
 
 import (
@@ -116,7 +116,7 @@ func New(reg prometheus.Registerer) *Metrics {
 		ServiceUptime: f.NewGauge(prometheus.GaugeOpts{
 			Namespace: "linkguard",
 			Name:      "service_uptime_seconds",
-			Help:      "LinkGuard FW service uptime in seconds",
+			Help:      "LinkGuard Cloud service uptime in seconds",
 		}),
 
 		AlertsTotal: f.NewGauge(prometheus.GaugeOpts{

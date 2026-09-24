@@ -3,9 +3,9 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/monitoring"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/sysupdates"
+	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/sysupdates"
 )
 
 // MonitoringHandler exposes the health snapshot and monitoring config.

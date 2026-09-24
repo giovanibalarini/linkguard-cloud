@@ -366,8 +366,8 @@ mon.health.down:
   pt: "fora do ar"
   en: "down"
 mon.health.hint.firewallBootPersist:
-  pt: "Devolva a permissão de escrita em /etc/nftables.conf e reinicie o serviço: systemctl restart linkguard-fw. Aplicar outra regra não resolve."
-  en: "Restore write permission on /etc/nftables.conf and restart the service: systemctl restart linkguard-fw. Applying another rule will not clear this."
+  pt: "Devolva a permissão de escrita em /etc/nftables.conf e reinicie o serviço: systemctl restart linkguard-cloud. Aplicar outra regra não resolve."
+  en: "Restore write permission on /etc/nftables.conf and restart the service: systemctl restart linkguard-cloud. Applying another rule will not clear this."
 mon.health.updates.pending:
   pt: "{n} atualização(ões) pendente(s)"
   en: "{n} pending update(s)"

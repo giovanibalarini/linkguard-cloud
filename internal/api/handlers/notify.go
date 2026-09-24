@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/notify"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const secretMask = "********"

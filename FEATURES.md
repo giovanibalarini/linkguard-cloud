@@ -1,4 +1,4 @@
-# LinkGuard FW — Roadmap de Funcionalidades
+# LinkGuard Cloud — Roadmap de Funcionalidades
 
 ## Visão
 
@@ -58,7 +58,7 @@ prática:
     entra sozinho ao mexer na configuração de horário;
   - `smartmontools`: **não** é instalado pelo LinkGuard. Ele está em
     `Recommends:` do pacote, então quem instala com `apt install
-    ./linkguard-fw_*.deb` (o caminho normal) já o recebe; num box onde ele
+    ./linkguard-cloud_*.deb` (o caminho normal) já o recebe; num box onde ele
     falte, a checagem de saúde de disco do Vigia simplesmente reporta que não
     há dado, sem inventar nada;
 - **se não conseguir instalar** (sem rede, espelho fora do ar, repositório

@@ -3,9 +3,9 @@ package ai_test
 import (
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/ai"
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ai"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 func TestBuildEvidenceSummarizesEpisodesNotRawPoints(t *testing.T) {

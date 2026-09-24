@@ -3,7 +3,7 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 func novoPeerDeTeste(t *testing.T, db *storage.DB, username string) *storage.WireGuardPeer {

@@ -89,7 +89,7 @@ func (s *Service) BeginTwoFASetup(userID, username string) (secret, otpauth stri
 	if err := s.sec.Set(twoFAPendingKey(userID), string(out)); err != nil {
 		return "", "", err
 	}
-	return secret, OtpauthURL(secret, username, "LinkGuard FW"), nil
+	return secret, OtpauthURL(secret, username, "LinkGuard Cloud"), nil
 }
 
 // ActivateTwoFA promotes the pending secret to active once the user proves

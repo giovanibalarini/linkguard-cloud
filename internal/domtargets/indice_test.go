@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 func end(t *testing.T, s string) netip.Addr {

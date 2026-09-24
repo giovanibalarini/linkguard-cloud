@@ -5,8 +5,8 @@ case "$1" in
   remove)
     # Only on actual removal: stop and disable the service.
     if command -v systemctl >/dev/null 2>&1; then
-      systemctl stop linkguard-fw 2>/dev/null || true
-      systemctl disable linkguard-fw 2>/dev/null || true
+      systemctl stop linkguard-cloud 2>/dev/null || true
+      systemctl disable linkguard-cloud 2>/dev/null || true
     fi
     ;;
   upgrade)

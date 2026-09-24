@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // Family/table the application owns.
@@ -302,7 +302,7 @@ func (s *Service) PersistPath() string {
 //   - ReconcileGroups recebe os grupos por parâmetro e lê o ESTADO DO NTP
 //     daqui.
 //
-// Ligar isto é obrigatório em produção, e cmd/linkguard-fw/main.go o faz
+// Ligar isto é obrigatório em produção, e cmd/linkguard-cloud/main.go o faz
 // junto da construção dos serviços (guardado por
 // TestMainWiresTheInputChainSources). Sem a fonte do NTP, ntpInputState
 // devolve erro (m3 da revisão) — não mais um slog.Error e um silêncio que
@@ -350,7 +350,7 @@ func (s *Service) inputChainGroups() ([]StoredGroup, error) {
 // do firewall vivo enquanto o painel continua mostrando o toggle ligado e o
 // apply é reportado ok. Fonte não ligada é bug de binário mal montado (falta
 // a chamada a SetInputChainSources, guardada por
-// TestMainWiresTheInputChainSources em cmd/linkguard-fw), não estado de
+// TestMainWiresTheInputChainSources em cmd/linkguard-cloud), não estado de
 // produção — mas um guarda de deriva na AST é defesa fraca sozinha para um
 // firewall: se o binário de produção algum dia rodar sem essa ligação (build
 // alternativo, teste que constrói Service direto, refactor que remove a
@@ -889,7 +889,7 @@ func (s *Service) DelBlocklist(ctx context.Context, cidr string) (string, error)
 //     some sozinha quando o arquivo volta a ser gravado.
 //
 // COMO A CONDIÇÃO SE RESOLVE, MEDIDO (validação em VM de 2026-08-13, cenário 5):
-// **reiniciando o serviço** — `systemctl restart linkguard-fw` — depois de
+// **reiniciando o serviço** — `systemctl restart linkguard-cloud` — depois de
 // devolver a permissão de escrita no host. Uma mutação nova NÃO resolve, e esta
 // é a metade que a documentação anterior errava (dizia "até a próxima mutação ou
 // o próximo boot"). O motivo é a armadilha de namespace do systemd que este

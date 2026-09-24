@@ -1,4 +1,4 @@
-module github.com/giovanibalarini/linkguard-fw
+module github.com/giovanibalarini/linkguard-cloud
 
 go 1.26.6
 

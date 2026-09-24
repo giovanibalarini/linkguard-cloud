@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // O nome da interface é validado por validate.Iface, e NÃO por uma regex local.

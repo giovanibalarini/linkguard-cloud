@@ -133,9 +133,9 @@ const S = {
 
 /** O que dá para fazer por SSH quando o painel não é mais uma opção. */
 const SSH_STEPS = `ssh <admin>@<ip-do-firewall>
-systemctl status linkguard-fw
-journalctl -u linkguard-fw -n 100 --no-pager
-systemctl restart linkguard-fw   # só o painel/serviço; não mexe nas regras já aplicadas`;
+systemctl status linkguard-cloud
+journalctl -u linkguard-cloud -n 100 --no-pager
+systemctl restart linkguard-cloud   # só o painel/serviço; não mexe nas regras já aplicadas`;
 
 export default class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null, stack: '', copied: false };
@@ -154,7 +154,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   private details(): string {
     const { error, stack } = this.state;
     return [
-      `LinkGuard FW — erro de painel`,
+      `LinkGuard Cloud — erro de painel`,
       `quando: ${new Date().toISOString()}`,
       `tela:   ${window.location.pathname}`,
       `erro:   ${error?.name}: ${error?.message}`,

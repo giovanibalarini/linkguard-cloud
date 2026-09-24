@@ -9,11 +9,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/qos"
-	"github.com/giovanibalarini/linkguard-fw/internal/routes"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
+	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // LinksHandler handles WAN link CRUD requests.

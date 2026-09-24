@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // Caminhos do IMDS da OCI. A v2 exige o cabeçalho Authorization; a v1 não o

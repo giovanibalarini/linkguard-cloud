@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/dashboard"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 )
 
 // ─── Layout do painel ────────────────────────────────────────────────────────

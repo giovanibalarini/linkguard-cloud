@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/iptables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/iptables"
 )
 
 // mockExecutor simulates read output for testing.

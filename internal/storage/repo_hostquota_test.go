@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // ─── Cota por aparelho (issue #126) ──────────────────────────────────────────

@@ -14,7 +14,7 @@ import (
 // o único lugar que a violava — `flush ruleset` seguido do dump inteiro que o
 // Save guardou —, e ele roda em dois caminhos que alcançam produção: o botão
 // "Restaurar" da tela de Firewall e o boot que acabou de criar a tabela do zero
-// (cmd/linkguard-fw/main.go, depois de EnsureTable devolver true).
+// (cmd/linkguard-cloud/main.go, depois de EnsureTable devolver true).
 //
 // prodDump é a saída REAL do nft 1.1.3 (`nft list ruleset` dentro de um
 // `unshare -rn`, ver .superpowers/sdd/rollback-trava-e-flush.md), não um texto

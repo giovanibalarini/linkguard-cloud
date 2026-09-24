@@ -9,7 +9,7 @@ import (
 
 	"os"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // execNulo aceita tudo e não faz nada. Este arquivo mede QUEM é chamado depois

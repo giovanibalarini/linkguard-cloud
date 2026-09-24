@@ -47,8 +47,8 @@ err.notYourFault:
   pt: "Não é uma falha de rede nem de configuração — e não foi causado pelo que você acabou de clicar."
   en: "This is not a network or configuration failure — and it was not caused by what you just clicked."
 err.firewallStillRunning:
-  pt: "O firewall continua rodando. Regras, NAT, roteamento e failover são aplicados pelo serviço linkguard-fw, que não depende desta tela."
-  en: "The firewall keeps running. Rules, NAT, routing and failover are applied by the linkguard-fw service, which does not depend on this screen."
+  pt: "O firewall continua rodando. Regras, NAT, roteamento e failover são aplicados pelo serviço linkguard-cloud, que não depende desta tela."
+  en: "The firewall keeps running. Rules, NAT, routing and failover are applied by the linkguard-cloud service, which does not depend on this screen."
 err.pendingSafe:
   pt: "Se você tinha uma mudança aguardando confirmação, ela não ficou presa: o serviço reverte sozinho ao fim dos 90 segundos."
   en: "If you had a change awaiting confirmation, it is not stuck: the service reverts by itself when the 90 seconds run out."

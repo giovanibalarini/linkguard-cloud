@@ -39,7 +39,7 @@ func TestPrepareCriaOsCaminhosNumaMaquinaPelada(t *testing.T) {
 // O defeito da instalação em máquina pelada, em forma de teste.
 //
 // /etc/nftables.conf é conffile do pacote `nftables`. Enquanto um instalador
-// o criava, `apt install ./linkguard-fw_*.deb` numa máquina sem o nftables
+// o criava, `apt install ./linkguard-cloud_*.deb` numa máquina sem o nftables
 // parava no prompt de conffile do dpkg ("File on system created by you or by
 // a script") — interativo o apt espera para sempre, não interativo ele morre
 // com "end of file on stdin at conffile prompt" e deixa o `nftables` em
@@ -160,7 +160,7 @@ func TestCovers(t *testing.T) {
 		"/etc/kea/kea-dhcp4.conf": true,
 		"/etc/unbound":            true, // criado a caminho do conf.d
 		"/etc/unbound/unbound.conf.d/linkguard.conf": true,
-		"/var/lib/linkguard-fw":                      true,
+		"/var/lib/linkguard-cloud":                      true,
 		"/etc/resolv.conf":                           false,
 		"/etc/dhcp":                                  false,
 	}
@@ -173,7 +173,7 @@ func TestCovers(t *testing.T) {
 
 func TestSandboxHintSoExplicaOSandboxQuandoEArmadilha(t *testing.T) {
 	trap := SandboxHint("/etc/chrony/conf.d/linkguard.conf", syscall.EROFS)
-	if !strings.Contains(trap, "systemctl restart linkguard-fw") {
+	if !strings.Contains(trap, "systemctl restart linkguard-cloud") {
 		t.Errorf("read-only file system tem que virar a dica de reinício:\n%s", trap)
 	}
 	if !strings.Contains(trap, "/etc/chrony/conf.d/linkguard.conf") {
@@ -183,7 +183,7 @@ func TestSandboxHintSoExplicaOSandboxQuandoEArmadilha(t *testing.T) {
 	// Disco cheio não é a armadilha: mandar reiniciar o serviço aqui seria
 	// mandar o admin repetir um erro que vai acontecer igual.
 	other := SandboxHint("/etc/kea", syscall.ENOSPC)
-	if strings.Contains(other, "systemctl restart linkguard-fw") {
+	if strings.Contains(other, "systemctl restart linkguard-cloud") {
 		t.Errorf("erro que não é a armadilha não pode mandar reiniciar:\n%s", other)
 	}
 	if !strings.Contains(other, "/etc/kea") {

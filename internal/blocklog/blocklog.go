@@ -18,8 +18,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // Entry é um descarte, reduzido ao que responde a pergunta do admin.

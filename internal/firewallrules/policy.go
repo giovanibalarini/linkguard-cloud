@@ -23,7 +23,7 @@ package firewallrules
 import (
 	"fmt"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // As chaves em `settings`. Duas, e não uma: as posturas são independentes —

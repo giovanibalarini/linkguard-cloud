@@ -11,7 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 )
 
 // ErrBudgetExceeded is returned by Analyze when the monthly spend cap has

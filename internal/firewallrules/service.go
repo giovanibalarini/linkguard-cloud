@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // ImportedSettingKey guards the one-time import of pre-existing user_rules
@@ -490,7 +490,7 @@ func ToStoredGroup(g storage.FirewallGroup) nftables.StoredGroup {
 // reconcile (design spec §4.1, C-3). Reconcile is called from two places
 // that never share an HTTP response — the API handlers (CreateRule,
 // UpdateRule, ..., Rollback) and the unconditional boot-time call in
-// cmd/linkguard-fw/main.go — and the boot case in particular has no status
+// cmd/linkguard-cloud/main.go — and the boot case in particular has no status
 // code or client to surface a failure to at all. Persisting here, inside
 // Reconcile itself, means both call sites get this for free instead of each
 // needing its own copy of the same bookkeeping, and a boot-time reconcile

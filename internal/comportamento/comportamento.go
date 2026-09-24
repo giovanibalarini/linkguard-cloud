@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Alerta de comportamento: desvio do que a PRÓPRIA rede costuma fazer (#117).

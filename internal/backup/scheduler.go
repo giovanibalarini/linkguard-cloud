@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Schedule values accepted by ScheduleSettingKey.
@@ -125,7 +125,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 	encrypted, err := EncryptSnapshot(s.db, s.sec, s.version)
 	if err == nil {
 		err = s.sender.SendEmailAttachment(
-			"Backup automático do LinkGuard FW",
+			"Backup automático do LinkGuard Cloud",
 			"Segue em anexo o backup cifrado da configuração. Guarde a senha configurada em Configurações → Backup — sem ela este arquivo não pode ser aberto.",
 			encrypted, "linkguard-backup.lgbak")
 	}

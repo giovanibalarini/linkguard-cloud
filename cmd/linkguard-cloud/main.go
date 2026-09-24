@@ -19,50 +19,50 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	linkguardfw "github.com/giovanibalarini/linkguard-fw"
-	"github.com/giovanibalarini/linkguard-fw/internal/ai"
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/api"
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	"github.com/giovanibalarini/linkguard-fw/internal/backup"
-	"github.com/giovanibalarini/linkguard-fw/internal/balancer"
-	"github.com/giovanibalarini/linkguard-fw/internal/bootstrapdeps"
-	"github.com/giovanibalarini/linkguard-fw/internal/comportamento"
-	"github.com/giovanibalarini/linkguard-fw/internal/config"
-	"github.com/giovanibalarini/linkguard-fw/internal/ddns"
-	"github.com/giovanibalarini/linkguard-fw/internal/dnstap"
-	"github.com/giovanibalarini/linkguard-fw/internal/domainrouting"
-	"github.com/giovanibalarini/linkguard-fw/internal/domtargets"
-	"github.com/giovanibalarini/linkguard-fw/internal/failover"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/hostflows"
-	"github.com/giovanibalarini/linkguard-fw/internal/hostquota"
-	"github.com/giovanibalarini/linkguard-fw/internal/hosts"
-	"github.com/giovanibalarini/linkguard-fw/internal/hosttraffic"
-	"github.com/giovanibalarini/linkguard-fw/internal/iptables"
-	"github.com/giovanibalarini/linkguard-fw/internal/keaunbound"
-	"github.com/giovanibalarini/linkguard-fw/internal/linkquota"
-	"github.com/giovanibalarini/linkguard-fw/internal/links"
-	"github.com/giovanibalarini/linkguard-fw/internal/metrics"
-	"github.com/giovanibalarini/linkguard-fw/internal/monitoring"
-	"github.com/giovanibalarini/linkguard-fw/internal/netif"
-	"github.com/giovanibalarini/linkguard-fw/internal/netsvc"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/notify"
-	"github.com/giovanibalarini/linkguard-fw/internal/platform"
-	"github.com/giovanibalarini/linkguard-fw/internal/qos"
-	"github.com/giovanibalarini/linkguard-fw/internal/routes"
-	"github.com/giovanibalarini/linkguard-fw/internal/secrets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/stresstest"
-	"github.com/giovanibalarini/linkguard-fw/internal/sysprep"
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
-	"github.com/giovanibalarini/linkguard-fw/internal/timesync"
-	"github.com/giovanibalarini/linkguard-fw/internal/tlscert"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
-	"github.com/giovanibalarini/linkguard-fw/internal/wireguard"
+	linkguardcloud "github.com/giovanibalarini/linkguard-cloud"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ai"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
+	"github.com/giovanibalarini/linkguard-cloud/internal/balancer"
+	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
+	"github.com/giovanibalarini/linkguard-cloud/internal/comportamento"
+	"github.com/giovanibalarini/linkguard-cloud/internal/config"
+	"github.com/giovanibalarini/linkguard-cloud/internal/ddns"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
+	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
+	"github.com/giovanibalarini/linkguard-cloud/internal/domtargets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/failover"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hostflows"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hostquota"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hosttraffic"
+	"github.com/giovanibalarini/linkguard-cloud/internal/iptables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/keaunbound"
+	"github.com/giovanibalarini/linkguard-cloud/internal/linkquota"
+	"github.com/giovanibalarini/linkguard-cloud/internal/links"
+	"github.com/giovanibalarini/linkguard-cloud/internal/metrics"
+	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netif"
+	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
+	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
+	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
+	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
+	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/stresstest"
+	"github.com/giovanibalarini/linkguard-cloud/internal/sysprep"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tlscert"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
 )
 
 var version = "dev"
@@ -145,7 +145,7 @@ func anyWANIsDHCP(db *storage.DB) bool {
 }
 
 func run() int {
-	configPath := flag.String("config", "/etc/linkguard-fw/config.json", "Path to config file")
+	configPath := flag.String("config", "/etc/linkguard-cloud/config.json", "Path to config file")
 	addr := flag.String("addr", "", "Listen address override")
 	port := flag.Int("port", 0, "Listen port override")
 	dryRun := flag.Bool("dry-run", false, "Run in dry-run mode")
@@ -256,7 +256,7 @@ func run() int {
 // notifyDownRun é o caminho do --notify-down: avisa que o serviço caiu e sai.
 // Devolve o código de saída do processo.
 //
-// A unidade que chama é Type=oneshot (deploy/linkguard-notify-down.service,
+// A unidade que chama é Type=oneshot (deploy/linkguard-cloud-notify-down.service,
 // disparada pelo OnFailure= da unidade principal), então este código de saída
 // vira o estado da unidade — aparece no `systemctl status`, no `is-failed` e no
 // journal. Ele é a única forma de quem olha a máquina depois distinguir "o aviso
@@ -303,7 +303,7 @@ func notifyDownRun(dbPath string) int {
 
 	sec := secrets.NewService(db, key)
 	errs := notify.NewService(db, sec).SendNow("critical",
-		"LinkGuard caiu", "O serviço linkguard-fw parou inesperadamente no firewall.")
+		"LinkGuard caiu", "O serviço linkguard-cloud parou inesperadamente no firewall.")
 
 	// send() devolve uma entrada por canal HABILITADO: slice vazia é "nenhum
 	// canal configurado", que não é o mesmo que "todos falharam".
@@ -437,7 +437,7 @@ type services struct {
 // É var, e não const, por um motivo só: buildServices é exercitada por teste
 // (o que esta issue existe para permitir) e o teste não pode escrever em /etc.
 // Nada em produção troca este valor.
-var secretKeyPath = "/etc/linkguard-fw/secret.key"
+var secretKeyPath = "/etc/linkguard-cloud/secret.key"
 
 // buildServices monta os ~25 serviços do produto e devolve todos nomeados.
 //
@@ -856,7 +856,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	server := api.New(api.Config{
 		Addr:          cfg.Addr(),
 		DryRun:        cfg.DryRun,
-		WebFS:         linkguardfw.WebFS,
+		WebFS:         linkguardcloud.WebFS,
 		PromReg:       promReg,
 		Version:       version,
 		PkgExec:       pkgExec,
@@ -868,7 +868,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		DomainRouting: domainRouting,
 		// A MESMA derivação que o firewall usa para decidir o que escrever: a
 		// tela e o kernel não podem discordar sobre quais são as WANs desta
-		// máquina. Ver cmd/linkguard-fw/uplink.go.
+		// máquina. Ver cmd/linkguard-cloud/uplink.go.
 		WANSource:  func() ([]string, error) { return wansEfetivas(db, plat) },
 		Uplink:     func() handlers.UplinkView { return uplinkParaTela(db, plat) },
 		WireGuard:  wgSvc,
@@ -1675,7 +1675,7 @@ func serveHTTP(ctx context.Context, s *services, writers *sync.WaitGroup) int {
 		}
 	}()
 
-	slog.Info("linkguard-fw starting", "version", version, "addr", cfg.Addr(),
+	slog.Info("linkguard-cloud starting", "version", version, "addr", cfg.Addr(),
 		"dry_run", cfg.DryRun, "tls", cfg.TLSEnabled)
 
 	serve := httpServer.ListenAndServe
@@ -1700,7 +1700,7 @@ func serveHTTP(ctx context.Context, s *services, writers *sync.WaitGroup) int {
 		slog.Error("server failed", "err", serveErr)
 		return 1
 	}
-	slog.Info("linkguard-fw stopped")
+	slog.Info("linkguard-cloud stopped")
 	return 0
 }
 
@@ -1744,7 +1744,7 @@ func seedDefaultRoles(db *storage.DB) error {
 // initialAdminPasswordFile é onde a senha gerada na primeira instalação fica
 // legível para quem instalou — e só para o root. O journal também a registra,
 // mas ele rotaciona; o arquivo é o que ainda está lá no dia seguinte.
-const initialAdminPasswordFile = "/etc/linkguard-fw/initial-admin-password"
+const initialAdminPasswordFile = "/etc/linkguard-cloud/initial-admin-password"
 
 // seedInitialAdmin cria o administrador da primeira instalação com uma senha
 // ALEATÓRIA, e a entrega ao operador pelo log e por um arquivo 0600.

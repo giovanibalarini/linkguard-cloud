@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/backup"
-	"github.com/giovanibalarini/linkguard-fw/internal/backupcrypt"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
+	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // encryptForTest produz o mesmo formato de arquivo que EncryptSnapshot grava,
@@ -52,7 +52,7 @@ func backupWith(settings map[string]string) backup.BackupData {
 // Esta guarda mora no domínio (internal/backup) e é provada aqui, e não só
 // através de um httptest do handler: um backup de OUTRA máquina não pode
 // redefinir esta. nft_live_snapshot é lido no bootstrap
-// (cmd/linkguard-fw/main.go) e entregue a `nft -f` como root, com um "flush
+// (cmd/linkguard-cloud/main.go) e entregue a `nft -f` como root, com um "flush
 // ruleset" na frente — restaurá-lo significaria deixar um arquivo controlar o
 // firewall inteiro da máquina de destino, inclusive numa instalação nova (o
 // cenário documentado de restauração). firewall_rules_imported é a trava da

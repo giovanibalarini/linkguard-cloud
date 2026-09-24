@@ -1,4 +1,4 @@
-# LinkGuard FW
+# LinkGuard Cloud
 
 ## Project Motivation
 
@@ -121,7 +121,7 @@ For enthusiasts who also want to venture in and help the evolution of the projec
 
 **🇺🇸 Turns a bare Debian box into a managed firewall appliance — and then owns it.**
 
-LinkGuard FW manages the whole edge of a small network from one web panel:
+LinkGuard Cloud manages the whole edge of a small network from one web panel:
 native **nftables** firewalling, multi-WAN load balancing and failover, policy
 routing, DHCP (Kea), recursive DNS (unbound), NTP (chrony), interface naming,
 LAN host inventory and per-host bandwidth. You install LinkGuard on a machine
@@ -142,21 +142,21 @@ nenhuma dependência antes.
 ```bash
 # Instala o pacote — o apt resolve e instala as dependências base
 # (nftables, iproute2, iptables, iputils-ping) automaticamente
-sudo apt install ./linkguard-fw_<version>_amd64.deb
+sudo apt install ./linkguard-cloud_<version>_amd64.deb
 
 # Habilita e inicia o serviço
-sudo systemctl enable --now linkguard-fw
+sudo systemctl enable --now linkguard-cloud
 
 # Verifica o status
-sudo systemctl status linkguard-fw
+sudo systemctl status linkguard-cloud
 ```
 
 Depois abra o painel web em `http://<ip-da-maquina>:9997`.
 
 - **Usuário:** `admin`
 - **Senha:** gerada no primeiro início — leia no log do serviço
-  (`sudo journalctl -u linkguard-fw`) ou em
-  `/etc/linkguard-fw/initial-admin-password` (modo `0600`). Troque-a
+  (`sudo journalctl -u linkguard-cloud`) ou em
+  `/etc/linkguard-cloud/initial-admin-password` (modo `0600`). Troque-a
   imediatamente após o primeiro login.
 
 **🇺🇸 English**
@@ -167,21 +167,21 @@ install is enough — you do not need to install any dependencies first.
 ```bash
 # Install the package — apt resolves and installs its base dependencies
 # (nftables, iproute2, iptables, iputils-ping) automatically
-sudo apt install ./linkguard-fw_<version>_amd64.deb
+sudo apt install ./linkguard-cloud_<version>_amd64.deb
 
 # Enable and start the service
-sudo systemctl enable --now linkguard-fw
+sudo systemctl enable --now linkguard-cloud
 
 # Check status
-sudo systemctl status linkguard-fw
+sudo systemctl status linkguard-cloud
 ```
 
 Then open the web panel at `http://<machine-ip>:9997`.
 
 - **User:** `admin`
 - **Password:** generated on first run — read it from the service log
-  (`sudo journalctl -u linkguard-fw`) or from
-  `/etc/linkguard-fw/initial-admin-password` (mode `0600`). Change it
+  (`sudo journalctl -u linkguard-cloud`) or from
+  `/etc/linkguard-cloud/initial-admin-password` (mode `0600`). Change it
   immediately after first login.
 
 ## License

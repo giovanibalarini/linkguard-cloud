@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/domainrouting"
-	"github.com/giovanibalarini/linkguard-fw/internal/domtargets"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
+	"github.com/giovanibalarini/linkguard-cloud/internal/domtargets"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 type fakeRuntime struct {

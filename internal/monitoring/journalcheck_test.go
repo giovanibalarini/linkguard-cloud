@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
 )
 
 func TestJournalRunOnceRaisesOnSecondCorruptRun(t *testing.T) {

@@ -3,8 +3,8 @@ package ai
 import (
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/alerts"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 )
 
 // LinkSummary is the pre-computed, per-link shape of an evidence window — the

@@ -1,11 +1,11 @@
 package handlers
 
 import (
-	"github.com/giovanibalarini/linkguard-fw/internal/dashboard"
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/auth"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // DashboardHandler serve o layout do painel — os widgets que cada admin

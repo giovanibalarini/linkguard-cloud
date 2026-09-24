@@ -17,7 +17,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/updater"
+	"github.com/giovanibalarini/linkguard-cloud/internal/updater"
 )
 
 // changelogCacheKey guarda a última resposta boa do GitHub.

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 // Report is the subset of `smartctl -x -j <device>` the Vigia SMART checks

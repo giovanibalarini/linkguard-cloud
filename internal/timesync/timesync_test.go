@@ -613,7 +613,7 @@ func TestReloadConfigExplicaAArmadilhaDoNamespace(t *testing.T) {
 	if err == nil {
 		t.Fatal("esperava erro ao escrever num diretório inexistente")
 	}
-	if !strings.Contains(err.Error(), "systemctl restart linkguard-fw") {
+	if !strings.Contains(err.Error(), "systemctl restart linkguard-cloud") {
 		t.Errorf("o erro do NTP não diz como resolver:\n%s", err)
 	}
 	if !strings.Contains(err.Error(), confPath) {

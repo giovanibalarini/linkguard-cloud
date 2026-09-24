@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/metrics"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/metrics"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // A rota de métricas por aparelho (issue #118).

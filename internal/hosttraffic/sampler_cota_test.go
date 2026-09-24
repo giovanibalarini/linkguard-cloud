@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
 // macsQuebrado devolve erro na segunda chamada em diante: é o "ip neigh" que

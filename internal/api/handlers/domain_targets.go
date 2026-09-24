@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/domainrouting"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 type domainTargetsCoordinator interface {

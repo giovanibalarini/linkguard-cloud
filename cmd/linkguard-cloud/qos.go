@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/qos"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/stresstest"
+	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/stresstest"
 )
 
 func recoverStressTestOnBoot(ctx context.Context, svc *stresstest.Service) {

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // recordingRuleExec is a firewall.Executor that records every mutating
@@ -57,7 +57,7 @@ func newFirewallRulesTestHandler(t *testing.T) (*handlers.NftablesHandler, *stor
 		func() ([]string, bool, error) { return nil, false, nil },
 	)
 	frSvc := firewallrules.NewService(db, nftSvc)
-	// Mesma ordem do boot (cmd/linkguard-fw/main.go): os dois grupos do
+	// Mesma ordem do boot (cmd/linkguard-cloud/main.go): os dois grupos do
 	// sistema primeiro, porque é a lista de grupos que passa a decidir se os
 	// bloqueios existem na chain forward — sem eles, TODA reconciliação se
 	// recusa a reconstruí-la e toda mutação desta API responderia 500.

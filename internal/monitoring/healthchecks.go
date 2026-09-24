@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/disksmart"
-	"github.com/giovanibalarini/linkguard-fw/internal/system"
-	"github.com/giovanibalarini/linkguard-fw/internal/timesync"
+	"github.com/giovanibalarini/linkguard-cloud/internal/disksmart"
+	"github.com/giovanibalarini/linkguard-cloud/internal/system"
+	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
 )
 
 // bootLastKnownIDSettingKey persists the kernel boot_id observed the last
@@ -377,7 +377,7 @@ func (c *Collector) checkSMART(cfg Config) {
 //
 // The bootChecked guard alone isn't enough to avoid false positives: it
 // only prevents re-measuring within a single process lifetime, but every
-// `systemctl restart linkguard-fw` (which happens on every package
+// `systemctl restart linkguard-cloud` (which happens on every package
 // deploy's postinst) starts a fresh process whose FIRST tick sees whatever
 // the KERNEL's uptime is — often hours, since the machine didn't actually
 // reboot. To tell "the machine really rebooted" apart from "just the

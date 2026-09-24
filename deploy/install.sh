@@ -1,12 +1,12 @@
 #!/bin/bash
-# install.sh - LinkGuard FW installation script
+# install.sh - LinkGuard Cloud installation script
 # Usage: sudo bash install.sh
 set -euo pipefail
 
-BINARY_NAME="linkguard-fw"
+BINARY_NAME="linkguard-cloud"
 INSTALL_BIN="/usr/local/bin/${BINARY_NAME}"
-CONFIG_DIR="/etc/linkguard-fw"
-DATA_DIR="/var/lib/linkguard-fw"
+CONFIG_DIR="/etc/linkguard-cloud"
+DATA_DIR="/var/lib/linkguard-cloud"
 SERVICE_FILE="/etc/systemd/system/${BINARY_NAME}.service"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -61,7 +61,7 @@ install -m 0755 "${BINARY_SRC}" "${INSTALL_BIN}"
 # Sem isto, instalar por este script deixava o serviço em loop de
 # 226/NAMESPACE ("Failed to set up mount namespacing: /etc/sysctl.d: No
 # such file or directory") — e cada tentativa disparava o
-# OnFailure=linkguard-notify-down.service.
+# OnFailure=linkguard-cloud-notify-down.service.
 #
 # O /etc/nftables.conf NÃO sai daqui: ele é conffile do pacote `nftables` e
 # quem o cria é o ExecStartPre da unidade, fora de qualquer transação do
@@ -86,7 +86,7 @@ if [[ ! -f "${CONFIG_DIR}/config.json" ]]; then
 {
   "listen_addr": "127.0.0.1",
   "port": 9997,
-  "db_path": "/var/lib/linkguard-fw/linkguard.db",
+  "db_path": "/var/lib/linkguard-cloud/linkguard.db",
   "jwt_secret": "${JWT_SECRET}",
   "dry_run": false,
   "debug": false,
@@ -107,9 +107,9 @@ fi
 
 # ─── Install systemd service ─────────────────────────────────────────────────
 
-SERVICE_SRC="${SCRIPT_DIR}/linkguard-fw.service"
+SERVICE_SRC="${SCRIPT_DIR}/linkguard-cloud.service"
 if [[ ! -f "${SERVICE_SRC}" ]]; then
-    SERVICE_SRC="${SCRIPT_DIR}/../deploy/linkguard-fw.service"
+    SERVICE_SRC="${SCRIPT_DIR}/../deploy/linkguard-cloud.service"
 fi
 
 if [[ -f "${SERVICE_SRC}" ]]; then
@@ -123,7 +123,7 @@ fi
 # ─── Done ────────────────────────────────────────────────────────────────────
 
 info ""
-info "LinkGuard FW installed successfully!"
+info "LinkGuard Cloud installed successfully!"
 info ""
 info "Next steps:"
 info "  1. Edit the config:  nano ${CONFIG_DIR}/config.json"
@@ -132,17 +132,17 @@ info "     - Set 'listen_addr' (127.0.0.1 for local, or a specific IP)"
 info "     - Set 'dry_run: false' when ready to apply firewall changes"
 info ""
 info "  2. Enable and start the service:"
-info "     systemctl enable --now linkguard-fw"
+info "     systemctl enable --now linkguard-cloud"
 info ""
 info "  3. Access the web interface:"
 info "     http://127.0.0.1:9997  (or the configured address)"
 info "     Usuario: admin"
 info "     A senha e gerada aleatoriamente na PRIMEIRA execucao do servico."
 info "     Para le-la:"
-info "       cat /etc/linkguard-fw/initial-admin-password"
-info "       journalctl -u linkguard-fw | grep -i 'PRIMEIRA EXECUCAO'"
+info "       cat /etc/linkguard-cloud/initial-admin-password"
+info "       journalctl -u linkguard-cloud | grep -i 'PRIMEIRA EXECUCAO'"
 info "     Troque a senha no painel (Configuracoes > Seguranca) e apague o arquivo."
 info ""
 info "  4. Check service status:"
-info "     systemctl status linkguard-fw"
-info "     journalctl -u linkguard-fw -f"
+info "     systemctl status linkguard-cloud"
+info "     journalctl -u linkguard-cloud -f"

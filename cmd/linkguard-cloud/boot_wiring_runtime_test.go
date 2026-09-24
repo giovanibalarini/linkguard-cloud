@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-fw/internal/nftables"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Este arquivo é a REDE DE EXECUÇÃO embaixo dos guardas de AST de
@@ -49,7 +49,7 @@ import (
 // armam, agora que os testes daqui também chegam ao nftables.Persist — a
 // ÚNICA escrita em disco daquele pacote que o executor falso não intercepta.
 //
-// Sem isto, `go test ./cmd/linkguard-fw/` rodado como root na própria
+// Sem isto, `go test ./cmd/linkguard-cloud/` rodado como root na própria
 // appliance (mesmo binário, mesma máquina; diagnosticar em produção é coisa
 // que se faz como root) sobrescreveria o /etc/nftables.conf DE VERDADE com o
 // dump do executor falso, e a máquina voltaria do próximo boot com o firewall

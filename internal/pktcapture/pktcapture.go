@@ -49,9 +49,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/bootstrapdeps"
-	"github.com/giovanibalarini/linkguard-fw/internal/firewall"
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 const (
@@ -75,10 +75,10 @@ const (
 	// de propósito: é registro de tráfego alheio, não arquivo de trabalho.
 	FileTTL = time.Hour
 
-	// DefaultDir fica sob /var/lib/linkguard-fw, que já é ReadWritePaths da
+	// DefaultDir fica sob /var/lib/linkguard-cloud, que já é ReadWritePaths da
 	// unidade — um diretório novo fora dali não seria gravável (o namespace é
 	// montado no start do serviço).
-	DefaultDir = "/var/lib/linkguard-fw/captures"
+	DefaultDir = "/var/lib/linkguard-cloud/captures"
 )
 
 // Estados de uma captura.

@@ -3,7 +3,7 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // Rede de segurança para o recorte da issue #26: CountLinks e CountAlerts

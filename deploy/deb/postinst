@@ -5,8 +5,8 @@ set -e
 # possa ser exercitada de verdade por um teste, rodando este arquivo em vez de
 # lendo o texto dele. O dpkg nunca define estas variáveis: em produção os
 # valores são os de sempre.
-CONFIG_DIR="${LINKGUARD_CONFIG_DIR:-/etc/linkguard-fw}"
-DATA_DIR="${LINKGUARD_DATA_DIR:-/var/lib/linkguard-fw}"
+CONFIG_DIR="${LINKGUARD_CONFIG_DIR:-/etc/linkguard-cloud}"
+DATA_DIR="${LINKGUARD_DATA_DIR:-/var/lib/linkguard-cloud}"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 
 case "$1" in
@@ -27,7 +27,7 @@ case "$1" in
     # O que este postinst NÃO cria é o /etc/nftables.conf: ele é conffile do
     # pacote `nftables`, e criá-lo aqui — dentro da transação do dpkg, que é
     # livre para desempacotar o `nftables` DEPOIS, já que a base fica em
-    # Recommends: — fazia `apt install ./linkguard-fw_*.deb` numa máquina
+    # Recommends: — fazia `apt install ./linkguard-cloud_*.deb` numa máquina
     # pelada parar no prompt de conffile do dpkg, com o `nftables` em `iU`.
     # Quem o cria é o ExecStartPre da unidade, fora do apt. Ver
     # internal/sysprep, tipo Stage.
@@ -35,11 +35,11 @@ case "$1" in
     # Não aborta a configuração do pacote em caso de falha: um pacote em `iU`
     # não deixa painel nenhum para explicar o que houve, que é justamente o
     # que este produto evita.
-    if [ -x /usr/local/bin/linkguard-fw ]; then
-      /usr/local/bin/linkguard-fw --prepare-system || \
+    if [ -x /usr/local/bin/linkguard-cloud ]; then
+      /usr/local/bin/linkguard-cloud --prepare-system || \
         echo "[WARN] --prepare-system falhou; o serviço pode não subir (veja o erro acima)."
     else
-      echo "[WARN] /usr/local/bin/linkguard-fw não encontrado; --prepare-system não rodou."
+      echo "[WARN] /usr/local/bin/linkguard-cloud não encontrado; --prepare-system não rodou."
     fi
 
     if [ ! -f "${CONFIG_FILE}" ]; then
@@ -54,7 +54,7 @@ case "$1" in
 {
   "listen_addr": "127.0.0.1",
   "port": 9997,
-  "db_path": "/var/lib/linkguard-fw/linkguard.db",
+  "db_path": "/var/lib/linkguard-cloud/linkguard.db",
   "jwt_secret": "${JWT_SECRET}",
   "dry_run": false,
   "debug": false,
@@ -75,11 +75,19 @@ CONFIG
     restarted=0
     if command -v systemctl >/dev/null 2>&1; then
       systemctl daemon-reload
+      # Migração a partir do linkguard-fw (ver preinst): o serviço antigo foi
+      # desabilitado pelo prerm dele, então o novo precisa ser ligado aqui,
+      # senão a caixa fica com as regras de pé e ninguém reconciliando.
+      if [ -f "${DATA_DIR}/.migrado-do-linkguard-fw" ]; then
+        systemctl enable linkguard-cloud 2>/dev/null || true
+        rm -f "${DATA_DIR}/.migrado-do-linkguard-fw"
+        echo "[INFO] Migrado do linkguard-fw: serviço linkguard-cloud habilitado."
+      fi
       # On upgrade, restart the service if it is enabled so it picks up the new
       # binary without manual intervention (and stays running). On a fresh
       # install it is not enabled yet, so this is a no-op.
-      if systemctl is-enabled --quiet linkguard-fw 2>/dev/null; then
-        systemctl restart linkguard-fw 2>/dev/null || true
+      if systemctl is-enabled --quiet linkguard-cloud 2>/dev/null; then
+        systemctl restart linkguard-cloud 2>/dev/null || true
         restarted=1
       fi
     fi
@@ -94,13 +102,13 @@ CONFIG
     # `$2` é o sinal canônico do dpkg: vazio na instalação nova, versão
     # anterior no upgrade.
     if [ "${restarted}" = 1 ]; then
-      echo "[INFO] LinkGuard FW upgraded from ${2:-?}; the running service was restarted on the new binary."
+      echo "[INFO] LinkGuard Cloud upgraded from ${2:-?}; the running service was restarted on the new binary."
     elif [ -n "${2:-}" ]; then
-      echo "[INFO] LinkGuard FW upgraded from ${2}, but the service is not enabled."
-      echo "[INFO] Start it with: systemctl enable --now linkguard-fw"
+      echo "[INFO] LinkGuard Cloud upgraded from ${2}, but the service is not enabled."
+      echo "[INFO] Start it with: systemctl enable --now linkguard-cloud"
     else
-      echo "[INFO] LinkGuard FW installed."
-      echo "[INFO] Edit ${CONFIG_FILE} then run: systemctl enable --now linkguard-fw"
+      echo "[INFO] LinkGuard Cloud installed."
+      echo "[INFO] Edit ${CONFIG_FILE} then run: systemctl enable --now linkguard-cloud"
     fi
     ;;
 esac

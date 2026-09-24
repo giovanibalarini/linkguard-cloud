@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/balancer"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/balancer"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // RoutingHandler exposes multi-WAN balancing (weighted multipath default route

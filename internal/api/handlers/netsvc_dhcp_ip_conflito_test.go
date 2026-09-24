@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // A #59 tem duas metades, e esta é a que o admin encontra: a recusa precisa

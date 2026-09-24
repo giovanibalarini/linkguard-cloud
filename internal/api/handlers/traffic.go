@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/giovanibalarini/linkguard-fw/internal/hosttraffic"
-	"github.com/giovanibalarini/linkguard-fw/internal/storage"
-	"github.com/giovanibalarini/linkguard-fw/internal/tsdb"
-	"github.com/giovanibalarini/linkguard-fw/internal/validate"
+	"github.com/giovanibalarini/linkguard-cloud/internal/hosttraffic"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // TrafficHandler exposes per-host bandwidth (top talkers) from conntrack.
