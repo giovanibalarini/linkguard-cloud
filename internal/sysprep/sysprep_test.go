@@ -160,7 +160,7 @@ func TestCovers(t *testing.T) {
 		"/etc/kea/kea-dhcp4.conf": true,
 		"/etc/unbound":            true, // criado a caminho do conf.d
 		"/etc/unbound/unbound.conf.d/linkguard.conf": true,
-		"/var/lib/linkguard-cloud":                      true,
+		"/var/lib/linkguard-cloud":                   true,
 		"/etc/resolv.conf":                           false,
 		"/etc/dhcp":                                  false,
 	}

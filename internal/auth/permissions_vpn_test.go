@@ -9,7 +9,9 @@ func TestVPNPermissionsAreCataloguedAndNotGrantedToNonAdminDefaults(t *testing.T
 		}
 	}
 	for _, role := range DefaultRoles {
-		if role.ID == "role-admin" {
+		// O admin tem tudo; o "Usuário VPN" existe justamente para a VPN e é
+		// conferido à parte, abaixo.
+		if role.ID == "role-admin" || role.ID == "role-vpn-user" {
 			continue
 		}
 		for _, got := range role.Permissions {
@@ -18,4 +20,19 @@ func TestVPNPermissionsAreCataloguedAndNotGrantedToNonAdminDefaults(t *testing.T
 			}
 		}
 	}
+}
+
+// O papel de quem só usa a VPN não pode crescer: qualquer permissão a mais
+// chegaria em silêncio a todo mundo que já o tem.
+func TestUsuarioVPNSoUsaAPropriaVPN(t *testing.T) {
+	for _, role := range DefaultRoles {
+		if role.ID != "role-vpn-user" {
+			continue
+		}
+		if len(role.Permissions) != 1 || role.Permissions[0] != PermVPNEnroll {
+			t.Fatalf("o papel Usuário VPN tem %v; queria só %q", role.Permissions, PermVPNEnroll)
+		}
+		return
+	}
+	t.Fatal("o papel pronto Usuário VPN não existe")
 }

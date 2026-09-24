@@ -654,6 +654,10 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 			r.With(require(auth.PermVPNEnroll)).Delete("/api/vpn/enrollment", vpnH.RevokeSelf)
 			r.With(require(auth.PermVPNWrite)).Delete("/api/vpn/peers/{userID}", vpnH.RevokePeer)
 			r.With(require(auth.PermVPNWrite)).Put("/api/vpn/peers/{userID}/access", vpnH.SetPeerAccess)
+			r.With(require(auth.PermVPNWrite)).Post("/api/vpn/peers/{userID}/enrollment", vpnH.EnrollPeer)
+			r.With(require(auth.PermVPNWrite)).Post("/api/vpn/peers/{userID}/config", vpnH.ReissuePeer)
+			r.With(require(auth.PermVPNWrite)).Get("/api/vpn/candidates", vpnH.Candidates)
+			r.With(require(auth.PermVPNEnroll)).Get("/api/vpn/me", vpnH.Me)
 		}
 
 		// DNS query log (unbound journal; opt-in via DNS log_queries)

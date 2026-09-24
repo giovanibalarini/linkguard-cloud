@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -376,6 +377,28 @@ func (s *Service) resolveEndpoint(c Config) (string, error) {
 }
 
 func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error) {
+	return s.enroll(ctx, userID, nil)
+}
+
+// EnrollFor é o admin entregando o acesso de OUTRA pessoa, já com o perfil
+// escolhido: o que ela alcança e por qual túnel.
+//
+// Até 24/09/2026 só existia o enrolamento do próprio usuário. Para dar a um
+// colega acesso restrito ao k3s foi preciso logar como ele, enrolar, restringir
+// e reemitir, nessa ordem, porque o perfil não podia ser definido antes de o
+// peer existir. Aqui o perfil entra junto: a primeira configuração entregue já
+// é a definitiva, e um peer novo nunca existe com acesso total.
+func (s *Service) EnrollFor(ctx context.Context, userID string, access PeerAccess) (Enrollment, error) {
+	normalized, err := normalizeAccess(access)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	return s.enroll(ctx, userID, &normalized)
+}
+
+// enroll gera (ou rotaciona) a identidade do peer. Com access nil o perfil
+// atual atravessa a rotação; com access, ele é o perfil que passa a valer.
+func (s *Service) enroll(ctx context.Context, userID string, access *PeerAccess) (Enrollment, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, err := s.Config()
@@ -426,6 +449,15 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 		}
 		groupID = uuid.NewString()
 	}
+	allowedPorts := ""
+	if current != nil {
+		allowedPorts = current.AllowedPorts
+	}
+	if access != nil {
+		accessMode, tunnelMode = access.AccessMode, access.TunnelMode
+		allowedGroups, allowedPorts = access.AllowedHostGroups, access.AllowedPorts
+		extraRoutes, mtu = access.ExtraRoutes, access.MTU
+	}
 	clientPrivate, clientPublic, err := GenerateKeypair()
 	if err != nil {
 		return Enrollment{}, err
@@ -437,7 +469,7 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 	_ = serverPrivate // never leaves this method; public is all clients need
 	peer := Peer{UserID: userID, Username: user.Username, PublicKey: clientPublic,
 		Address: address, FirewallGroupID: groupID, AccessMode: accessMode,
-		AllowedHostGroups: allowedGroups, TunnelMode: tunnelMode,
+		AllowedHostGroups: allowedGroups, AllowedPorts: allowedPorts, TunnelMode: tunnelMode,
 		ExtraRoutes: extraRoutes, MTU: mtu}
 	routes, err := s.resolveRoutes(accessMode, allowedGroups, extraRoutes)
 	if err != nil {
@@ -453,11 +485,11 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 	}
 	row := storage.WireGuardPeer{UserID: userID, PublicKey: clientPublic, Address: address,
 		SecretName: secretName, FirewallGroupID: groupID, AccessMode: accessMode,
-		AllowedHostGroups: allowedGroups, TunnelMode: tunnelMode,
+		AllowedHostGroups: allowedGroups, AllowedPorts: allowedPorts, TunnelMode: tunnelMode,
 		ExtraRoutes: extraRoutes, MTU: mtu}
 	group := storage.FirewallGroup{ID: groupID, Name: "VPN — " + user.Username,
 		ChainName: nftables.GroupChainName(groupID), Enabled: true, CondSaddr: address,
-		Fallthrough: nftables.FallthroughContinue, Kind: nftables.GroupKindWireGuardPeer,
+		Fallthrough: peerFallthrough(accessMode), Kind: nftables.GroupKindWireGuardPeer,
 		Scope: nftables.ScopeForward, ConnState: nftables.ConnStateAny}
 	old, err := s.db.UpsertWireGuardPeer(&row, &group)
 	if err != nil {
@@ -466,6 +498,26 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 	}
 	if old != nil {
 		_ = s.secrets.Delete(old.SecretName)
+	}
+	if access != nil && current != nil {
+		// O upsert completa com o perfil anterior os campos que chegam vazios —
+		// é o que faz a rotação preservar a política. Um perfil escolhido agora
+		// vale por inteiro, inclusive o que ele esvazia.
+		if err := s.db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
+			AccessMode: accessMode, AllowedHostGroups: allowedGroups, AllowedPorts: allowedPorts,
+			TunnelMode: tunnelMode, ExtraRoutes: extraRoutes, MTU: mtu,
+		}); err != nil {
+			return Enrollment{}, err
+		}
+	}
+	// A config que sai daqui já tem o perfil vigente: ela não está desatualizada.
+	if err := s.db.MarkWireGuardConfigIssued(userID); err != nil {
+		return Enrollment{}, err
+	}
+	if stored, err := s.db.GetWireGuardPeer(userID); err == nil && stored != nil {
+		if err := s.reconcilePeerZTNARules(ctx, *stored); err != nil {
+			return Enrollment{}, err
+		}
 	}
 	peer.CreatedAt, peer.RotatedAt = row.CreatedAt.Unix(), row.RotatedAt.Unix()
 	result := Enrollment{Peer: peer, ClientConfig: clientConfig}
@@ -493,6 +545,9 @@ func (s *Service) Revoke(ctx context.Context, userID string) error {
 		return err
 	}
 	secretErr := s.secrets.Delete(removed.SecretName)
+	if err := s.deletePeerInputGroup(removed.FirewallGroupID); err != nil {
+		return err
+	}
 	applyErr := s.reconcileLocked(ctx)
 	if secretErr != nil {
 		return secretErr
@@ -606,20 +661,10 @@ func (s *Service) ClientConfig(ctx context.Context, userID string) (Enrollment, 
 }
 
 func (s *Service) SetPeerAccess(ctx context.Context, userID string, access PeerAccess) error {
-	if access.TunnelMode == "" {
-		access.TunnelMode = TunnelFull
-	}
-	if access.TunnelMode != TunnelFull && access.TunnelMode != TunnelSplit {
-		return fmt.Errorf("modo de túnel inválido: use %q ou %q", TunnelFull, TunnelSplit)
-	}
-	if err := ValidateMTU(access.MTU); err != nil {
-		return err
-	}
-	normalized, err := NormalizeRoutes(access.ExtraRoutes)
+	access, err := normalizeAccess(access)
 	if err != nil {
 		return err
 	}
-	access.ExtraRoutes = normalized
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -675,6 +720,9 @@ func (s *Service) SetPeerAccess(ctx context.Context, userID string, access PeerA
 }
 
 func (s *Service) reconcilePeerZTNARules(_ context.Context, p storage.WireGuardPeer) error {
+	if err := s.reconcilePeerInputGroup(p); err != nil {
+		return err
+	}
 	rules, err := s.db.ListFirewallRules()
 	if err != nil {
 		return err
@@ -914,3 +962,200 @@ func (s *Service) DNSBinding() (address, network string, enabled bool, err error
 	prefix, _ := netip.ParsePrefix(c.Address)
 	return prefix.Addr().String(), prefix.Masked().String(), true, nil
 }
+
+// peerFallthrough é o fim da chain de encaminhamento de um peer: restrito
+// termina em drop; o resto devolve a decisão às regras seguintes.
+func peerFallthrough(accessMode string) string {
+	if accessMode == "restricted" {
+		return nftables.FallthroughDrop
+	}
+	return nftables.FallthroughContinue
+}
+
+// normalizeAccess valida e completa um perfil de acesso antes de ele tocar o
+// banco. É a mesma porta para quem edita o perfil de um peer que já existe e
+// para quem entrega o acesso de alguém já com o perfil.
+func normalizeAccess(access PeerAccess) (PeerAccess, error) {
+	access.AccessMode = strings.TrimSpace(access.AccessMode)
+	if access.AccessMode == "" {
+		access.AccessMode = "full"
+	}
+	if access.AccessMode != "full" && access.AccessMode != "restricted" {
+		return PeerAccess{}, fmt.Errorf("modo de acesso inválido: use 'full' ou 'restricted'")
+	}
+	access.TunnelMode = strings.TrimSpace(access.TunnelMode)
+	if access.TunnelMode == "" {
+		access.TunnelMode = TunnelFull
+	}
+	if access.TunnelMode != TunnelFull && access.TunnelMode != TunnelSplit {
+		return PeerAccess{}, fmt.Errorf("modo de túnel inválido: use %q ou %q", TunnelFull, TunnelSplit)
+	}
+	if err := ValidateMTU(access.MTU); err != nil {
+		return PeerAccess{}, err
+	}
+	normalized, err := NormalizeRoutes(access.ExtraRoutes)
+	if err != nil {
+		return PeerAccess{}, err
+	}
+	access.ExtraRoutes = normalized
+	if access.AllowedHostGroups == nil {
+		access.AllowedHostGroups = []string{}
+	}
+	var ports []string
+	for _, port := range strings.Split(access.AllowedPorts, ",") {
+		port = strings.TrimSpace(port)
+		if port == "" {
+			continue
+		}
+		if !nftables.ValidPort(port) {
+			return PeerAccess{}, fmt.Errorf("porta inválida %q: use números de 1 a 65535 ou faixas como 8000-8100", port)
+		}
+		ports = append(ports, port)
+	}
+	access.AllowedPorts = strings.Join(ports, ",")
+	return access, nil
+}
+
+// inputGroupID identifica o grupo de ENTRADA de um peer. É derivado do grupo
+// de encaminhamento, e não guardado, para dispensar coluna nova e sobreviver a
+// um backup restaurado.
+func inputGroupID(forwardGroupID string) string {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("linkguard-cloud/wireguard/entrada/"+forwardGroupID)).String()
+}
+
+// reconcilePeerInputGroup fecha a própria caixa para um peer restrito.
+//
+// O perfil restrito vive na chain forward: decide o que o peer alcança ATRAVÉS
+// do gateway. A caixa em si fica na chain input, que aceita o que vem de rede
+// privada — e a rede da VPN é privada. Um peer liberado só para o k3s alcançava,
+// pelo 10.7.0.1, o SSH, o painel e qualquer outra porta do gateway (achado de
+// 24/09/2026). Este grupo, de escopo input, deixa passar só o que o túnel
+// precisa para funcionar — o DNS para onde a config do cliente aponta e o ping
+// — e descarta conexão nova para o resto. O filtro vale só para estado new:
+// o que a caixa abre na direção do peer (a sonda de latência) continua voltando.
+func (s *Service) reconcilePeerInputGroup(p storage.WireGuardPeer) error {
+	if p.AccessMode != "restricted" {
+		return s.deletePeerInputGroup(p.FirewallGroupID)
+	}
+	id := inputGroupID(p.FirewallGroupID)
+	group := storage.FirewallGroup{
+		ID:          id,
+		Name:        "VPN — " + p.Username + " (entrada na caixa)",
+		ChainName:   nftables.GroupChainName(id),
+		Enabled:     true,
+		CondSaddr:   p.Address,
+		Fallthrough: nftables.FallthroughDrop,
+		Kind:        nftables.GroupKindWireGuardPeer,
+		Scope:       nftables.ScopeInput,
+		ConnState:   nftables.ConnStateNew,
+	}
+	if err := s.db.EnsureWireGuardPeerGroup(&group); err != nil {
+		return err
+	}
+	rules, err := s.db.ListFirewallRules()
+	if err != nil {
+		return err
+	}
+	for _, r := range rules {
+		if r.GroupID == id {
+			if err := s.db.DeleteFirewallRule(r.ID); err != nil {
+				return err
+			}
+		}
+	}
+	for _, r := range []storage.FirewallRule{
+		{Proto: "udp", Dport: "53", Description: "ZTNA: DNS do túnel (UDP)"},
+		{Proto: "tcp", Dport: "53", Description: "ZTNA: DNS do túnel (TCP)"},
+		{Proto: "icmp", Description: "ZTNA: ping da caixa"},
+	} {
+		r.GroupID, r.Action = id, "accept"
+		if err := s.db.CreateFirewallRule(&r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) deletePeerInputGroup(forwardGroupID string) error {
+	id := inputGroupID(forwardGroupID)
+	groups, err := s.db.ListFirewallGroups()
+	if err != nil {
+		return err
+	}
+	for _, g := range groups {
+		if g.ID == id {
+			return s.db.DeleteFirewallGroup(id)
+		}
+	}
+	return nil
+}
+
+// MyVPN é o que um usuário vê da PRÓPRIA VPN, sem enxergar a de ninguém.
+//
+// Existe porque a única leitura da VPN era o Overview, que mostra todos os
+// peers e por isso exige vpn.read. Quem só podia usar a própria VPN
+// (vpn.enroll) abria a tela sem saber se já tinha identidade, e o único botão
+// disponível — "Gerar configuração" — trocava a chave sem avisar.
+type MyVPN struct {
+	Enabled  bool    `json:"enabled"`
+	Running  bool    `json:"running"`
+	Endpoint string  `json:"endpoint,omitempty"`
+	Peer     *Peer   `json:"peer,omitempty"`
+	Reach    []Reach `json:"reach"`
+}
+
+// Reach é um destino liberado para um peer restrito, dito como quem usa entende:
+// o nome do grupo, os endereços e as portas.
+type Reach struct {
+	Name  string   `json:"name"`
+	Hosts []string `json:"hosts"`
+	Ports string   `json:"ports,omitempty"`
+}
+
+func (s *Service) Mine(ctx context.Context, userID string) (MyVPN, error) {
+	c, err := s.Config()
+	if err != nil {
+		return MyVPN{}, err
+	}
+	out := MyVPN{Enabled: c.Enabled, Reach: []Reach{}}
+	if c.Enabled {
+		if host, err := s.resolveEndpoint(c); err == nil {
+			out.Endpoint = net.JoinHostPort(host, strconv.Itoa(c.ListenPort))
+		}
+	}
+	stored, err := s.db.GetWireGuardPeer(userID)
+	if err != nil {
+		return MyVPN{}, err
+	}
+	out.Running = s.isActive(ctx)
+	if stored == nil {
+		return out, nil
+	}
+	peers := peersFromStorage([]storage.WireGuardPeer{*stored})
+	if out.Running {
+		s.enrichPeersTelemetry(ctx, peers)
+	}
+	out.Peer = &peers[0]
+	if stored.AccessMode == "restricted" {
+		for _, id := range stored.AllowedHostGroups {
+			g, err := s.db.GetHostGroup(id)
+			if err != nil {
+				return MyVPN{}, err
+			}
+			if g == nil {
+				continue
+			}
+			// O grupo guarda o host como /32; para quem usa, é só o endereço.
+			hosts := make([]string, 0, len(g.Hosts))
+			for _, h := range g.Hosts {
+				hosts = append(hosts, strings.TrimSuffix(h, "/32"))
+			}
+			out.Reach = append(out.Reach, Reach{Name: g.Name, Hosts: hosts, Ports: stored.AllowedPorts})
+		}
+	}
+	return out, nil
+}
+
+// NormalizeAccess expõe a validação do perfil para a borda HTTP recusar um
+// perfil inválido com 400 antes de chamar o serviço.
+func NormalizeAccess(access PeerAccess) (PeerAccess, error) { return normalizeAccess(access) }

@@ -1146,6 +1146,11 @@ func validIPv4OrCIDR(s string) bool {
 // truncated everything after that rule (C-1). Every one of these is
 // reachable with ordinary typing into the rule modal, not just a
 // hand-crafted API request.
+// ValidPort é validPort para quem monta regra fora deste pacote — o perfil de
+// acesso de um peer da VPN vira regra `tcp dport` aqui dentro, e uma porta que
+// o nft recusaria tem que ser barrada na porta de entrada, não no flush.
+func ValidPort(s string) bool { return validPort(s) }
+
 func validPort(s string) bool {
 	if !rePort.MatchString(s) {
 		return false

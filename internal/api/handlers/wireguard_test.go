@@ -27,6 +27,9 @@ type wireGuardServiceStub struct {
 	accessUserID   string
 	access         wireguard.PeerAccess
 	recorded       error
+	enrolledFor    bool
+	mine           wireguard.MyVPN
+	mineUserID     string
 }
 
 func (s *wireGuardServiceStub) Overview(context.Context) (wireguard.Overview, error) {
@@ -54,6 +57,16 @@ func (s *wireGuardServiceStub) ClientConfig(_ context.Context, userID string) (w
 	return s.enrollment, s.reissueErr
 }
 func (s *wireGuardServiceStub) RecordIntegrationError(err error) { s.recorded = err }
+func (s *wireGuardServiceStub) EnrollFor(_ context.Context, userID string, access wireguard.PeerAccess) (wireguard.Enrollment, error) {
+	s.enrolledUserID = userID
+	s.access = access
+	s.enrolledFor = true
+	return s.enrollment, nil
+}
+func (s *wireGuardServiceStub) Mine(_ context.Context, userID string) (wireguard.MyVPN, error) {
+	s.mineUserID = userID
+	return s.mine, nil
+}
 
 type wireGuardReconcilerStub struct{ err error }
 
@@ -264,5 +277,135 @@ func TestWireGuardReemissaoExigeAutenticacao(t *testing.T) {
 	}
 	if svc.reissuedUserID != "" {
 		t.Fatal("pedido sem identidade chegou ao serviço")
+	}
+}
+
+func TestWireGuardAdminEntregaAVPNDeOutraPessoaComOPerfil(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "config-do-diego"}}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	r := chi.NewRouter()
+	r.Post("/api/vpn/peers/{userID}/enrollment", h.EnrollPeer)
+
+	body := `{"access_mode":"restricted","allowed_host_groups":["hg-k3s"],"allowed_ports":" 6443 ","tunnel_mode":"split"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vpn/peers/u-diego/enrollment", strings.NewReader(body))
+	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "admin", Username: "admin"}))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), "config-do-diego") {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	// A identidade é de quem está na URL, não de quem está logado.
+	if !svc.enrolledFor || svc.enrolledUserID != "u-diego" {
+		t.Fatalf("EnrollFor para %q (chamado=%v), queria u-diego", svc.enrolledUserID, svc.enrolledFor)
+	}
+	if svc.access.AccessMode != "restricted" || svc.access.TunnelMode != "split" || svc.access.AllowedPorts != "6443" {
+		t.Fatalf("perfil chegou ao serviço diferente do pedido: %+v", svc.access)
+	}
+	logs, err := db.GetAuditLogs(10)
+	if err != nil || len(logs) != 1 || logs[0].Action != "vpn.enroll_for" || strings.Contains(logs[0].Details, "config-do-diego") {
+		t.Fatalf("auditoria ausente, com ação errada ou vazando a config: %+v, %v", logs, err)
+	}
+}
+
+func TestWireGuardAdminEntregaSemPerfilMantemOAtual(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	r := chi.NewRouter()
+	r.Post("/api/vpn/peers/{userID}/enrollment", h.EnrollPeer)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/vpn/peers/u-bia/enrollment", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated || svc.enrolledFor || svc.enrolledUserID != "u-bia" {
+		t.Fatalf("status=%d enrolledFor=%v user=%q", w.Code, svc.enrolledFor, svc.enrolledUserID)
+	}
+}
+
+func TestWireGuardAdminEntregaRecusaPerfilInvalidoAntesDoServico(t *testing.T) {
+	for nome, body := range map[string]string{
+		"porta fora da faixa": `{"access_mode":"restricted","allowed_ports":"70000"}`,
+		"porta com injeção":   `{"access_mode":"restricted","allowed_ports":"22; flush ruleset"}`,
+		"modo inexistente":    `{"access_mode":"quase"}`,
+	} {
+		t.Run(nome, func(t *testing.T) {
+			db := newWireGuardHandlerTestDB(t)
+			svc := &wireGuardServiceStub{}
+			h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+			r := chi.NewRouter()
+			r.Post("/api/vpn/peers/{userID}/enrollment", h.EnrollPeer)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/vpn/peers/u-1/enrollment", strings.NewReader(body))
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest || svc.enrolledUserID != "" {
+				t.Fatalf("status=%d serviço chamado para %q", w.Code, svc.enrolledUserID)
+			}
+		})
+	}
+}
+
+func TestWireGuardAdminReemiteAConfigDeOutraPessoa(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "config-atual"}}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	r := chi.NewRouter()
+	r.Post("/api/vpn/peers/{userID}/config", h.ReissuePeer)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/vpn/peers/u-diego/config", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK || svc.reissuedUserID != "u-diego" {
+		t.Fatalf("status=%d reemitido para %q", w.Code, svc.reissuedUserID)
+	}
+	logs, _ := db.GetAuditLogs(10)
+	if len(logs) != 1 || logs[0].Action != "vpn.reissue_for" {
+		t.Fatalf("auditoria = %+v", logs)
+	}
+}
+
+func TestWireGuardMinhaVPNUsaSoOUsuarioDoToken(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	svc := &wireGuardServiceStub{mine: wireguard.MyVPN{Enabled: true, Reach: []wireguard.Reach{}}}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/vpn/me?user=outra-pessoa", nil)
+	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "u-diego"}))
+	w := httptest.NewRecorder()
+	h.Me(w, req)
+
+	if w.Code != http.StatusOK || svc.mineUserID != "u-diego" {
+		t.Fatalf("status=%d consultou %q", w.Code, svc.mineUserID)
+	}
+
+	sem := httptest.NewRecorder()
+	h.Me(sem, httptest.NewRequest(http.MethodGet, "/api/vpn/me", nil))
+	if sem.Code != http.StatusUnauthorized {
+		t.Fatalf("sem token: status=%d", sem.Code)
+	}
+}
+
+func TestWireGuardCandidatosSaoQuemAindaNaoTemVPN(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	for _, nome := range []string{"diego", "bia"} {
+		if err := db.CreateUser(&storage.User{ID: "u-" + nome, Username: nome}, "hash", nil); err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+	}
+	grupo := &storage.FirewallGroup{ID: "g-bia", Name: "VPN — bia", ChainName: "grp_bia"}
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-bia", PublicKey: "pk", Address: "10.7.0.2/32", SecretName: "s"}, grupo); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
+	h := NewWireGuardHandler(db, &wireGuardServiceStub{}, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	w := httptest.NewRecorder()
+	h.Candidates(w, httptest.NewRequest(http.MethodGet, "/api/vpn/candidates", nil))
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"username":"diego"`) || strings.Contains(w.Body.String(), `"username":"bia"`) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }

@@ -135,7 +135,7 @@ var Catalog = []CatalogEntry{
 
 	{PermVPNRead, "VPN", "Ver WireGuard", "Ver estado, configuração pública e peers sem chaves privadas"},
 	{PermVPNWrite, "VPN", "Gerenciar WireGuard", "Ativar/configurar o serviço e revogar peers"},
-	{PermVPNEnroll, "VPN", "Enrolar a própria VPN", "Gerar ou rotacionar a própria configuração WireGuard one-time"},
+	{PermVPNEnroll, "VPN", "Usar a própria VPN", "Ver, baixar e trocar a chave da própria configuração WireGuard"},
 
 	{PermUsersManage, "Administração", "Gerenciar usuários", "Criar, editar e remover usuários e seus papéis"},
 	{PermRolesManage, "Administração", "Gerenciar papéis", "Criar, editar e remover papéis e suas permissões"},
@@ -213,5 +213,15 @@ var DefaultRoles = []DefaultRole{
 		Name:        "Visualizador",
 		Description: "Somente leitura",
 		Permissions: readOnlyPermissions(),
+	},
+	{
+		// O papel de quem só usa a VPN. Até 24/09/2026 não havia papel pronto
+		// que desse VPN sem dar o painel inteiro: o Operador e o Visualizador
+		// não têm nenhuma permissão vpn.*, e uma conta de serviço acabou virando
+		// Administrador só para ganhar chave.
+		ID:          "role-vpn-user",
+		Name:        "Usuário VPN",
+		Description: "Só a própria VPN: vê, baixa e troca a chave da própria configuração. Não vê o firewall nem a VPN dos outros.",
+		Permissions: []Permission{PermVPNEnroll},
 	},
 }

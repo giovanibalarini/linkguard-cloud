@@ -19,6 +19,8 @@ type wireGuardService interface {
 	Overview(context.Context) (wireguard.Overview, error)
 	UpdateConfig(context.Context, wireguard.Config) error
 	Enroll(context.Context, string) (wireguard.Enrollment, error)
+	EnrollFor(context.Context, string, wireguard.PeerAccess) (wireguard.Enrollment, error)
+	Mine(context.Context, string) (wireguard.MyVPN, error)
 	ClientConfig(context.Context, string) (wireguard.Enrollment, error)
 	Revoke(context.Context, string) error
 	SetPeerAccess(context.Context, string, wireguard.PeerAccess) error
@@ -236,11 +238,6 @@ func (h *WireGuardHandler) SetPeerAccess(w http.ResponseWriter, r *http.Request)
 
 // ReissueSelf devolve a configuração do próprio usuário com o perfil atual, sem
 // gerar chave nova.
-//
-// Só serve a si mesmo, de propósito: um admin que pudesse reemitir a config de
-// outro receberia a chave privada dele, e o desenho do produto é que ninguém
-// além do dono jamais a veja. Quando o admin muda o túnel de alguém, o peer
-// aparece como desatualizado e o próprio usuário rebaixa o arquivo.
 func (h *WireGuardHandler) ReissueSelf(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
@@ -255,4 +252,133 @@ func (h *WireGuardHandler) ReissueSelf(w http.ResponseWriter, r *http.Request) {
 	auditAction(h.db, r, "vpn.reissue", "vpn-user:"+claims.UserID, "")
 	// Mesma natureza do enroll: a resposta carrega a chave privada do cliente.
 	writeJSON(w, http.StatusOK, result)
+}
+
+// Me devolve a VPN do próprio usuário — e só a dele. É a leitura de quem tem
+// vpn.enroll e não pode ver os outros peers (vpn.read).
+func (h *WireGuardHandler) Me(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		writeError(w, http.StatusUnauthorized, "autenticação necessária")
+		return
+	}
+	mine, err := h.svc.Mine(r.Context(), claims.UserID)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, mine)
+}
+
+// EnrollPeer é o admin entregando a VPN de outra pessoa.
+//
+// Até 24/09/2026 o desenho era que só o dono da identidade visse a própria
+// chave privada: nenhum admin gerava nem reemitia a config de outro. Na prática
+// isso obrigava o admin a logar COMO a pessoa para entregar o acesso — ele via a
+// chave do mesmo jeito, só que por um caminho pior e fora da auditoria. Agora a
+// entrega é uma ação de admin, com vpn.write, registrada como "vpn.enroll_for".
+// Quem recebe pode trocar a chave depois pela própria tela e ficar com uma que
+// o admin nunca viu.
+//
+// Corpo opcional: sem ele, gera ou rotaciona mantendo o perfil atual; com ele,
+// o perfil informado já vale para a primeira configuração.
+func (h *WireGuardHandler) EnrollPeer(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(chi.URLParam(r, "userID"))
+	if userID == "" {
+		writeError(w, http.StatusBadRequest, "userID é obrigatório")
+		return
+	}
+	var (
+		result wireguard.Enrollment
+		err    error
+		detail string
+	)
+	if r.ContentLength != 0 {
+		var req peerAccessBody
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "corpo inválido")
+			return
+		}
+		access, verr := wireguard.NormalizeAccess(req.access())
+		if verr != nil {
+			writeError(w, http.StatusBadRequest, verr.Error())
+			return
+		}
+		detail = "modo: " + access.AccessMode + ", túnel: " + access.TunnelMode
+		result, err = h.svc.EnrollFor(r.Context(), userID, access)
+	} else {
+		result, err = h.svc.Enroll(r.Context(), userID)
+	}
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	if result.ApplyError != "" {
+		result.ApplyError = wireGuardApplyFailure
+	}
+	if err := h.reconcileIntegrations(r.Context()); err != nil {
+		h.svc.RecordIntegrationError(err)
+		result.ApplyError = wireGuardApplyFailure
+	}
+	auditAction(h.db, r, "vpn.enroll_for", "vpn-user:"+userID, detail)
+	writeJSON(w, http.StatusCreated, result)
+}
+
+// ReissuePeer devolve ao admin a config atual de outra pessoa, sem trocar a
+// chave: é o caminho para entregar de novo depois de mudar o perfil dela.
+func (h *WireGuardHandler) ReissuePeer(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(chi.URLParam(r, "userID"))
+	if userID == "" {
+		writeError(w, http.StatusBadRequest, "userID é obrigatório")
+		return
+	}
+	result, err := h.svc.ClientConfig(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	auditAction(h.db, r, "vpn.reissue_for", "vpn-user:"+userID, "")
+	writeJSON(w, http.StatusOK, result)
+}
+
+type vpnCandidate struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+}
+
+// Candidates lista quem ainda não tem VPN, para o admin escolher a quem
+// entregar sem precisar da permissão de gerenciar usuários.
+func (h *WireGuardHandler) Candidates(w http.ResponseWriter, r *http.Request) {
+	users, err := h.db.ListUsers()
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	peers, err := h.db.ListWireGuardPeers()
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	has := make(map[string]bool, len(peers))
+	for _, p := range peers {
+		has[p.UserID] = true
+	}
+	out := []vpnCandidate{}
+	for _, u := range users {
+		if !has[u.ID] {
+			out = append(out, vpnCandidate{ID: u.ID, Username: u.Username})
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (b peerAccessBody) access() wireguard.PeerAccess {
+	return wireguard.PeerAccess{
+		AccessMode:        strings.TrimSpace(b.AccessMode),
+		AllowedHostGroups: b.AllowedHostGroups,
+		AllowedPorts:      b.AllowedPorts,
+		TunnelMode:        strings.TrimSpace(b.TunnelMode),
+		ExtraRoutes:       b.ExtraRoutes,
+		MTU:               b.MTU,
+	}
 }
