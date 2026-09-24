@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIModeProvider } from './context/UIModeContext';
 import { I18nProvider } from './i18n';
-import Layout from './components/Layout';
+import Layout, { firstAllowedPath } from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Links from './pages/Links';
@@ -29,6 +29,16 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
+// Quem não vê o painel principal entra direto na primeira tela que pode abrir,
+// em vez de um dashboard que só daria erro.
+function Home() {
+  const { can, permsLoaded } = useAuth();
+  if (!permsLoaded) return null;
+  if (can('dashboard.read')) return <Dashboard />;
+  const target = firstAllowedPath(can);
+  return target && target !== '/' ? <Navigate to={target} replace /> : <Dashboard />;
+}
+
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
 
@@ -37,7 +47,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<Home />} />
           <Route path="links" element={<Links />} />
           <Route path="routes" element={<Routes_ />} />
           <Route path="firewall" element={<Firewall />} />

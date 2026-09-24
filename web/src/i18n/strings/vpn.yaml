@@ -1,16 +1,22 @@
-# WireGuard VPN — configuration, one-time enrollment and peer management.
+# VPN (WireGuard): quem acessa a rede da nuvem de fora, e até onde.
+vpn.title:
+  pt: "VPN"
+  en: "VPN"
 vpn.subtitle:
-  pt: "Acesso remoto seguro, identidades por usuário e integração com o firewall."
-  en: "Secure remote access, per-user identities, and firewall integration."
+  pt: "Quem acessa a rede da nuvem de fora, e até onde."
+  en: "Who reaches the cloud network from outside, and how far."
+vpn.subtitleMine:
+  pt: "Seu acesso à rede da nuvem."
+  en: "Your access to the cloud network."
 vpn.refresh:
   pt: "Atualizar"
   en: "Refresh"
 vpn.saved:
-  pt: "Configuração da VPN salva e reconciliada."
-  en: "VPN configuration saved and reconciled."
+  pt: "Configuração do servidor VPN salva e aplicada."
+  en: "VPN server configuration saved and applied."
 vpn.lastApplyFailed:
-  pt: "A última reconciliação falhou: {error}"
-  en: "The last reconciliation failed: {error}"
+  pt: "A última aplicação da VPN falhou: {error}"
+  en: "The last VPN apply failed: {error}"
 vpn.error.load:
   pt: "Não foi possível carregar a VPN."
   en: "Could not load the VPN."
@@ -21,40 +27,294 @@ vpn.error.timeout:
   pt: "A operação continua no servidor. Atualize a tela em alguns instantes."
   en: "The operation is still running on the server. Refresh in a moment."
 
-vpn.status.title:
-  pt: "Estado do serviço"
-  en: "Service status"
-vpn.status.desired:
-  pt: "Configuração"
-  en: "Configuration"
-vpn.status.enabled:
-  pt: "Ativada"
-  en: "Enabled"
-vpn.status.disabled:
-  pt: "Desativada"
-  en: "Disabled"
-vpn.status.service:
-  pt: "Serviço"
-  en: "Service"
-vpn.status.running:
-  pt: "Em execução"
-  en: "Running"
-vpn.status.stopped:
-  pt: "Parado"
-  en: "Stopped"
-vpn.status.peers:
-  pt: "Peers"
-  en: "Peers"
+# Situação de um peer, em uma frase.
+vpn.seen.now:
+  pt: "Conectado agora"
+  en: "Connected now"
+vpn.seen.ago:
+  pt: "Última conexão há {time}"
+  en: "Last connected {time} ago"
+vpn.seen.never:
+  pt: "Nunca conectou"
+  en: "Never connected"
+
+# Quem tem acesso (admin).
+vpn.list.title:
+  pt: "Quem tem acesso ({count})"
+  en: "Who has access ({count})"
+vpn.list.empty:
+  pt: "Ninguém tem acesso à VPN ainda."
+  en: "Nobody has VPN access yet."
+vpn.list.you:
+  pt: "você"
+  en: "you"
+vpn.list.only:
+  pt: "Só:"
+  en: "Only:"
+vpn.list.nothing:
+  pt: "nenhum destino liberado"
+  en: "no destination allowed"
+vpn.list.port:
+  pt: "porta {ports}"
+  en: "port {ports}"
+vpn.list.ports:
+  pt: "portas {ports}"
+  en: "ports {ports}"
+vpn.list.allPorts:
+  pt: "todas as portas"
+  en: "all ports"
+vpn.list.full:
+  pt: "Acesso completo"
+  en: "Full access"
+vpn.list.tunnelSplit:
+  pt: "túnel parcial"
+  en: "split tunnel"
+vpn.list.tunnelFull:
+  pt: "internet pela nuvem"
+  en: "internet through the cloud"
+vpn.list.stale:
+  pt: "precisa receber a configuração nova"
+  en: "needs the new configuration"
+vpn.list.staleHint:
+  pt: "O acesso mudou depois da última entrega. Use \"Entregar configuração\" e mande o arquivo novo."
+  en: "Access changed after the last delivery. Use \"Deliver configuration\" and send the new file."
+vpn.list.reissue:
+  pt: "Entregar configuração"
+  en: "Deliver configuration"
+vpn.list.reissueHint:
+  pt: "Mostra de novo a configuração atual, sem trocar a chave."
+  en: "Shows the current configuration again, without changing the key."
+vpn.list.edit:
+  pt: "Editar acesso"
+  en: "Edit access"
+vpn.list.rotate:
+  pt: "Trocar chave"
+  en: "Change key"
+vpn.list.rotateConfirm:
+  pt: "Trocar a chave de {user}? A configuração atual para de funcionar em todos os aparelhos dessa pessoa, e você terá que entregar a nova."
+  en: "Change {user}'s key? The current configuration stops working on all of their devices, and you will need to deliver the new one."
+vpn.list.revoke:
+  pt: "Revogar"
+  en: "Revoke"
+vpn.list.revokeConfirm:
+  pt: "Revogar a VPN de {user}? O acesso cai na hora."
+  en: "Revoke {user}'s VPN? Access drops immediately."
+vpn.list.revoked:
+  pt: "VPN de {user} revogada."
+  en: "{user}'s VPN revoked."
+
+# Dar acesso a alguém (admin).
+vpn.give.open:
+  pt: "Dar acesso a alguém"
+  en: "Give someone access"
+vpn.give.title:
+  pt: "Dar acesso à VPN"
+  en: "Give VPN access"
+vpn.give.who:
+  pt: "Para quem"
+  en: "For whom"
+vpn.give.pickUser:
+  pt: "Escolha a pessoa"
+  en: "Choose the person"
+vpn.give.noCandidates:
+  pt: "Todos os usuários já têm VPN. Crie o usuário em Administração primeiro."
+  en: "Every user already has a VPN. Create the user under Administration first."
+vpn.give.roleHint:
+  pt: "Para quem só vai usar a VPN, crie o usuário com o papel \"Usuário VPN\": ele vê só a própria VPN no painel."
+  en: "For someone who will only use the VPN, create the user with the \"Usuário VPN\" role: they see only their own VPN in the panel."
+vpn.give.submit:
+  pt: "Gerar acesso"
+  en: "Generate access"
+
+# Editar o acesso de alguém (admin).
+vpn.edit.title:
+  pt: "Acesso de {user}"
+  en: "{user}'s access"
+vpn.edit.note:
+  pt: "A mudança vale no firewall na hora. No aparelho da pessoa, só depois que ela receber a configuração nova."
+  en: "The change applies to the firewall immediately. On the person's device, only after they get the new configuration."
+vpn.edit.submit:
+  pt: "Salvar acesso"
+  en: "Save access"
+vpn.edit.saved:
+  pt: "Acesso de {user} salvo. Use \"Entregar configuração\" para mandar o arquivo novo."
+  en: "{user}'s access saved. Use \"Deliver configuration\" to send the new file."
+
+# Perfil de acesso.
+vpn.access.question:
+  pt: "Até onde essa pessoa vai?"
+  en: "How far does this person go?"
+vpn.access.restricted:
+  pt: "Só destinos escolhidos"
+  en: "Chosen destinations only"
+vpn.access.restrictedDesc:
+  pt: "Alcança apenas os grupos de hosts e portas abaixo. O resto da internet dela não passa pela nuvem."
+  en: "Reaches only the host groups and ports below. The rest of their internet does not go through the cloud."
+vpn.access.full:
+  pt: "Acesso completo"
+  en: "Full access"
+vpn.access.fullDesc:
+  pt: "Alcança toda a rede da nuvem, e a internet inteira dela passa pelo gateway."
+  en: "Reaches the whole cloud network, and all of their internet goes through the gateway."
+vpn.access.groups:
+  pt: "Grupos de hosts liberados"
+  en: "Allowed host groups"
+vpn.access.noGroups:
+  pt: "Nenhum grupo de hosts cadastrado. Crie um em Firewall, na aba Grupos de hosts."
+  en: "No host groups yet. Create one under Firewall, in the Host groups tab."
+vpn.access.noGroupChosen:
+  pt: "Sem nenhum grupo marcado a pessoa conecta, mas não alcança nada."
+  en: "With no group checked the person connects but reaches nothing."
+vpn.access.ports:
+  pt: "Portas (opcional)"
+  en: "Ports (optional)"
+vpn.access.portsHelp:
+  pt: "Separe por vírgula; faixas como 8000-8100 valem. Vazio libera todas as portas desses hosts."
+  en: "Comma separated; ranges like 8000-8100 are fine. Empty allows every port on those hosts."
+vpn.access.advanced:
+  pt: "Avançado"
+  en: "Advanced"
+vpn.access.tunnel:
+  pt: "O que passa pelo túnel"
+  en: "What goes through the tunnel"
+vpn.access.tunnelSplit:
+  pt: "Só o tráfego para a rede da nuvem (túnel parcial)"
+  en: "Only traffic to the cloud network (split tunnel)"
+vpn.access.tunnelFull:
+  pt: "Toda a internet da pessoa"
+  en: "All of the person's internet"
+vpn.access.routes:
+  pt: "Rotas a mais no túnel"
+  en: "Extra routes in the tunnel"
+vpn.access.routesHelp:
+  pt: "Redes que também devem passar pela VPN, como 192.168.50.0/24. Os grupos liberados já entram sozinhos."
+  en: "Networks that should also go through the VPN, like 192.168.50.0/24. Allowed groups are added automatically."
+vpn.access.mtu:
+  pt: "MTU do túnel (opcional)"
+  en: "Tunnel MTU (optional)"
+vpn.access.mtuHelp:
+  pt: "Só mexa se a conexão travar em páginas ou transferências grandes. Vazio usa o padrão do WireGuard."
+  en: "Only change it if the connection stalls on large pages or transfers. Empty uses the WireGuard default."
+
+# Entrega da configuração (aparece uma vez).
+vpn.delivery.titleMine:
+  pt: "Sua configuração da VPN"
+  en: "Your VPN configuration"
+vpn.delivery.titleFor:
+  pt: "Configuração da VPN de {user}"
+  en: "{user}'s VPN configuration"
+vpn.delivery.once:
+  pt: "Contém a chave privada e só aparece agora. Baixe ou copie antes de fechar."
+  en: "Contains the private key and is shown only now. Download or copy it before closing."
+vpn.delivery.configLabel:
+  pt: "Configuração WireGuard"
+  en: "WireGuard configuration"
+vpn.delivery.qrAlt:
+  pt: "QR code da configuração WireGuard"
+  en: "WireGuard configuration QR code"
+vpn.delivery.noQR:
+  pt: "QR code indisponível: use o arquivo."
+  en: "QR code unavailable: use the file."
+vpn.delivery.download:
+  pt: "Baixar .conf"
+  en: "Download .conf"
+vpn.delivery.copy:
+  pt: "Copiar"
+  en: "Copy"
+vpn.delivery.close:
+  pt: "Fechar"
+  en: "Close"
+vpn.delivery.copied:
+  pt: "Configuração copiada."
+  en: "Configuration copied."
+vpn.delivery.copyFailed:
+  pt: "O navegador recusou a cópia; selecione o texto e copie à mão."
+  en: "The browser refused to copy; select the text and copy it by hand."
+vpn.delivery.mineNote:
+  pt: "No celular, escaneie o QR code no app WireGuard. No computador, importe o arquivo .conf."
+  en: "On a phone, scan the QR code in the WireGuard app. On a computer, import the .conf file."
+vpn.delivery.forNote:
+  pt: "Entregue a {user} por um canal seguro. Depois, {user} pode trocar a chave em Minha VPN e ficar com uma que nem você viu."
+  en: "Deliver it to {user} through a safe channel. Later, {user} can change the key under My VPN and keep one not even you have seen."
+
+# Minha VPN.
+vpn.me.title:
+  pt: "Minha VPN"
+  en: "My VPN"
+vpn.me.disabled:
+  pt: "A VPN está desligada neste gateway. Fale com o administrador."
+  en: "The VPN is turned off on this gateway. Talk to the administrator."
+vpn.me.none:
+  pt: "Você ainda não tem acesso à VPN."
+  en: "You don't have VPN access yet."
+vpn.me.create:
+  pt: "Gerar minha configuração"
+  en: "Generate my configuration"
+vpn.me.ip:
+  pt: "Seu IP na VPN"
+  en: "Your VPN IP"
+vpn.me.status:
+  pt: "Situação"
+  en: "Status"
+vpn.me.server:
+  pt: "Servidor"
+  en: "Server"
+vpn.me.reach:
+  pt: "O que esta VPN alcança"
+  en: "What this VPN reaches"
+vpn.me.reachNothing:
+  pt: "Nenhum destino liberado ainda. Fale com o administrador."
+  en: "No destination allowed yet. Talk to the administrator."
+vpn.me.reachAll:
+  pt: "Tudo: a sua internet inteira passa pela nuvem enquanto a VPN estiver ligada."
+  en: "Everything: all of your internet goes through the cloud while the VPN is on."
+vpn.me.reachNetwork:
+  pt: "A rede da nuvem ({routes}). O resto da sua internet segue pela sua conexão."
+  en: "The cloud network ({routes}). The rest of your internet uses your own connection."
+vpn.me.port:
+  pt: "porta {ports}"
+  en: "port {ports}"
+vpn.me.ports:
+  pt: "portas {ports}"
+  en: "ports {ports}"
+vpn.me.allPorts:
+  pt: "todas as portas"
+  en: "all ports"
+vpn.me.stale:
+  pt: "O administrador mudou o seu acesso. Baixe a configuração de novo para a mudança valer no seu aparelho."
+  en: "The administrator changed your access. Download the configuration again for the change to apply on your device."
+vpn.me.download:
+  pt: "Baixar minha configuração"
+  en: "Download my configuration"
+vpn.me.rotate:
+  pt: "Trocar minha chave"
+  en: "Change my key"
+vpn.me.rotateConfirm:
+  pt: "Trocar a sua chave? A configuração atual para de funcionar em todos os seus aparelhos até você importar a nova."
+  en: "Change your key? The current configuration stops working on all your devices until you import the new one."
+vpn.me.hint:
+  pt: "Baixar de novo não troca a chave: serve para outro aparelho ou se você perdeu o arquivo. Troque a chave só se suspeitar de vazamento."
+  en: "Downloading again does not change the key: use it for another device or if you lost the file. Change the key only if you suspect a leak."
+
+# Servidor (admin).
+vpn.server.title:
+  pt: "Servidor VPN"
+  en: "VPN server"
 vpn.status.publicKey:
   pt: "Chave pública do servidor"
   en: "Server public key"
-
-vpn.config.title:
-  pt: "Configuração do túnel"
-  en: "Tunnel configuration"
+vpn.status.disabled:
+  pt: "desligado"
+  en: "off"
+vpn.status.running:
+  pt: "funcionando"
+  en: "running"
+vpn.status.stopped:
+  pt: "parado"
+  en: "stopped"
 vpn.config.enable:
-  pt: "Ativar WireGuard sob demanda"
-  en: "Enable WireGuard on demand"
+  pt: "Ligar a VPN"
+  en: "Turn the VPN on"
 vpn.config.address:
   pt: "Endereço do servidor e rede do túnel"
   en: "Server address and tunnel network"
@@ -65,243 +325,19 @@ vpn.config.ddnsLink:
   pt: "Link WAN com DDNS"
   en: "WAN link with DDNS"
 vpn.config.noDDNS:
-  pt: "Nenhum — usar endpoint explícito"
-  en: "None — use the explicit endpoint"
+  pt: "Nenhum: usar o endereço público abaixo"
+  en: "None: use the public address below"
 vpn.config.explicitEndpoint:
-  pt: "Hostname ou IP público de fallback"
-  en: "Fallback public hostname or IP"
+  pt: "Endereço público (hostname ou IP)"
+  en: "Public address (hostname or IP)"
 vpn.config.endpointHint:
-  pt: "Ao gerar um cliente, o hostname DDNS do link selecionado tem prioridade; o endpoint explícito é usado como fallback."
-  en: "When generating a client, the selected link's DDNS hostname takes priority; the explicit endpoint is the fallback."
+  pt: "É o endereço que vai nas configurações entregues. Se houver um link com DDNS escolhido, ele tem prioridade."
+  en: "This is the address written into delivered configurations. If a DDNS link is chosen, it takes priority."
 vpn.config.save:
   pt: "Salvar e aplicar"
   en: "Save and apply"
 
-vpn.enrollment.title:
-  pt: "Minha identidade VPN"
-  en: "My VPN identity"
-vpn.enrollment.explain:
-  pt: "Cada usuário local tem um único par de chaves. Gerar novamente rotaciona a identidade anterior."
-  en: "Each local user has one keypair. Generating it again rotates the previous identity."
-vpn.enrollment.current:
-  pt: "Identidade atual: {address}. A chave privada não pode ser recuperada pelo painel."
-  en: "Current identity: {address}. The private key cannot be recovered from the panel."
-vpn.enrollment.create:
-  pt: "Gerar configuração"
-  en: "Generate configuration"
-vpn.enrollment.rotate:
-  pt: "Rotacionar e gerar novamente"
-  en: "Rotate and generate again"
-vpn.enrollment.rotateConfirm:
-  pt: "A configuração atual deixará de conectar. Rotacionar a sua identidade agora?"
-  en: "Your current configuration will stop connecting. Rotate your identity now?"
-vpn.enrollment.created:
-  pt: "Identidade criada. Salve a configuração antes de fechar esta seção."
-  en: "Identity created. Save the configuration before closing this section."
-vpn.enrollment.onceTitle:
-  pt: "Exibição única — contém chave privada"
-  en: "One-time display — contains a private key"
-vpn.enrollment.onceWarning:
-  pt: "Baixe ou copie agora. Ao fechar ou recarregar a página, o painel não devolverá esta configuração nem o QR code."
-  en: "Download or copy it now. After you close or reload the page, the panel will not return this configuration or QR code."
-vpn.enrollment.download:
-  pt: "Baixar .conf"
-  en: "Download .conf"
-vpn.enrollment.copy:
-  pt: "Copiar"
-  en: "Copy"
-vpn.enrollment.close:
-  pt: "Fechar e apagar da tela"
-  en: "Close and clear from screen"
-vpn.enrollment.copied:
-  pt: "Configuração copiada."
-  en: "Configuration copied."
-vpn.enrollment.copyFailed:
-  pt: "O navegador recusou a cópia; selecione o texto manualmente."
-  en: "The browser refused clipboard access; select the text manually."
-vpn.enrollment.qrAlt:
-  pt: "QR code da configuração WireGuard"
-  en: "WireGuard configuration QR code"
-vpn.enrollment.noQR:
-  pt: "O QR code não pôde ser gerado; use o arquivo ou o texto."
-  en: "The QR code could not be generated; use the file or text."
-vpn.enrollment.vaultNote:
-  pt: "A identidade fica associada ao seu usuário e projetada em um grupo próprio do firewall."
-  en: "The identity stays tied to your user and is projected into its own firewall group."
-
-vpn.peers.title:
-  pt: "Peers e Dispositivos com Acesso VPN"
-  en: "Peers and Devices with VPN Access"
-vpn.peers.empty:
-  pt: "Nenhum usuário enrolado."
-  en: "No enrolled users."
-vpn.peer.status:
-  pt: "Status"
-  en: "Status"
-vpn.peer.online:
-  pt: "Conectado"
-  en: "Online"
-vpn.peer.offline:
-  pt: "Desconectado"
-  en: "Offline"
-vpn.peer.user:
-  pt: "Usuário / Peer"
-  en: "User / Peer"
-vpn.peer.vpnIp:
-  pt: "IP VPN"
-  en: "VPN IP"
-vpn.peer.latency:
-  pt: "Latência"
-  en: "Latency"
-vpn.peer.endpoint:
-  pt: "Endpoint Remoto"
-  en: "Remote Endpoint"
-vpn.peer.handshake:
-  pt: "Último Handshake"
-  en: "Last Handshake"
-vpn.peer.transfer:
-  pt: "Tráfego (Down / Up)"
-  en: "Traffic (Down / Up)"
-vpn.peer.neverConnected:
-  pt: "Nunca conectou"
-  en: "Never connected"
-vpn.peer.you:
-  pt: "Você"
-  en: "You"
-vpn.peer.firewallGroup:
-  pt: "grupo gerenciado no firewall"
-  en: "managed firewall group"
-vpn.peer.revoke:
-  pt: "Revogar"
-  en: "Revoke"
-vpn.peer.revokeMine:
-  pt: "Revogar minha identidade"
-  en: "Revoke my identity"
-vpn.peer.revokeConfirm:
-  pt: "Revogar o acesso VPN de {user}? A configuração instalada nesse dispositivo deixará de conectar."
-  en: "Revoke VPN access for {user}? The configuration installed on that device will stop connecting."
-vpn.peer.revoked:
-  pt: "Identidade VPN revogada."
-  en: "VPN identity revoked."
-
+# Usado pela tela de Firewall nos grupos que a VPN gerencia.
 vpn.firewall.managed:
-  pt: "Identidade e endereço gerenciados pela tela de VPN; as regras deste grupo continuam editáveis."
-  en: "Identity and address are managed on the VPN screen; this group's rules remain editable."
-
-# ─── ZTNA / Controle de Acesso por Peer ──────────────────────────────────────
-vpn.peer.access:
-  pt: "Perfil de Acesso (ZTNA)"
-  en: "Access Profile (ZTNA)"
-vpn.peer.accessFull:
-  pt: "Acesso Total"
-  en: "Full Access"
-vpn.peer.accessRestricted:
-  pt: "Restrito (ZTNA)"
-  en: "Restricted (ZTNA)"
-vpn.peer.manageAccess:
-  pt: "Perfil de Acesso"
-  en: "Access Profile"
-vpn.peer.accessModalTitle:
-  pt: "Perfil de Acesso ZTNA — {user}"
-  en: "ZTNA Access Profile — {user}"
-vpn.peer.accessModalDesc:
-  pt: "Defina o nível de privilégio de rede deste usuário na VPN."
-  en: "Define the network privilege level of this VPN user."
-vpn.peer.modeFull:
-  pt: "Acesso Total (LAN + WAN)"
-  en: "Full Access (LAN + WAN)"
-vpn.peer.modeFullDesc:
-  pt: "O usuário tem acesso livre a todas as redes e serviços alcançáveis pelo firewall (comportamento padrão)."
-  en: "The user has unrestricted access to all networks and services reachable by the firewall (default)."
-vpn.peer.modeRestricted:
-  pt: "Restrito (Zero Trust / ZTNA)"
-  en: "Restricted (Zero Trust / ZTNA)"
-vpn.peer.modeRestrictedDesc:
-  pt: "O firewall bloqueia todo o tráfego deste peer por padrão, autorizando somente os Grupos de Hosts e portas selecionados abaixo."
-  en: "The firewall drops all traffic from this peer by default, permitting only the Host Groups and ports selected below."
-vpn.peer.allowedGroupsLabel:
-  pt: "Grupos de Hosts Permitidos"
-  en: "Allowed Host Groups"
-vpn.peer.noGroupsAvailable:
-  pt: "Nenhum grupo de hosts disponível. Crie grupos na aba Firewall > Grupos de Hosts."
-  en: "No host groups available. Create groups under Firewall > Host Groups."
-vpn.peer.allowedPortsLabel:
-  pt: "Portas Permitidas (opcional)"
-  en: "Allowed Ports (optional)"
-vpn.peer.allowedPortsPlaceholder:
-  pt: "ex: 22, 80, 443, 6443 (deixe em branco para todas as portas)"
-  en: "e.g. 22, 80, 443, 6443 (leave blank for all ports)"
-vpn.peer.allowedPortsHelp:
-  pt: "Lista de portas separadas por vírgula. Se vazio, todas as portas dos hosts permitidos são aceitas."
-  en: "Comma-separated port list. If blank, all ports on allowed hosts will be permitted."
-vpn.peer.saveAccess:
-  pt: "Salvar Perfil de Acesso"
-  en: "Save Access Profile"
-vpn.peer.accessSaved:
-  pt: "Perfil de acesso ZTNA atualizado com sucesso."
-  en: "ZTNA access profile updated successfully."
-
-
-# Perfil de túnel por peer: o que a máquina do usuário manda para dentro do
-# túnel. É roteamento no cliente, e não controle de acesso — quem garante o que
-# o peer alcança é o perfil ZTNA acima, aplicado em nftables.
-vpn.peer.tunnelTitle:
-  pt: "Tráfego pelo túnel"
-  en: "Traffic through the tunnel"
-vpn.peer.tunnelDesc:
-  pt: "Decide o que o dispositivo envia pelo túnel. Não substitui o perfil de acesso: quem garante o que o peer alcança é o firewall."
-  en: "Decides what the device sends through the tunnel. It does not replace the access profile: the firewall is what enforces what the peer can reach."
-vpn.peer.tunnelFull:
-  pt: "Todo o tráfego"
-  en: "All traffic"
-vpn.peer.tunnelFullDesc:
-  pt: "Tudo sai pelo firewall, inclusive a navegação. Traz filtragem, DNS, QoS e visibilidade para o dispositivo remoto — e consome a banda do link."
-  en: "Everything leaves through the firewall, browsing included. Brings filtering, DNS, QoS and visibility to the remote device — and uses the link's bandwidth."
-vpn.peer.tunnelFullHint:
-  pt: "AllowedIPs = 0.0.0.0/0"
-  en: "AllowedIPs = 0.0.0.0/0"
-vpn.peer.tunnelSplit:
-  pt: "Só as redes liberadas"
-  en: "Only the allowed networks"
-vpn.peer.tunnelSplitDesc:
-  pt: "Apenas a rede da VPN e os destinos permitidos entram no túnel. O resto sai pela Internet local do dispositivo."
-  en: "Only the VPN network and the allowed destinations enter the tunnel. Everything else uses the device's own Internet."
-vpn.peer.extraRoutesLabel:
-  pt: "Redes adicionais (opcional)"
-  en: "Additional networks (optional)"
-vpn.peer.extraRoutesPlaceholder:
-  pt: "ex: 10.0.1.0/24, 192.168.50.10"
-  en: "e.g. 10.0.1.0/24, 192.168.50.10"
-vpn.peer.extraRoutesHelp:
-  pt: "IPs ou CIDRs separados por vírgula, somados aos hosts dos grupos liberados. A rede da VPN entra sempre."
-  en: "Comma-separated IPs or CIDRs, added to the hosts of the allowed groups. The VPN network is always included."
-vpn.peer.mtuLabel:
-  pt: "MTU (opcional)"
-  en: "MTU (optional)"
-vpn.peer.mtuPlaceholder:
-  pt: "em branco = padrão do cliente; típico 1420"
-  en: "blank = client default; 1420 is typical"
-vpn.peer.mtuHelp:
-  pt: "Entre 1280 e 9000. Útil quando o caminho tem MTU menor e conexões grandes travam sem erro."
-  en: "Between 1280 and 9000. Useful when the path has a smaller MTU and large transfers stall with no error."
-vpn.peer.tunnelReissueNote:
-  pt: "O WireGuard não envia rotas para um cliente já configurado: quem tiver a configuração antiga precisa baixá-la de novo."
-  en: "WireGuard does not push routes to an already configured client: anyone holding the old configuration must download it again."
-vpn.peer.configStale:
-  pt: "Config desatualizada"
-  en: "Config out of date"
-vpn.peer.configStaleHint:
-  pt: "O perfil mudou depois que este usuário baixou a configuração. Ele precisa baixá-la novamente."
-  en: "The profile changed after this user downloaded the configuration. They need to download it again."
-vpn.enrollment.reissue:
-  pt: "Baixar configuração novamente"
-  en: "Download configuration again"
-vpn.enrollment.reissueHint:
-  pt: "Gera o arquivo com o perfil atual, mantendo a mesma chave — os dispositivos já configurados continuam funcionando."
-  en: "Produces the file with the current profile, keeping the same key — devices already configured keep working."
-vpn.enrollment.reissued:
-  pt: "Configuração reemitida com o perfil atual. A chave não foi alterada."
-  en: "Configuration reissued with the current profile. The key was not changed."
-vpn.enrollment.staleWarning:
-  pt: "O perfil do seu túnel mudou depois da última vez que você baixou a configuração. Baixe novamente para receber as rotas novas."
-  en: "Your tunnel profile changed after the last time you downloaded the configuration. Download it again to get the new routes."
+  pt: "Grupo gerenciado pela tela de VPN: o acesso de cada pessoa se edita lá."
+  en: "Group managed by the VPN screen: each person's access is edited there."

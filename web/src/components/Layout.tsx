@@ -76,6 +76,18 @@ const navGroups: NavGroup[] = [
 
 const allItems = navGroups.flatMap((g) => g.items);
 
+// A primeira tela do menu que a pessoa pode abrir. É para onde vai quem entra
+// sem permissão de ver o painel principal — o papel "Usuário VPN", por exemplo,
+// caía num dashboard vazio de erros.
+export function firstAllowedPath(can: (perm: string) => boolean): string | null {
+  for (const group of navGroups) {
+    for (const item of group.items) {
+      if (item.perm.some((p) => can(p))) return item.to;
+    }
+  }
+  return null;
+}
+
 export default function Layout() {
   const { user, logout, can, permsLoaded } = useAuth();
   const { isSimple, mode, setMode } = useUIMode();
