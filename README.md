@@ -1,5 +1,27 @@
 # LinkGuard Cloud
 
+O **LinkGuard Cloud** é o gateway de uma conta de nuvem: NAT de saída para as
+instâncias privadas, firewall, VPN WireGuard por pessoa e visibilidade do
+tráfego de quem passa, tudo gerenciado por um painel web. Roda numa VM de placa
+única (OCI, e o desenho vale para outras nuvens) e é dono da máquina: instalou,
+o NAT funciona; o resto se configura pela interface.
+
+Nasceu do [LinkGuard FW](https://github.com/giovanibalarini/linkguard-fw), o
+firewall on-prem de múltiplos links, em 24/09/2026. O histórico até ali é o
+mesmo; a partir daqui os dois seguem separados, porque quase nada do on-prem
+(multi-WAN, failover, Kea, SMART) existe numa VM de nuvem.
+
+### Instalar
+
+```bash
+sudo apt install ./linkguard-cloud_<versão>_<arq>.deb
+```
+
+Numa máquina que já roda o `linkguard-fw`, o pacote o substitui: copia o estado
+de `/var/lib/linkguard-fw` e `/etc/linkguard-fw` para os caminhos novos (o
+original fica onde estava), liga o serviço `linkguard-cloud` e mantém as regras
+nftables e a VPN de pé durante a troca.
+
 ## Project Motivation
 
 **🇧🇷 Português**
