@@ -1,0 +1,665 @@
+{
+  "flutuante": [
+    {
+      "chave": "b:estado",
+      "zona": "flutuante",
+      "tipo": "implicita",
+      "regra": {
+        "id": "b:estado",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": false,
+        "descricao": "Conexões estabelecidas e relacionadas"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.implicita.estado",
+      "nft": [
+        {
+          "chain": "input",
+          "texto": "ct state established,related counter accept comment \"b:estado\""
+        },
+        {
+          "chain": "forward",
+          "texto": "ct state established,related counter accept comment \"b:estado\""
+        }
+      ]
+    },
+    {
+      "chave": "b:lo",
+      "zona": "flutuante",
+      "tipo": "implicita",
+      "regra": {
+        "id": "b:lo",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": false,
+        "descricao": "Tráfego na interface de loopback"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.implicita.lo",
+      "nft": [
+        {
+          "chain": "input",
+          "texto": "iif \"lo\" counter accept comment \"b:lo\""
+        }
+      ]
+    },
+    {
+      "chave": "b:nd",
+      "zona": "flutuante",
+      "tipo": "implicita",
+      "regra": {
+        "id": "b:nd",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": false,
+        "descricao": "Descoberta de vizinhança IPv6 (ND)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.implicita.nd",
+      "nft": [
+        {
+          "chain": "input",
+          "texto": "icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } counter accept comment \"b:nd\""
+        }
+      ]
+    },
+    {
+      "chave": "b:dhcp",
+      "zona": "flutuante",
+      "tipo": "implicita",
+      "regra": {
+        "id": "b:dhcp",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "udp",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": "port",
+          "value": "68"
+        },
+        "registrar": false,
+        "descricao": "Cliente DHCP IPv4"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.implicita.dhcp",
+      "nft": [
+        {
+          "chain": "input",
+          "texto": "udp sport 67 udp dport 68 counter accept comment \"b:dhcp\""
+        }
+      ]
+    },
+    {
+      "chave": "b:dhcp6",
+      "zona": "flutuante",
+      "tipo": "implicita",
+      "regra": {
+        "id": "b:dhcp6",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "udp",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": "port",
+          "value": "546"
+        },
+        "registrar": false,
+        "descricao": "Cliente DHCP IPv6"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.implicita.dhcp6",
+      "nft": [
+        {
+          "chain": "input",
+          "texto": "udp dport 546 counter accept comment \"b:dhcp6\""
+        }
+      ]
+    },
+    {
+      "chave": "s:hosts-bloqueados",
+      "zona": "flutuante",
+      "tipo": "travada",
+      "regra": {
+        "id": "s:hosts-bloqueados",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Máquinas com bloqueio ativo"
+      },
+      "editar_em": "maquinas",
+      "desc_chave": "fw.travada.hosts_bloqueados",
+      "nft": [
+        {
+          "chain": "forward",
+          "texto": "ip saddr @blocked_hosts limit rate 10/second log prefix \"lg:s:hosts \""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip saddr @blocked_hosts counter drop comment \"s:hosts-bloqueados\""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip daddr @blocked_hosts limit rate 10/second log prefix \"lg:s:hosts \""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip daddr @blocked_hosts counter drop comment \"s:hosts-bloqueados\""
+        }
+      ]
+    },
+    {
+      "chave": "s:destinos-bloqueados",
+      "zona": "flutuante",
+      "tipo": "travada",
+      "regra": {
+        "id": "s:destinos-bloqueados",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Destinos com bloqueio ativo"
+      },
+      "editar_em": "destinos",
+      "desc_chave": "fw.travada.destinos_bloqueados",
+      "nft": [
+        {
+          "chain": "forward",
+          "texto": "ip daddr @blocklist limit rate 10/second log prefix \"lg:s:destinos \""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip daddr @blocklist counter drop comment \"s:destinos-bloqueados\""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip saddr @blocklist limit rate 10/second log prefix \"lg:s:destinos \""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip saddr @blocklist counter drop comment \"s:destinos-bloqueados\""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip daddr @dom_blocked limit rate 10/second log prefix \"lg:s:destinos \""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip daddr @dom_blocked counter drop comment \"s:destinos-bloqueados\""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip6 daddr @dom_blocked6 limit rate 10/second log prefix \"lg:s:destinos \""
+        },
+        {
+          "chain": "forward",
+          "texto": "ip6 daddr @dom_blocked6 counter drop comment \"s:destinos-bloqueados\""
+        }
+      ]
+    },
+    {
+      "chave": "s:ping",
+      "zona": "flutuante",
+      "tipo": "travada",
+      "regra": {
+        "id": "s:ping",
+        "zona": "flutuante",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "icmp",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": false,
+        "descricao": "Ping (ICMP echo-request com limite de taxa)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.travada.ping",
+      "nft": [
+        {
+          "chain": "zona_flut_in",
+          "texto": "icmp type echo-request limit rate 5/second counter accept comment \"s:ping\""
+        }
+      ]
+    }
+  ],
+  "internet": [
+    {
+      "chave": "s:wireguard",
+      "zona": "internet",
+      "tipo": "travada",
+      "regra": {
+        "id": "s:wireguard",
+        "zona": "internet",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "udp",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": "port",
+          "value": "51820"
+        },
+        "registrar": false,
+        "descricao": "Túnel WireGuard VPN"
+      },
+      "editar_em": "vpn",
+      "desc_chave": "fw.travada.wireguard",
+      "desc_vars": {
+        "porta": "51820"
+      },
+      "nft": [
+        {
+          "chain": "zona_inet_in",
+          "texto": "udp dport 51820 counter accept comment \"s:wireguard\""
+        }
+      ]
+    },
+    {
+      "chave": "d:internet:in",
+      "zona": "internet",
+      "tipo": "padrao",
+      "regra": {
+        "id": "d:internet:in",
+        "zona": "internet",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Regra padrão da zona Internet (entrada)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.padrao.internet_in",
+      "nft": [
+        {
+          "chain": "zona_inet_in",
+          "texto": "limit rate 10/second log prefix \"lg:d:internet:in \""
+        },
+        {
+          "chain": "zona_inet_in",
+          "texto": "counter drop comment \"d:internet:in\""
+        }
+      ]
+    },
+    {
+      "chave": "d:internet:fwd",
+      "zona": "internet",
+      "tipo": "padrao",
+      "regra": {
+        "id": "d:internet:fwd",
+        "zona": "internet",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Regra padrão da zona Internet (passagem)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.padrao.internet_fwd",
+      "nft": [
+        {
+          "chain": "zona_inet_fwd",
+          "texto": "limit rate 10/second log prefix \"lg:d:internet:fwd \""
+        },
+        {
+          "chain": "zona_inet_fwd",
+          "texto": "counter drop comment \"d:internet:fwd\""
+        }
+      ]
+    }
+  ],
+  "vcn": [
+    {
+      "chave": "s:antibloqueio:vcn",
+      "zona": "vcn",
+      "tipo": "travada",
+      "regra": {
+        "id": "s:antibloqueio:vcn",
+        "zona": "vcn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "tcp",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": "self"
+        },
+        "porta_destino": {
+          "kind": "alias",
+          "value": "sys:gerencia"
+        },
+        "registrar": false,
+        "descricao": "Anti-bloqueio VCN (SSH e painel)"
+      },
+      "editar_em": "ajustes",
+      "desc_chave": "fw.travada.antibloqueio_vcn",
+      "nft": [
+        {
+          "chain": "zona_vcn_in",
+          "texto": "tcp dport @fwp_gerencia counter accept comment \"s:antibloqueio:vcn\""
+        }
+      ]
+    },
+    {
+      "chave": "r:uuid-regra-log",
+      "zona": "vcn",
+      "tipo": "admin",
+      "regra": {
+        "id": "uuid-regra-log",
+        "zona": "vcn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "tcp",
+        "origem": {
+          "kind": "any"
+        },
+        "destino": {
+          "kind": "addr",
+          "value": "10.0.2.0/24"
+        },
+        "porta_destino": {
+          "kind": "port",
+          "value": "80"
+        },
+        "agendamento_id": "sched-comercial",
+        "registrar": true,
+        "descricao": "Web com log e horário"
+      },
+      "editar_em": "",
+      "desc_chave": "",
+      "nft": [
+        {
+          "chain": "zona_vcn_fwd",
+          "texto": "meta day { \"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\" } meta hour \"08:00\"-\"18:00\" ip daddr 10.0.2.0/24 tcp dport 80 limit rate 10/second log prefix \"lg:r:uuidregralog \""
+        },
+        {
+          "chain": "zona_vcn_fwd",
+          "texto": "meta day { \"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\" } meta hour \"08:00\"-\"18:00\" ip daddr 10.0.2.0/24 tcp dport 80 counter accept comment \"r:uuid-regra-log\""
+        }
+      ]
+    },
+    {
+      "chave": "d:vcn:in",
+      "zona": "vcn",
+      "tipo": "padrao",
+      "regra": {
+        "id": "d:vcn:in",
+        "zona": "vcn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Regra padrão da zona VCN (entrada)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.padrao.vcn_in",
+      "nft": [
+        {
+          "chain": "zona_vcn_in",
+          "texto": "limit rate 10/second log prefix \"lg:d:vcn:in \""
+        },
+        {
+          "chain": "zona_vcn_in",
+          "texto": "counter drop comment \"d:vcn:in\""
+        }
+      ]
+    },
+    {
+      "chave": "d:vcn:fwd",
+      "zona": "vcn",
+      "tipo": "padrao",
+      "regra": {
+        "id": "d:vcn:fwd",
+        "zona": "vcn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": false,
+        "descricao": "Regra padrão da zona VCN (passagem)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.padrao.vcn_fwd",
+      "nft": [
+        {
+          "chain": "zona_vcn_fwd",
+          "texto": "counter accept comment \"d:vcn:fwd\""
+        }
+      ]
+    }
+  ],
+  "vpn": [
+    {
+      "chave": "s:dns-vpn",
+      "zona": "vpn",
+      "tipo": "travada",
+      "regra": {
+        "id": "s:dns-vpn",
+        "zona": "vpn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "accept",
+        "proto": "tcp/udp",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": "self"
+        },
+        "porta_destino": {
+          "kind": "port",
+          "value": "53"
+        },
+        "registrar": false,
+        "descricao": "DNS para quem está na VPN"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.travada.dns_vpn",
+      "nft": [
+        {
+          "chain": "zona_vpn_in",
+          "texto": "meta l4proto { tcp, udp } th dport 53 counter accept comment \"s:dns-vpn\""
+        }
+      ]
+    },
+    {
+      "chave": "d:vpn:in",
+      "zona": "vpn",
+      "tipo": "padrao",
+      "regra": {
+        "id": "d:vpn:in",
+        "zona": "vpn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Regra padrão da zona VPN (entrada)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.padrao.vpn_in",
+      "nft": [
+        {
+          "chain": "zona_vpn_in",
+          "texto": "limit rate 10/second log prefix \"lg:d:vpn:in \""
+        },
+        {
+          "chain": "zona_vpn_in",
+          "texto": "counter drop comment \"d:vpn:in\""
+        }
+      ]
+    },
+    {
+      "chave": "d:vpn:fwd",
+      "zona": "vpn",
+      "tipo": "padrao",
+      "regra": {
+        "id": "d:vpn:fwd",
+        "zona": "vpn",
+        "posicao": 0,
+        "ativa": true,
+        "acao": "drop",
+        "proto": "",
+        "origem": {
+          "kind": ""
+        },
+        "destino": {
+          "kind": ""
+        },
+        "porta_destino": {
+          "kind": ""
+        },
+        "registrar": true,
+        "descricao": "Regra padrão da zona VPN (passagem)"
+      },
+      "editar_em": "",
+      "desc_chave": "fw.padrao.vpn_fwd",
+      "nft": [
+        {
+          "chain": "zona_vpn_fwd",
+          "texto": "limit rate 10/second log prefix \"lg:d:vpn:fwd \""
+        },
+        {
+          "chain": "zona_vpn_fwd",
+          "texto": "counter drop comment \"d:vpn:fwd\""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+add table inet linkguard
+add set inet linkguard blocklist { type ipv4_addr; flags interval; }
+add set inet linkguard blocked_hosts { type ipv4_addr; }
+add set inet linkguard dom_blocked { type ipv4_addr; flags timeout; timeout 1h; size 8192; }
+add set inet linkguard dom_blocked6 { type ipv6_addr; flags timeout; timeout 1h; size 8192; }
+add set inet linkguard abusers { type ipv4_addr; flags dynamic,timeout; timeout 1h; }
+add set inet linkguard fwa_vcn { type ipv4_addr; flags interval; }
+flush set inet linkguard fwa_vcn
+add set inet linkguard fwa_vpn { type ipv4_addr; flags interval; }
+flush set inet linkguard fwa_vpn
+add set inet linkguard fwp_gerencia { type inet_service; flags interval; }
+flush set inet linkguard fwp_gerencia
+add element inet linkguard fwp_gerencia { 22, 9997 }
+
+add chain inet linkguard zona_flut_in
+flush chain inet linkguard zona_flut_in
+add rule inet linkguard zona_flut_in icmp type echo-request limit rate 5/second counter accept comment "s:ping"
+add chain inet linkguard zona_flut_fwd
+flush chain inet linkguard zona_flut_fwd
+
+add chain inet linkguard zona_inet_in
+flush chain inet linkguard zona_inet_in
+add rule inet linkguard zona_inet_in counter drop comment "d:internet:in"
+add chain inet linkguard zona_inet_fwd
+flush chain inet linkguard zona_inet_fwd
+add rule inet linkguard zona_inet_fwd counter drop comment "d:internet:fwd"
+
+add chain inet linkguard zona_vcn_in
+flush chain inet linkguard zona_vcn_in
+add rule inet linkguard zona_vcn_in tcp dport @fwp_gerencia counter accept comment "s:antibloqueio:vcn"
+add rule inet linkguard zona_vcn_in counter drop comment "d:vcn:in"
+add chain inet linkguard zona_vcn_fwd
+flush chain inet linkguard zona_vcn_fwd
+add rule inet linkguard zona_vcn_fwd counter accept comment "d:vcn:fwd"
+
+add chain inet linkguard zona_vpn_in
+flush chain inet linkguard zona_vpn_in
+add rule inet linkguard zona_vpn_in counter drop comment "d:vpn:in"
+add chain inet linkguard zona_vpn_fwd
+flush chain inet linkguard zona_vpn_fwd
+add rule inet linkguard zona_vpn_fwd counter drop comment "d:vpn:fwd"
+
+add chain inet linkguard input { type filter hook input priority filter; policy accept; }
+flush chain inet linkguard input
+add rule inet linkguard input ct state established,related counter accept comment "b:estado"
+add rule inet linkguard input iif "lo" counter accept comment "b:lo"
+add rule inet linkguard input icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } counter accept comment "b:nd"
+add rule inet linkguard input udp sport 67 udp dport 68 counter accept comment "b:dhcp"
+add rule inet linkguard input udp dport 546 counter accept comment "b:dhcp6"
+add rule inet linkguard input jump zona_flut_in
+add rule inet linkguard input iifname "linkguard" jump zona_vpn_in
+add rule inet linkguard input ip saddr @fwa_vcn jump zona_vcn_in
+add rule inet linkguard input jump zona_inet_in
+
+add chain inet linkguard forward { type filter hook forward priority filter; policy accept; }
+flush chain inet linkguard forward
+add rule inet linkguard forward ip saddr @blocked_hosts counter drop comment "s:hosts-bloqueados"
+add rule inet linkguard forward ip daddr @blocked_hosts counter drop comment "s:hosts-bloqueados"
+add rule inet linkguard forward ip daddr @blocklist counter drop comment "s:destinos-bloqueados"
+add rule inet linkguard forward ip saddr @blocklist counter drop comment "s:destinos-bloqueados"
+add rule inet linkguard forward ip daddr @dom_blocked counter drop comment "s:destinos-bloqueados"
+add rule inet linkguard forward ip6 daddr @dom_blocked6 counter drop comment "s:destinos-bloqueados"
+add rule inet linkguard forward ct state established,related counter accept comment "b:estado"
+add rule inet linkguard forward jump zona_flut_fwd
+add rule inet linkguard forward iifname "linkguard" jump zona_vpn_fwd
+add rule inet linkguard forward ip saddr @fwa_vcn jump zona_vcn_fwd
+add rule inet linkguard forward jump zona_inet_fwd
+
+add chain inet linkguard prerouting_dnat { type nat hook prerouting priority dstnat; policy accept; }
+flush chain inet linkguard prerouting_dnat
