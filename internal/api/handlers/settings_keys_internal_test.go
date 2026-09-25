@@ -24,7 +24,6 @@ func TestSettingsKeysMatchRestoreLiterals(t *testing.T) {
 	for _, tc := range []struct{ got, want, quem string }{
 		{netsvcCfgKey, "netsvc_config", "knownSettingsValidators"},
 		{netsvcApplyStatusKey, "netsvc_last_apply", "machineLocalSettingKeys"},
-		{ntpCfgKey, "ntp_config", "knownSettingsValidators"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("chave = %q, esperava %q — internal/backup/restore.go repete este literal em %s e precisa mudar junto",

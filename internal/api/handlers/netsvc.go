@@ -15,7 +15,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
-	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
 	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
@@ -99,7 +98,7 @@ type applyStatus struct {
 // "Aplicar agora" button.
 func (h *NetsvcHandler) doReload(ctx context.Context) error {
 	bl, _ := h.db.ListDNSBlocklist()
-	res, err := h.provider.ReloadConfigs(ctx, h.getConfig(), h.reservationsForProvider(), bl, h.ntpServerOption())
+	res, err := h.provider.ReloadConfigs(ctx, h.getConfig(), h.reservationsForProvider(), bl, "")
 	st := applyStatus{OK: err == nil, At: time.Now().Unix()}
 	if len(res.Warnings) > 0 {
 		// Applied, but not everything the admin configured got through —
@@ -262,34 +261,6 @@ func (h *NetsvcHandler) saveConfig(c netsvc.Config) error {
 		return err
 	}
 	return h.db.SetSetting(netsvcCfgKey, string(b))
-}
-
-// ntpServerOption returns the firewall's LAN IP to advertise as DHCP
-// option 42 (ntp-servers) when "serve NTP to the LAN" is genuinely in
-// effect — ServeLAN on AND at least one network actually allowed — or ""
-// otherwise. The exact input keaunbound.GenerateKeaConfig expects. Reads
-// internal/timesync's persisted config directly (same package as ntp.go,
-// which owns ntpCfgKey) rather than either package importing the other's
-// Config type: the generator stays a pure function of its inputs, and
-// neither handler owns the other's settings key — see
-// docs/superpowers/specs/2026-08-11-ntp-server-for-lan-design.md §5.
-//
-// Checking AllowedNetworks too (not just ServeLAN) matters: the spec's
-// explicit "serving on, allowed list empty" state means chrony's own
-// `allow` directives are empty and chronyd refuses every client. Handing
-// that dead address to a DHCP client via option 42 is worse than not
-// advertising at all — a client that feeds it straight to
-// systemd-timesyncd (which, unlike chrony, has no separate pool fallback)
-// ends up with exactly one permanently unreachable time source.
-func (h *NetsvcHandler) ntpServerOption() string {
-	var ntpCfg timesync.Config
-	if raw, _ := h.db.GetSetting(ntpCfgKey); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &ntpCfg)
-	}
-	if !ntpCfg.ServeLAN || len(ntpCfg.AllowedNetworks) == 0 {
-		return ""
-	}
-	return h.getConfig().Gateway
 }
 
 func (h *NetsvcHandler) reservationsForProvider() []netsvc.Reservation {
@@ -601,7 +572,7 @@ func (h *NetsvcHandler) blocklist(w http.ResponseWriter, r *http.Request, add bo
 // Preview returns the rendered backend config files (without applying).
 func (h *NetsvcHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	bl, _ := h.db.ListDNSBlocklist()
-	files, err := h.provider.GenerateConfigs(h.getConfig(), h.reservationsForProvider(), bl, h.ntpServerOption())
+	files, err := h.provider.GenerateConfigs(h.getConfig(), h.reservationsForProvider(), bl, "")
 	if err != nil {
 		// A config that cannot be rendered cannot be previewed either —
 		// showing "the rest of it" would be showing a file that will never

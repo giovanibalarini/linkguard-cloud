@@ -173,48 +173,6 @@ func TestBuildServicesWiresThePersistGuard(t *testing.T) {
 	}
 }
 
-// TestBuildServicesKeepsTheNTPSourceItGaveToTheService é a outra metade, medida
-// do mesmo jeito: a fonte de estado do NTP que buildServices entrega ao Service
-// tem que continuar ligada depois da montagem.
-//
-// Sem executor falso não dá para ler os comandos emitidos, então o que se mede
-// é a fonte em si — s.ntpInputState guarda a função, e é ela que a reconciliação
-// da chain input consulta. Se alguém a trocar por um retorno vazio que compila
-// igual, este teste pega.
-//
-// É menos do que boot_wiring_runtime_test.go mede, e é sobre o objeto de
-// produção, que é o que falta lá.
-//
-// LACUNA CONHECIDA: a fonte de GRUPOS (s.nftSvc) não tem teste equivalente
-// neste arquivo. Prová-la exige um grupo de escopo input criado no banco depois
-// da montagem e um executor falso para ler o jump emitido.
-func TestBuildServicesKeepsTheNTPSourceItGaveToTheService(t *testing.T) {
-	s := buildTestServices(t)
-
-	if s.ntpInputState == nil {
-		t.Fatal("buildServices devolveu um *services sem a fonte do estado do NTP: a reconciliação de boot (startBackground) precisa da MESMA fonte que foi entregue a SetInputChainSources, senão as duas passam a poder discordar sobre o que está configurado")
-	}
-
-	// A chave nunca gravada: "servir NTP desligado", sem erro.
-	networks, serving, err := s.ntpInputState()
-	if err != nil || serving || len(networks) != 0 {
-		t.Fatalf("pré-condição: banco novo tinha que ser NTP desligado sem erro, veio %v/%v/%v", networks, serving, err)
-	}
-
-	// E ela lê o banco DESTE *services, em runtime — não uma cópia congelada
-	// na montagem.
-	if err := s.db.SetSetting("ntp_config", `{"serve_lan":true,"allowed_networks":["192.168.3.0/24"]}`); err != nil {
-		t.Fatalf("gravar ntp_config: %v", err)
-	}
-	networks, serving, err = s.ntpInputState()
-	if err != nil {
-		t.Fatalf("ler o estado do NTP: %v", err)
-	}
-	if !serving || len(networks) != 1 || networks[0] != "192.168.3.0/24" {
-		t.Errorf("a fonte do NTP não está lendo o banco em runtime: %v/%v", networks, serving)
-	}
-}
-
 func TestBuildServicesUsesTheSameQosServiceForAPIAndBoot(t *testing.T) {
 	s := buildTestServices(t)
 	if s.qosSvc == nil {

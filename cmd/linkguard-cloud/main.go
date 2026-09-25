@@ -56,7 +56,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/sysprep"
 	"github.com/giovanibalarini/linkguard-cloud/internal/system"
-	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
 	"github.com/giovanibalarini/linkguard-cloud/internal/tlscert"
 	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
@@ -84,38 +83,6 @@ const captureTimeout = 3 * time.Minute
 
 func main() {
 	os.Exit(run())
-}
-
-// ntpInputStateFrom lê o estado de "servir NTP para a LAN" da chave de
-// settings "ntp_config" (dona: internal/api/handlers.NTPHandler) e é a ÚNICA
-// leitura dela fora da camada HTTP: alimenta tanto a fonte ligada em
-// nftables.SetInputChainSources quanto a reconciliação do boot, para que as
-// duas nunca discordem sobre o que está configurado.
-//
-// NENHUM dos dois erros pode ser engolido (I-1 da revisão da Fase C2).
-// db.GetSetting devolve ("", nil) só quando a chave não existe; qualquer outra
-// falha (banco travado, IO) é erro de verdade, e um `_` ali transformava "não
-// consegui ler" em "servir NTP está desligado" — o que faria a passada
-// seguinte de ReconcileGroups dar flush na chain input e reescrevê-la só com
-// os jumps, apagando do firewall vivo as duas linhas de udp/123 enquanto o
-// painel continua mostrando o toggle ligado e o apply é reportado ok. JSON
-// corrompido tem exatamente o mesmo efeito, e por isso também é erro.
-//
-// Recebe a leitura por parâmetro (e não o *storage.DB) para que o teste possa
-// exercitar as quatro saídas sem inventar um banco quebrado.
-func ntpInputStateFrom(getSetting func(string) (string, error)) ([]string, bool, error) {
-	raw, err := getSetting("ntp_config")
-	if err != nil {
-		return nil, false, fmt.Errorf("ler a configuração de NTP do banco: %w", err)
-	}
-	if raw == "" {
-		return nil, false, nil // nunca configurado: servir NTP nasce desligado
-	}
-	var c timesync.Config
-	if err := json.Unmarshal([]byte(raw), &c); err != nil {
-		return nil, false, fmt.Errorf("interpretar a configuração de NTP gravada: %w", err)
-	}
-	return c.AllowedNetworks, c.ServeLAN, nil
 }
 
 // anyWANIsDHCP diz se alguma interface gerenciada pega endereço por DHCP.
@@ -540,7 +507,10 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	//
 	// O erro de leitura viaja junto e NÃO vira "servir NTP está desligado" —
 	// ver ntpInputStateFrom.
-	ntpInputState := func() ([]string, bool, error) { return ntpInputStateFrom(db.GetSetting) }
+	// A versão de nuvem não serve hora para a rede: a Oracle entrega em
+	// 169.254.169.254. A fonte de NTP da chain input segue ligada, sempre
+	// desligada, até o redesenho do firewall tirar o NTP de dentro do nftables.
+	ntpInputState := func() ([]string, bool, error) { return nil, false, nil }
 	nftSvc.SetInputChainSources(frSvc.StoredGroups, ntpInputState)
 	// E a guarda do /etc/nftables.conf (I-1 da revisão final da Fase C2):
 	// enquanto houver uma mudança aguardando confirmação, o ruleset vivo NÃO vai
@@ -989,7 +959,7 @@ func replyRoutesDe(caminhos []links.WANPath) []routes.ReplyRoute {
 // para pegar.
 func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	db := s.db
-	exec, pkgExec := s.exec, s.pkgExec
+	pkgExec := s.pkgExec
 	frSvc, nftSvc := s.frSvc, s.nftSvc
 	linkSvc, routeSvc, balancerSvc := s.linkSvc, s.routeSvc, s.balancerSvc
 	trafficSvc, keaSvc, alertSvc := s.trafficSvc, s.keaSvc, s.alertSvc
@@ -1431,10 +1401,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 		// Enable conntrack byte accounting so per-host traffic (top talkers) can be
 		// computed; without it /proc/net/nf_conntrack has no byte counters.
 		trafficSvc.EnsureAccounting()
-
-		// Enable NTP time sync (chrony) if it's installed — LinkGuard owns this
-		// the same way it owns the three prerequisites above.
-		timesync.EnsureEnabled(ctx, exec)
 
 		// Relax /etc/kea's directory permissions so DHCP config validation/apply
 		// doesn't fail under AppArmor (see EnsureKeaDirReadable's doc comment).

@@ -56,7 +56,6 @@ const CHAIN_LABELS: Record<string, string> = {
 // ganhou aba própria. Os links seguem os painéis, não o nome da chain que
 // eles ainda dividem com user_rules.
 const OWNER_LINKS: Record<string, { to?: string; tab?: 'groups' | 'steering' | 'portforward' }> = {
-  ntp: { to: '/ntp' },
   nat: { to: '/links' },
   wan_steering: { tab: 'steering' },
   blocklist: { tab: 'groups' },

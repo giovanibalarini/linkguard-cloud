@@ -178,19 +178,6 @@ var Entries = []Entry{
 		Why: "config do DNS; mesma razão do /etc/kea",
 	},
 	{
-		// Mesma armadilha do /etc/kea, reproduzida na VM com o serviço no ar
-		// desde antes do chrony existir na máquina:
-		//
-		//   # nsenter -t $(pidof linkguard-cloud) -m -- \
-		//       sh -c 'echo > /etc/chrony/conf.d/linkguard.conf'
-		//   sh: cannot create ...: Read-only file system
-		//
-		// O erro chegava ao last_apply da tela de NTP sem nem a dica de
-		// reiniciar o serviço (SandboxHint) que o caminho do DHCP/DNS tem.
-		Path: "/etc/chrony/conf.d", Dir: true, Mode: 0o755,
-		Why: "drop-in do NTP; o chrony é instalado sob demanda e o diretório precisa existir desde o start",
-	},
-	{
 		// Está na unidade SEM o prefixo `-` (é o sysctl drop-in do
 		// conntrack accounting) e não era criado por ninguém: vinha de
 		// graça do pacote procps. Mesma classe de risco do
@@ -263,8 +250,7 @@ func Paths() []string {
 // SandboxHint turns "cannot write there" into something the admin can act
 // on, and is shared by every feature that writes into /etc: the likely cause
 // is specific and non-obvious, and the sentence is identical whether the
-// path is /etc/kea (DHCP), /etc/unbound/unbound.conf.d (DNS) or
-// /etc/chrony/conf.d (NTP).
+// path is /etc/kea (DHCP) or /etc/unbound/unbound.conf.d (DNS).
 //
 // LinkGuard runs under ProtectSystem=strict and systemd builds the unit's
 // mount namespace when the service STARTS — a directory that did not exist

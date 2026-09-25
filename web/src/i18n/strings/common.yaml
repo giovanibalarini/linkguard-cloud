@@ -37,9 +37,6 @@ nav.dhcp:
 nav.dns:
   pt: "DNS"
   en: "DNS"
-nav.ntp:
-  pt: "NTP"
-  en: "NTP"
 nav.interfaces:
   pt: "Interfaces"
   en: "Interfaces"

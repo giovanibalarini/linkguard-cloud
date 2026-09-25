@@ -16,7 +16,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
-	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
 	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
@@ -73,7 +72,6 @@ var ErrLockedOut = errors.New("muitas tentativas com senha incorreta")
 // for why that's a deliberate choice, not an oversight.
 var knownSettingsValidators = map[string]func(raw string) error{
 	netsvcCfgKey:          validateNetsvcConfigRestore,
-	ntpCfgKey:             validateNTPConfigRestore,
 	monitoringSettingsKey: validateMonitoringConfigRestore,
 }
 
@@ -139,7 +137,6 @@ var machineLocalSettingKeys = map[string]bool{
 const (
 	netsvcCfgKey          = "netsvc_config"
 	netsvcApplyStatusKey  = "netsvc_last_apply"
-	ntpCfgKey             = "ntp_config"
 	monitoringSettingsKey = "monitoring"
 )
 
@@ -180,31 +177,6 @@ func validateNetsvcConfigRestore(raw string) error {
 		if u != "" && net.ParseIP(u) == nil {
 			return fmt.Errorf("netsvc_config: upstream inválido: %q", u)
 		}
-	}
-	return nil
-}
-
-// validateNTPConfigRestore parses an ntp_config settings blob and runs it
-// through the same checks NTPHandler.UpdateNTPConfig applies (see ntp.go):
-// validate.NTPServer per server, timesync.ValidateAllowedNetworks for the
-// list — including its own "no open wildcard" guard. Timezone is
-// deliberately NOT validated here: UpdateNTPConfig itself accepts it as
-// free text today (input-validation-audit.md finding #12, a lower-severity,
-// separate gap this fix does not close) — mirroring "the same validation
-// the API applies" means mirroring that gap too, not inventing a new,
-// stricter rule restore alone would enforce.
-func validateNTPConfigRestore(raw string) error {
-	var cfg timesync.Config
-	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return fmt.Errorf("ntp_config: JSON inválido: %w", err)
-	}
-	for _, srv := range cfg.Servers {
-		if srv != "" && !validate.NTPServer(srv) {
-			return fmt.Errorf("ntp_config: servidor NTP inválido: %q", srv)
-		}
-	}
-	if err := timesync.ValidateAllowedNetworks(cfg.AllowedNetworks); err != nil {
-		return fmt.Errorf("ntp_config: %w", err)
 	}
 	return nil
 }

@@ -163,7 +163,8 @@ func newBootPair(t *testing.T, wire bool) *bootPair {
 
 	frSvc := firewallrules.NewService(db, nftSvc)
 	if wire {
-		ntpInputState := func() ([]string, bool, error) { return ntpInputStateFrom(db.GetSetting) }
+		// A mesma fonte de NTP do main: sempre desligada na versão de nuvem.
+		ntpInputState := func() ([]string, bool, error) { return nil, false, nil }
 		nftSvc.SetInputChainSources(frSvc.StoredGroups, ntpInputState)
 		nftSvc.SetPersistGuard(frSvc.UnconfirmedChangePending)
 	}
@@ -331,7 +332,7 @@ func TestUnwiredPersistGuardLetsTheUnconfirmedRuleReachTheBootFile(t *testing.T)
 	// A metade do NTP continua ligada: sem ela o Reconcile aborta a chain
 	// input e nem chega ao Persist, e o controle mediria o motivo errado.
 	p.nft.SetInputChainSources(p.fr.StoredGroups, func() ([]string, bool, error) {
-		return ntpInputStateFrom(p.db.GetSetting)
+		return nil, false, nil
 	})
 
 	if err := p.fr.Reconcile(ctx); err != nil {
@@ -366,33 +367,27 @@ func TestWiredInputChainSourcesFeedBothHalvesAtRuntime(t *testing.T) {
 	p := newBootPair(t, true)
 
 	chain := seedInputScopeGroup(t, p.db)
-	seedNTPServing(t, p.db)
 
-	// Ponta 1: quem entra pelo NTP tem que sair com os grupos do banco —
-	// groupsSource ligado a frSvc.StoredGroups, consultado em runtime.
+	// Ponta 1: o caminho de reserva do boot (ReconcileNTPInput, chamado quando a
+	// reconciliação dos grupos falha) tem que sair com os grupos do banco —
+	// groupsSource ligado a frSvc.StoredGroups, consultado em runtime. A versão
+	// de nuvem não serve hora, então ele entra sempre com "não serve".
 	p.exec.forget()
-	if err := p.nft.ReconcileNTPInput(ctx, []string{"192.168.3.0/24"}, true); err != nil {
+	if err := p.nft.ReconcileNTPInput(ctx, nil, false); err != nil {
 		t.Fatalf("ReconcileNTPInput: %v", err)
 	}
 	ntpPass := inputChainCommands(p.exec.calls())
 	if !containsSubstr(ntpPass, "jump "+chain) {
-		t.Errorf("a passada do NTP reconstruiu a chain input SEM o jump do grupo de escopo input (%s): ligar/desligar o NTP passaria a apagar os grupos do admin do firewall vivo.\ncomandos: %v", chain, ntpPass)
-	}
-	if !containsSubstr(ntpPass, "udp dport 123") {
-		t.Fatalf("pré-condição: a passada do NTP tinha que emitir as próprias linhas de udp/123.\ncomandos: %v", ntpPass)
+		t.Errorf("o caminho de reserva do boot reconstruiu a chain input SEM o jump do grupo de escopo input (%s): ele apagaria os grupos do admin do firewall vivo.\ncomandos: %v", chain, ntpPass)
 	}
 
-	// Ponta 2: quem entra pelos grupos tem que sair com a proteção do NTP —
-	// ntpInputSource ligado a ntpInputStateFrom(db.GetSetting), lido do banco
-	// em runtime.
+	// Ponta 2: quem entra pelos grupos também reconstrói a chain input, com o
+	// próprio jump.
 	p.exec.forget()
 	if err := p.fr.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 	groupPass := inputChainCommands(p.exec.calls())
-	if !containsSubstr(groupPass, "udp dport 123") {
-		t.Errorf("a passada dos grupos reconstruiu a chain input SEM as linhas de proteção do NTP: salvar um grupo passaria a apagar a proteção do serviço de hora do firewall vivo, com o toggle continuando ligado na tela.\ncomandos: %v", groupPass)
-	}
 	if !containsSubstr(groupPass, "jump "+chain) {
 		t.Fatalf("pré-condição: a passada dos grupos tinha que emitir o jump do próprio grupo.\ncomandos: %v", groupPass)
 	}
@@ -555,9 +550,6 @@ func TestTheRuntimeWiringIsTheOneMainUses(t *testing.T) {
 	if ntpArgName == "" {
 		t.Fatal("o segundo argumento de SetInputChainSources tem que ser a fonte do estado do NTP nomeada em main.go -- se a forma mudou, este teste precisa mudar junto")
 	}
-	if !identIsAssignedAFuncCalling(file, ntpArgName, "ntpInputStateFrom") {
-		t.Errorf("a fonte do estado do NTP (%q) tem que sair de ntpInputStateFrom: é ela que NÃO transforma erro de leitura em \"servir NTP está desligado\" (I-1), e é ela que os testes de runtime deste arquivo ligam", ntpArgName)
-	}
 }
 
 // isSelectorOn diz se a expressão é exatamente `<recv>.<sel>` (o valor de
@@ -569,36 +561,4 @@ func isSelectorOn(e ast.Expr, recv, sel string) bool {
 	}
 	id, isIdent := s.X.(*ast.Ident)
 	return isIdent && id.Name == recv
-}
-
-// identIsAssignedAFuncCalling diz se `name := func(...) { … fn(…) … }` aparece
-// em algum lugar do arquivo.
-func identIsAssignedAFuncCalling(file *ast.File, name, fn string) bool {
-	found := false
-	ast.Inspect(file, func(n ast.Node) bool {
-		assign, isAssign := n.(*ast.AssignStmt)
-		if !isAssign || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
-			return true
-		}
-		id, isIdent := assign.Lhs[0].(*ast.Ident)
-		if !isIdent || id.Name != name {
-			return true
-		}
-		lit, isLit := assign.Rhs[0].(*ast.FuncLit)
-		if !isLit {
-			return true
-		}
-		ast.Inspect(lit, func(m ast.Node) bool {
-			call, isCall := m.(*ast.CallExpr)
-			if !isCall {
-				return true
-			}
-			if callee, isIdent := call.Fun.(*ast.Ident); isIdent && callee.Name == fn {
-				found = true
-			}
-			return true
-		})
-		return true
-	})
-	return found
 }

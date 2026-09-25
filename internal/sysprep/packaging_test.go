@@ -308,7 +308,7 @@ func TestABaseFicaEmRecommendsNuncaEmDepends(t *testing.T) {
 	}
 	// Os pacotes sob demanda: o admin que instala pelo apt (o caminho normal)
 	// já recebe tudo e nunca chega a esperar por um download no painel.
-	for _, pkg := range []string{"kea-dhcp4-server", "unbound", "dns-root-data", "chrony"} {
+	for _, pkg := range []string{"kea-dhcp4-server", "unbound", "dns-root-data"} {
 		if !recommends[pkg] {
 			t.Errorf("%s é instalado sob demanda pelo LinkGuard e devia estar em Recommends:", pkg)
 		}

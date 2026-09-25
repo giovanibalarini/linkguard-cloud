@@ -172,11 +172,11 @@ func TestCovers(t *testing.T) {
 }
 
 func TestSandboxHintSoExplicaOSandboxQuandoEArmadilha(t *testing.T) {
-	trap := SandboxHint("/etc/chrony/conf.d/linkguard.conf", syscall.EROFS)
+	trap := SandboxHint("/etc/unbound/unbound.conf.d/linkguard.conf", syscall.EROFS)
 	if !strings.Contains(trap, "systemctl restart linkguard-cloud") {
 		t.Errorf("read-only file system tem que virar a dica de reinício:\n%s", trap)
 	}
-	if !strings.Contains(trap, "/etc/chrony/conf.d/linkguard.conf") {
+	if !strings.Contains(trap, "/etc/unbound/unbound.conf.d/linkguard.conf") {
 		t.Errorf("a dica tem que dizer qual caminho falhou:\n%s", trap)
 	}
 

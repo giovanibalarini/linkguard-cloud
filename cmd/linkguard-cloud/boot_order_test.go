@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -239,39 +238,6 @@ func TestNTPInputIsReconciledAfterTheGroupChainsExist(t *testing.T) {
 	}
 	if !(int(errBranch.Pos()) <= reconcileNTP && reconcileNTP <= int(errBranch.End())) {
 		t.Errorf("nftSvc.ReconcileNTPInput tem que estar DENTRO do bloco de erro de frSvc.Reconcile, não solto depois dele: frSvc.Reconcile já reconstrói a chain input no caminho feliz (m1 da revisão) -- chamar de novo fora do ramo de erro volta a duplicar a reconciliação e a janela de chain-input-vazia por boot")
-	}
-}
-
-// I-1, a outra ponta: a fonte que o boot e SetInputChainSources usam para ler
-// o estado do NTP não pode devolver "desligado" quando o que aconteceu foi um
-// erro de leitura. As quatro saídas, uma a uma.
-func TestNtpInputStateFromNeverTurnsAReadErrorIntoServingOff(t *testing.T) {
-	boom := errors.New("banco travado")
-	if _, serving, err := ntpInputStateFrom(func(string) (string, error) { return "", boom }); err == nil {
-		t.Errorf("erro de leitura foi engolido e virou serving=%v", serving)
-	} else if !errors.Is(err, boom) {
-		t.Errorf("o erro original tem que chegar ao chamador, veio %v", err)
-	}
-
-	if _, serving, err := ntpInputStateFrom(func(string) (string, error) { return "{isso não é json", nil }); err == nil {
-		t.Errorf("JSON corrompido foi engolido e virou serving=%v", serving)
-	}
-
-	// Chave nunca gravada: aí sim "desligado" é a verdade, e não pode virar
-	// erro — seria um aviso em todo boot de máquina nova.
-	networks, serving, err := ntpInputStateFrom(func(string) (string, error) { return "", nil })
-	if err != nil || serving || len(networks) != 0 {
-		t.Errorf("chave ausente tinha que ser desligado sem erro, obtive %v/%v/%v", networks, serving, err)
-	}
-
-	networks, serving, err = ntpInputStateFrom(func(key string) (string, error) {
-		if key != "ntp_config" {
-			t.Errorf("chave lida = %q, queria ntp_config", key)
-		}
-		return `{"serve_lan":true,"allowed_networks":["192.168.3.0/24"]}`, nil
-	})
-	if err != nil || !serving || len(networks) != 1 || networks[0] != "192.168.3.0/24" {
-		t.Errorf("configuração válida mal lida: %v/%v/%v", networks, serving, err)
 	}
 }
 

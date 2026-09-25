@@ -19,7 +19,6 @@ import Admin from './pages/Admin';
 import Hosts from './pages/Hosts';
 import Dhcp from './pages/Dhcp';
 import Dns from './pages/Dns';
-import Ntp from './pages/Ntp';
 import Changelog from './pages/Changelog';
 import Traffic from './pages/Traffic';
 import Vpn from './pages/Vpn';
@@ -55,7 +54,6 @@ function AppRoutes() {
           <Route path="hosts" element={<Hosts />} />
           <Route path="dhcp" element={<Dhcp />} />
           <Route path="dns" element={<Dns />} />
-          <Route path="ntp" element={<Ntp />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="logs" element={<Logs />} />
           <Route path="monitoring" element={<Monitoring />} />

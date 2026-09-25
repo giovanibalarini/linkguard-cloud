@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 )
 
 type transition int
@@ -299,7 +299,7 @@ func (c *Collector) probeService(svc string) serviceVerdict {
 // checkNTP verifies the system clock is NTP-synchronized and raises/clears
 // alerts.TypeNTPUnsynced on a confirmed transition.
 func (c *Collector) checkNTP() {
-	up := timesync.IsSynced(context.Background(), c.exec)
+	up := relogioSincronizado(context.Background(), c.exec)
 	now := c.nowFn()
 	tr := c.observe("ntp:sync", up, now)
 	c.ensureMeta("ntp:sync", "ntp-sync", "resource")
@@ -309,4 +309,16 @@ func (c *Collector) checkNTP() {
 	case transUp:
 		_ = c.alertSvc.NTPSynced()
 	}
+}
+
+// relogioSincronizado pergunta ao systemd se o relógio está sincronizado por
+// NTP. Na nuvem quem entrega a hora é a própria fabric (a Oracle, em
+// 169.254.169.254); o produto não configura servidor de hora, só confere que o
+// relógio está certo, porque WireGuard, HTTPS e logs dependem dele.
+func relogioSincronizado(ctx context.Context, exec firewall.Executor) bool {
+	out, err := exec.ExecuteRead(ctx, "timedatectl", "show", "--property=NTPSynchronized", "--value")
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(out) == "yes"
 }

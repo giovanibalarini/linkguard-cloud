@@ -8,7 +8,7 @@ import { useI18n } from '../i18n';
 import {
   LayoutDashboard, Network, Route, Shield, Bell, FileText,
   Activity, Settings, LogOut, ShieldCheck, Users, MonitorSmartphone,
-  Menu, X, AlertTriangle, Cable, Server, Globe, Sparkles, SlidersHorizontal, Clock,
+  Menu, X, AlertTriangle, Cable, Server, Globe, Sparkles, SlidersHorizontal,
   AreaChart,
   KeyRound,
 } from 'lucide-react';
@@ -54,7 +54,6 @@ const navGroups: NavGroup[] = [
       { to: '/hosts', label: 'nav.hosts', icon: MonitorSmartphone, perm: ['hosts.read'] },
       { to: '/dhcp', label: 'nav.dhcp', icon: Server, perm: ['dhcp.read'] },
       { to: '/dns', label: 'nav.dns', icon: Globe, perm: ['dns.read'] },
-      { to: '/ntp', label: 'nav.ntp', icon: Clock, perm: ['ntp.read'] },
     ],
   },
   {

@@ -136,9 +136,6 @@ func TestApplyRejectsAndWritesNothing(t *testing.T) {
 			// também é recusado direto por validate.Iface.
 			"netsvc_config": `{"backend":"kea-unbound","interface":"this-interface-name-is-way-too-long-for-linux","subnet_cidr":"192.168.3.0/24","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3"}`,
 		})},
-		{"servidor NTP com injeção", backupWith(map[string]string{
-			"ntp_config": `{"servers":["pool.ntp.br\nallow all"],"timezone":"America/Sao_Paulo"}`,
-		})},
 		{"monitoring com formato errado", backupWith(map[string]string{
 			"monitoring": `{"services":{"nao":"e uma lista"}}`,
 		})},

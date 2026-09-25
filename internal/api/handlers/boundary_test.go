@@ -222,7 +222,6 @@ var allowedInternalImports = map[string]bool{
 	"internal/storage":    true,
 	"internal/system":     true,
 	"internal/sysupdates": true,
-	"internal/timesync":   true,
 	"internal/tsdb":       true,
 	"internal/updater":    true,
 	"internal/validate":   true,

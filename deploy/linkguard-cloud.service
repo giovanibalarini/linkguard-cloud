@@ -54,9 +54,8 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 # Writable paths so the app can persist generated configs: nftables (firewall),
 # Kea (DHCP), unbound (DNS), the conntrack-accounting sysctl drop-in, the
-# stable-interface-name .link files (Fase A: nomes estáveis por MAC), the
-# NTP (chrony) drop-in, and the resolver/dhclient files that keep DNS pointed
-# at the local unbound.
+# stable-interface-name .link files (Fase A: nomes estáveis por MAC), and the
+# resolver/dhclient files that keep DNS pointed at the local unbound.
 #
 # Paths whose owning package is only Recommends: (or, for /etc/dhcp, not
 # depended on at all) are prefixed with `-`: per systemd.exec(5), an
@@ -70,9 +69,9 @@ ProtectSystem=strict
 # não existia naquele instante não vira gravável só porque o apt o criou
 # depois — o processo em execução continua vendo "Read-only file system".
 # Por isso os diretórios de config dos pacotes opcionais (/etc/kea,
-# /etc/unbound/unbound.conf.d, /etc/chrony/conf.d) são criados vazios pelo
-# instalador: é o que permite instalar kea/unbound/chrony sob demanda (quando
-# o admin liga o DHCP/DNS/NTP no painel) e aplicar a config na MESMA
+# /etc/unbound/unbound.conf.d) são criados vazios pelo instalador: é o que
+# permite instalar kea/unbound sob demanda (quando o admin liga o DHCP/DNS no
+# painel) e aplicar a config na MESMA
 # execução, sem reiniciar o serviço no meio de uma ação do admin.
 #
 # QUEM cria: `linkguard-cloud --prepare-system`, chamado pelos TRÊS caminhos de
@@ -80,7 +79,7 @@ ProtectSystem=strict
 # `--prepare-system-at-start` do ExecStartPre acima, para o que os
 # instaladores não podem tocar. A lista está em internal/sysprep e cobre
 # /var/lib/linkguard-cloud, /etc/linkguard-cloud, /etc/nftables.conf, /etc/sysctl.d,
-# /etc/kea, /etc/unbound/unbound.conf.d e /etc/chrony/conf.d. Os testes de
+# /etc/kea e /etc/unbound/unbound.conf.d. Os testes de
 # empacotamento (internal/sysprep) exigem que TODA entrada sem o prefixo `-`
 # desta linha esteja nessa lista.
 #
@@ -103,7 +102,7 @@ ProtectSystem=strict
 # /etc/resolv.conf (sempre presente) e /etc/dhcp (do isc-dhcp-client, que
 # este pacote não declara em lugar nenhum — num box só com WAN estática, ou
 # no Debian 13, ele legitimamente não existe).
-ReadWritePaths=/var/lib/linkguard-cloud /etc/linkguard-cloud /etc/sysctl.d -/etc/nftables.conf -/etc/kea -/etc/unbound -/etc/systemd/network -/etc/chrony/conf.d -/etc/resolv.conf -/etc/dhcp -/etc/apparmor.d/local -/etc/wireguard
+ReadWritePaths=/var/lib/linkguard-cloud /etc/linkguard-cloud /etc/sysctl.d -/etc/nftables.conf -/etc/kea -/etc/unbound -/etc/systemd/network -/etc/resolv.conf -/etc/dhcp -/etc/apparmor.d/local -/etc/wireguard
 
 # RuntimeDirectory cria /run/linkguard-cloud ANTES do serviço subir, já gravável,
 # e o remove quando ele para (issue #116).

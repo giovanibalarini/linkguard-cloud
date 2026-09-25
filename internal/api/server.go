@@ -47,7 +47,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/system"
-	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
 	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
 	"github.com/giovanibalarini/linkguard-cloud/internal/updater"
 	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
@@ -630,19 +629,6 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		// DNS query log (unbound journal; opt-in via DNS log_queries)
 		dnsLogH := handlers.NewDNSLogHandler(dnslog.NewService(s.exec))
 		r.With(require(auth.PermDNSRead)).Get("/api/dns/queries", dnsLogH.Recent)
-
-		// NTP (chrony) — status, servidores customizados, timezone, instalar sob
-		// demanda, e (2026-08-11) servir a LAN: nftSvc protege via a chain de
-		// input, e a mudança do toggle reaplica o DHCP/DNS para anunciar (ou
-		// deixar de anunciar) a opção ntp-servers.
-		ntpSvc := timesync.NewService(s.exec)
-		ntpSvc.SetInstallExecutor(cfg.PkgExec)
-		ntpH := handlers.NewNTPHandler(s.db, ntpSvc, s.alertSvc, s.nftSvc)
-		handlers.WireNTPDHCPReload(ntpH, netH)
-		r.With(require(auth.PermNTPRead)).Get("/api/ntp", ntpH.GetNTP)
-		r.With(require(auth.PermNTPWrite)).Put("/api/ntp/config", ntpH.UpdateNTPConfig)
-		r.With(require(auth.PermNTPWrite)).Post("/api/ntp/apply", ntpH.Apply)
-		r.With(require(auth.PermNTPWrite)).Post("/api/ntp/install-chrony", ntpH.InstallChrony)
 
 		// Host inventory
 		hostsH := handlers.NewHostsHandler(s.hostSvc, s.db)
