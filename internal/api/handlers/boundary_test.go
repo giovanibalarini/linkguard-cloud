@@ -224,7 +224,6 @@ var allowedInternalImports = map[string]bool{
 	"internal/routes":     true,
 	"internal/secrets":    true,
 	"internal/storage":    true,
-	"internal/stresstest": true,
 	"internal/system":     true,
 	"internal/sysupdates": true,
 	"internal/timesync":   true,

@@ -56,7 +56,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
-	"github.com/giovanibalarini/linkguard-cloud/internal/stresstest"
 	"github.com/giovanibalarini/linkguard-cloud/internal/sysprep"
 	"github.com/giovanibalarini/linkguard-cloud/internal/system"
 	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
@@ -400,7 +399,6 @@ type services struct {
 	hostSampler  *hosttraffic.Sampler
 	quotaSvc     *linkquota.Service
 	qosSvc       *qos.Service
-	stressSvc    *stresstest.Service
 	hostQuotaSvc *hostquota.Service
 	ddnsSvc      *ddns.Service
 	wgSvc        *wireguard.Service
@@ -519,9 +517,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	routeSvc := routes.NewService(exec)
 	qosSvc := qos.NewService(exec)
 	qosSvc.SetOperationStore(db)
-	stressSvc := stresstest.NewService(exec, linkSvc, alertSvc)
-	stressSvc.SetQosService(qosSvc)
-	stressSvc.SetRecoveryStore(db)
 	failoverSvc := failover.NewService(failover.Config{
 		Enabled:          cfg.FailoverEnabled,
 		DryRun:           cfg.DryRun,
@@ -869,11 +864,10 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		// A MESMA derivação que o firewall usa para decidir o que escrever: a
 		// tela e o kernel não podem discordar sobre quais são as WANs desta
 		// máquina. Ver cmd/linkguard-cloud/uplink.go.
-		WANSource:  func() ([]string, error) { return wansEfetivas(db, plat) },
-		Uplink:     func() handlers.UplinkView { return uplinkParaTela(db, plat) },
-		WireGuard:  wgSvc,
-		QoS:        qosSvc,
-		StressTest: stressSvc,
+		WANSource: func() ([]string, error) { return wansEfetivas(db, plat) },
+		Uplink:    func() handlers.UplinkView { return uplinkParaTela(db, plat) },
+		WireGuard: wgSvc,
+		QoS:       qosSvc,
 	}, db, exec, linkSvc, iptSvc, routeSvc, failoverSvc, balancerSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, quotaSvc, ddnsSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
 
 	interval := time.Duration(cfg.MonitorInterval) * time.Second
@@ -911,7 +905,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		hostSampler:      hostSampler,
 		quotaSvc:         quotaSvc,
 		qosSvc:           qosSvc,
-		stressSvc:        stressSvc,
 		hostQuotaSvc:     hostQuotaSvc,
 		ddnsSvc:          ddnsSvc,
 		wgSvc:            wgSvc,
@@ -1029,7 +1022,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	monitor, metricsCollector, rrdSvc := s.monitor, s.metricsCollector, s.rrdSvc
 	quotaSvc := s.quotaSvc
 	qosSvc := s.qosSvc
-	stressSvc := s.stressSvc
 	hostQuotaSvc := s.hostQuotaSvc
 	ddnsSvc := s.ddnsSvc
 	wgSvc, server := s.wgSvc, s.server
@@ -1045,7 +1037,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	// retry inside provisionSystem covers a first attempt made before ip/tc are
 	// available on a partially provisioned host.
 	recoverQoSOnBoot(ctx, qosSvc)
-	recoverStressTestOnBoot(ctx, stressSvc)
 
 	// bootPendingChecked prende a verificação de boot do confirmar-ou-reverte
 	// à primeira passada de provisionSystem que a tenha CONCLUÍDO.
@@ -1129,7 +1120,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 		}
 
 		recoverQoSOnBoot(ctx, qosSvc)
-		recoverStressTestOnBoot(ctx, stressSvc)
 
 		// Enable IPv4 forwarding so the box can route between LAN and WAN; it
 		// defaults to 0 on a fresh system and a firewall/router needs it on.

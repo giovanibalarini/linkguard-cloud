@@ -3,7 +3,6 @@ import WanBalancing from '../components/WanBalancing';
 import DomainTargets from '../components/DomainTargets';
 import LinkDdns from '../components/LinkDdns';
 import LinkQuota from '../components/LinkQuota';
-import LinkStressTest from '../components/LinkStressTest';
 import LinkQosPanel from '../components/LinkQosPanel';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Pencil, Trash2, RefreshCw, Wifi, Wand2, Network } from 'lucide-react';
@@ -420,10 +419,6 @@ export default function Links() {
           onUpdated={handleQosUpdated}
         />
       ))}
-
-      {!loading && links.length > 0 && (
-        <LinkStressTest links={links} canRun={can('routes.write')} canQosTest={can('links.write')} />
-      )}
 
       <Panel title={t('links.title')}>
         {loading ? (

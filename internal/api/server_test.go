@@ -2,13 +2,14 @@ package api
 
 import (
 	"bytes"
-	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 	"testing/fstest"
+
+	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
 
 	"github.com/go-chi/chi/v5"
 )

@@ -6,17 +6,7 @@ import (
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
-	"github.com/giovanibalarini/linkguard-cloud/internal/stresstest"
 )
-
-func recoverStressTestOnBoot(ctx context.Context, svc *stresstest.Service) {
-	if svc == nil {
-		return
-	}
-	if err := svc.RecoverInterrupted(ctx); err != nil {
-		slog.Error("não foi possível recuperar stress test interrompido no boot", "err", err)
-	}
-}
 
 func recoverQoSOnBoot(ctx context.Context, svc *qos.Service) {
 	if svc == nil {

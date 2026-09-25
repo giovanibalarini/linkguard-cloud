@@ -2,10 +2,11 @@ package storage_test
 
 import (
 	"database/sql"
-	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 
 	_ "modernc.org/sqlite"
 

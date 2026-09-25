@@ -3,12 +3,13 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"

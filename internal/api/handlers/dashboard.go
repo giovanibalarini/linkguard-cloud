@@ -1,8 +1,9 @@
 package handlers
 
 import (
-	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 	"net/http"
+
+	"github.com/giovanibalarini/linkguard-cloud/internal/dashboard"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"

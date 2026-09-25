@@ -6,14 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
-	"github.com/giovanibalarini/linkguard-cloud/internal/stresstest"
 )
 
 type bootQosExec struct {
@@ -163,32 +159,6 @@ func TestReconcileQoSOnBootPreservesCompleteForeignCakeOneChains(t *testing.T) {
 	}
 }
 
-func TestRecoverStressTestOnBootRestoresOutageAndClearsLease(t *testing.T) {
-	db := openBootQosDB(t)
-	link := &storage.Link{ID: "wan-outage", Name: "WAN outage", Interface: "wan0", Enabled: true}
-	if err := db.CreateLink(link); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-	lease := &storage.StressRecoveryLease{TestID: "stress-outage", LinkID: link.ID, Interface: link.Interface, Mode: string(stresstest.ModeOutage), CreatedAt: time.Now().UTC()}
-	if err := db.SaveStressRecoveryLease(lease); err != nil {
-		t.Fatalf("SaveStressRecoveryLease: %v", err)
-	}
-	exec := &bootQosExec{realWrites: true}
-	qosSvc := qos.NewService(exec)
-	stressSvc := stresstest.NewService(exec, links.NewService(db), nil)
-	stressSvc.SetQosService(qosSvc)
-	stressSvc.SetRecoveryStore(db)
-
-	recoverStressTestOnBoot(context.Background(), stressSvc)
-
-	if !containsBootQosEvent(exec.events, "ip link set wan0 up") {
-		t.Fatalf("boot recovery did not bring outage interface up: %v", exec.events)
-	}
-	if lease, err := db.GetStressRecoveryLease(); err != nil || lease != nil {
-		t.Fatalf("boot outage lease after recovery = %+v, %v; want nil, nil", lease, err)
-	}
-}
-
 func TestRecoverQoSOnBootConsumesInterruptedOperation(t *testing.T) {
 	db := openBootQosDB(t)
 	lease := &qos.OperationLease{
@@ -208,153 +178,6 @@ func TestRecoverQoSOnBootConsumesInterruptedOperation(t *testing.T) {
 	got, err := db.ListQoSOperationLeases()
 	if err != nil || len(got) != 0 {
 		t.Fatalf("boot QoS leases = %#v, %v; want empty", got, err)
-	}
-}
-
-func TestRecoverStressTestOnBootPreservesForeignCakeOneAndLease(t *testing.T) {
-	db := openBootQosDB(t)
-	link := &storage.Link{ID: "wan-degrade", Name: "WAN degrade", Interface: "wan0", Enabled: true}
-	if err := db.CreateLink(link); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-	lease := &storage.StressRecoveryLease{
-		TestID: "stress-degrade", LinkID: link.ID, Interface: link.Interface, Mode: string(stresstest.ModeDegrade),
-		DelayMs: 500, LossPct: 20, CreatedAt: time.Now().UTC(),
-	}
-	if err := db.SaveStressRecoveryLease(lease); err != nil {
-		t.Fatalf("SaveStressRecoveryLease: %v", err)
-	}
-	ifb := qos.IFBName("wan0")
-	exec := &bootQosExec{realWrites: true, readOutputs: map[string]string{
-		"ip link show dev " + ifb:                    "6: " + ifb + ": <BROADCAST,UP>",
-		"tc qdisc show dev wan0":                     "qdisc cake 1: root bandwidth 50mbit besteffort dual-srchost\nqdisc clsact ffff: parent ffff:fff1\n",
-		"tc qdisc show dev " + ifb:                   "qdisc cake 1: root bandwidth 200mbit besteffort dual-dsthost\n",
-		"tc filter show dev wan0 ingress pref 49152": "filter protocol all pref 49152 matchall\n action order 1: mirred egress redirect dev " + ifb,
-		"tc filter show dev " + ifb + " ingress":     "",
-		"tc filter show dev " + ifb + " egress":      "",
-	}}
-	qosSvc := qos.NewService(exec)
-	stressSvc := stresstest.NewService(exec, links.NewService(db), nil)
-	stressSvc.SetQosService(qosSvc)
-	stressSvc.SetRecoveryStore(db)
-
-	recoverStressTestOnBoot(context.Background(), stressSvc)
-
-	if len(exec.events) != 0 {
-		t.Fatalf("boot stress recovery mutated foreign cake 1: root: %v", exec.events)
-	}
-	got, err := db.GetStressRecoveryLease()
-	if err != nil || got == nil || got.TestID != lease.TestID {
-		t.Fatalf("boot collision discarded recovery lease: got=%+v err=%v", got, err)
-	}
-}
-
-func TestRecoverStressTestOnBootDoesNotConsumeLiveActiveLease(t *testing.T) {
-	db := openBootQosDB(t)
-	target := &storage.Link{ID: "wan-live", Name: "WAN live", Interface: "wan0", Enabled: true, Status: links.StatusOnline}
-	other := &storage.Link{ID: "wan-backup", Name: "WAN backup", Interface: "wan1", Enabled: true, Status: links.StatusOnline}
-	for _, link := range []*storage.Link{target, other} {
-		if err := db.CreateLink(link); err != nil {
-			t.Fatalf("CreateLink(%s): %v", link.ID, err)
-		}
-	}
-
-	exec := newLiveStressExec()
-	stressSvc := stresstest.NewService(exec, links.NewService(db), nil)
-	stressSvc.SetQosService(qos.NewService(exec))
-	stressSvc.SetRecoveryStore(db)
-	started, err := stressSvc.Start(stresstest.StartParams{LinkID: target.ID, Mode: stresstest.ModeOutage, DurationSec: 30})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	select {
-	case <-exec.faultApplied:
-	case <-time.After(time.Second):
-		t.Fatal("live stress test did not apply its outage")
-	}
-
-	recoverStressTestOnBoot(context.Background(), stressSvc)
-	lease, leaseErr := db.GetStressRecoveryLease()
-	upWrites := exec.upWriteCount()
-	status := stressSvc.Status()
-	stressSvc.Stop()
-	waitForBootStressCompletion(t, stressSvc)
-
-	if leaseErr != nil || lease == nil || lease.TestID != started.ID {
-		t.Fatalf("provisioning retry consumed live lease: got=%+v err=%v want=%q", lease, leaseErr, started.ID)
-	}
-	if upWrites != 0 {
-		t.Fatalf("provisioning retry restored a live stress test %d time(s)", upWrites)
-	}
-	if status == nil || status.ID != started.ID || status.State != "running" {
-		t.Fatalf("live test after provisioning retry = %+v; want running %q", status, started.ID)
-	}
-}
-
-type liveStressExec struct {
-	mu           sync.Mutex
-	interfaceUp  bool
-	upWrites     int
-	faultApplied chan struct{}
-	faultOnce    sync.Once
-}
-
-func newLiveStressExec() *liveStressExec {
-	return &liveStressExec{interfaceUp: true, faultApplied: make(chan struct{})}
-}
-
-func (e *liveStressExec) Execute(_ context.Context, cmd string, args ...string) (string, error) {
-	if cmd == "ip" && len(args) == 4 && args[0] == "link" && args[1] == "set" && args[2] == "wan0" {
-		e.mu.Lock()
-		switch args[3] {
-		case "down":
-			e.interfaceUp = false
-			e.faultOnce.Do(func() { close(e.faultApplied) })
-		case "up":
-			e.interfaceUp = true
-			e.upWrites++
-		}
-		e.mu.Unlock()
-	}
-	return "", nil
-}
-
-func (e *liveStressExec) ExecuteRead(_ context.Context, cmd string, args ...string) (string, error) {
-	if cmd == "ip" && len(args) == 4 && args[0] == "link" && args[1] == "show" && args[2] == "dev" && args[3] == "wan0" {
-		e.mu.Lock()
-		up := e.interfaceUp
-		e.mu.Unlock()
-		if up {
-			return "2: wan0: <BROADCAST,UP> mtu 1500 state UP", nil
-		}
-		return "2: wan0: <BROADCAST> mtu 1500 state DOWN", nil
-	}
-	return "", nil
-}
-
-func (*liveStressExec) IsDryRun() bool { return false }
-
-func (*liveStressExec) WriteFile(string, []byte, os.FileMode) error { return nil }
-
-func (e *liveStressExec) upWriteCount() int {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.upWrites
-}
-
-func waitForBootStressCompletion(t *testing.T, svc *stresstest.Service) {
-	t.Helper()
-	deadline := time.After(time.Second)
-	for {
-		status := svc.Status()
-		if status != nil && status.State != "running" {
-			return
-		}
-		select {
-		case <-deadline:
-			t.Fatal("stress test did not finish after Stop")
-		case <-time.After(time.Millisecond):
-		}
 	}
 }
 
