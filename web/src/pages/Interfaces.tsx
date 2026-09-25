@@ -1,17 +1,15 @@
-import { useEffect, useState, type MouseEvent } from 'react';
-import { Search, Pencil } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
 import client from '../api/client';
 import { useI18n } from '../i18n';
 import InterfaceTraffic from '../components/InterfaceTraffic';
 import Panel from '../components/ui/Panel';
 import Tabs, { type TabItem } from '../components/ui/Tabs';
 import Tag, { type TagVariant } from '../components/ui/Tag';
-import IconButton from '../components/ui/IconButton';
 import PortIcon from '../components/ui/PortIcon';
 import BackPanel from '../components/BackPanel';
 import { portIsAbnormal, portState } from '../lib/portState';
-import type { IfaceView, PendingChange, StableNameEntry } from '../types';
+import type { IfaceView } from '../types';
 
 // Groups by the Role the backend already computed (spec §5.1: Role is a
 // label, never re-derived on the frontend). The only extra step here is
@@ -47,115 +45,12 @@ export default function Interfaces() {
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
   const [showSystem, setShowSystem] = useState(false);
-  const [identifying, setIdentifying] = useState<string | null>(null);
-  const [pending, setPending] = useState<PendingChange[]>([]);
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-  const [actioning, setActioning] = useState<string | null>(null);
-  const [stableNames, setStableNames] = useState<StableNameEntry[]>([]);
-  const [applyingStable, setApplyingStable] = useState(false);
-  const [stableApplied, setStableApplied] = useState(false);
-
-  const navigate = useNavigate();
-
-  // Clicar na interface entra nas configurações dela. Só física, de propósito:
-  // a tela de edição recusa VLAN e bridge (net.ifedit.physicalOnly), e levar o
-  // admin a uma página que só sabe dizer não é pior do que não levar.
-  const settingsPath = (i: IfaceView) =>
-    i.kind === 'physical' ? `/interfaces/${encodeURIComponent(i.name)}/edit` : null;
-
-  // O clique da linha inteira não pode roubar o clique de quem já é clicável:
-  // sem esta guarda, "identificar" viraria navegação e o admin sairia da tela
-  // no lugar de piscar o LED da porta.
-  const openSettings = (i: IfaceView) => (e: MouseEvent) => {
-    const path = settingsPath(i);
-    if (!path) return;
-    if ((e.target as HTMLElement).closest('a,button')) return;
-    navigate(path);
-  };
 
   const portLabel = (i: IfaceView) => {
     const s = portState(i);
     if (!s.physical) return t('net.if.port.virtual');
     if (s.degraded) return t('net.if.port.degraded');
     return s.link ? t('net.if.port.up') : t('net.if.port.down');
-  };
-
-  const handleIdentify = async (name: string) => {
-    setIdentifying(name);
-    try {
-      await client.post(`/api/interfaces/${encodeURIComponent(name)}/identify`);
-    } finally {
-      setTimeout(() => setIdentifying((cur) => (cur === name ? null : cur)), 10000);
-    }
-  };
-
-  useEffect(() => {
-    let alive = true;
-    const loadPending = async () => {
-      try {
-        const { data } = await client.get<PendingChange[]>('/api/interfaces/pending');
-        if (alive) setPending(data ?? []);
-      } catch {
-        /* best-effort */
-      }
-    };
-    loadPending();
-    const t = setInterval(loadPending, 3000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await client.get<StableNameEntry[]>('/api/interfaces/stable-names');
-        setStableNames(data);
-      } catch {
-        // silencioso — igual ao padrão já usado pro carregamento de `pending` acima:
-        // uma falha aqui não deve travar o resto da tela.
-      }
-    })();
-  }, []);
-
-  const applyStableNames = async () => {
-    setApplyingStable(true);
-    try {
-      await client.post('/api/interfaces/stable-names/apply');
-      setStableApplied(true);
-    } catch {
-      // erro real de escrita em disco é raro (permissão, disco cheio) — o
-      // handler já loga o detalhe real via writeInternalError; a UI só
-      // precisa não travar.
-    } finally {
-      setApplyingStable(false);
-    }
-  };
-
-  const handleConfirm = async (name: string) => {
-    setActioning(name);
-    try {
-      await client.post('/api/interfaces/confirm', { name });
-      setPending((prev) => prev.filter((p) => p.interface !== name));
-    } finally {
-      setActioning(null);
-    }
-  };
-
-  const handleRollback = async (name: string) => {
-    setActioning(name);
-    try {
-      await client.post('/api/interfaces/rollback', { name });
-      setPending((prev) => prev.filter((p) => p.interface !== name));
-    } finally {
-      setActioning(null);
-    }
   };
 
   useEffect(() => {
@@ -216,39 +111,12 @@ export default function Interfaces() {
         </div>
       )}
 
-      {pending.map((p) => {
-        const secondsLeft = Math.max(0, p.deadline_unix - now);
-        return (
-          <div key={p.interface} className="flex items-center gap-4 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-            <Tag variant="warn" dot>{secondsLeft}s</Tag>
-            <div className="flex-1 text-sm text-amber-200">
-              <span className="font-medium">{p.interface}</span>{' '}
-              {t('net.if.pending.body')}
-            </div>
-            <button
-              onClick={() => handleConfirm(p.interface)}
-              disabled={actioning === p.interface}
-              className="btn-primary text-xs"
-            >
-              {t('net.if.pending.confirm')}
-            </button>
-            <button
-              onClick={() => handleRollback(p.interface)}
-              disabled={actioning === p.interface}
-              className="btn-secondary text-xs"
-            >
-              {t('net.if.pending.rollback')}
-            </button>
-          </div>
-        );
-      })}
-
       <Tabs items={TABS} active={tab} onChange={setTab} />
 
       {tab === 'overview' && (
         <Panel title={t('net.if.backPanel')}>
           <div className="mb-4">
-            <BackPanel ifaces={visible} identifying={identifying} onIdentify={handleIdentify} />
+            <BackPanel ifaces={visible} />
           </div>
           {(() => {
             const { wan, lan, unassigned } = groupByRole(visible);
@@ -259,26 +127,14 @@ export default function Interfaces() {
             const byName = new Map(visible.map((i) => [i.name, i]));
             const renderRow = (i: IfaceView, indent = false) => {
               const physAbnormal = portIsAbnormal(i);
-              const path = settingsPath(i);
               return (
                 <div
                   key={i.name}
-                  onClick={openSettings(i)}
-                  className={`flex items-center justify-between gap-3 py-2 border-b border-gray-800/50 last:border-0 ${indent ? 'pl-6' : ''} ${path ? 'cursor-pointer hover:bg-gray-800/40' : ''}`}
+                  className={`flex items-center justify-between gap-3 py-2 border-b border-gray-800/50 last:border-0 ${indent ? 'pl-6' : ''}`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <PortIcon state={portState(i)} label={portLabel(i)} />
-                    {path ? (
-                      <Link
-                        to={path}
-                        aria-label={t('net.if.openSettings', { name: i.alias || i.name })}
-                        className="text-white text-sm truncate hover:text-blue-400"
-                      >
-                        {i.alias || i.name}
-                      </Link>
-                    ) : (
-                      <span className="text-white text-sm truncate">{i.alias || i.name}</span>
-                    )}
+                    <span className="text-white text-sm truncate">{i.alias || i.name}</span>
                     {i.alias && <span className="text-gray-600 text-xs font-mono">{i.name}</span>}
                     <span className="text-gray-500 text-xs font-mono">
                       {i.live.addresses?.find((a) => a.family === 'ipv4')?.cidr ?? '—'}
@@ -294,20 +150,6 @@ export default function Interfaces() {
                       <Tag variant={physAbnormal ? 'warn' : 'ok'} dot>
                         {i.live.carrier ? t('net.if.link.up') : t('net.if.link.down')}
                       </Tag>
-                    )}
-                    {i.kind === 'physical' && (
-                      <button
-                        onClick={() => handleIdentify(i.name)}
-                        disabled={identifying === i.name}
-                        className="text-xs text-gray-500 hover:text-gray-300 disabled:text-blue-400"
-                      >
-                        {identifying === i.name ? t('net.if.blinking') : t('net.if.identify')}
-                      </button>
-                    )}
-                    {i.kind === 'physical' && (
-                      <Link to={`/interfaces/${encodeURIComponent(i.name)}/edit`} className="text-xs text-gray-500 hover:text-gray-300">
-                        {t('net.if.edit')}
-                      </Link>
                     )}
                   </div>
                 </div>
@@ -355,31 +197,6 @@ export default function Interfaces() {
         </Panel>
       )}
 
-      {tab === 'overview' && stableNames.length > 0 && (
-        <Panel title={t('net.if.stable.title')}>
-          <p className="text-gray-500 text-sm mb-3">
-            {t('net.if.stable.body')}{' '}
-            {t('net.if.stable.reboot')}<b>{t('net.if.stable.reboot.strong')}</b>{t('net.if.stable.reboot.tail')}
-          </p>
-          <div className="space-y-2 mb-3">
-            {stableNames.map((e) => (
-              <div key={e.interface} className="flex items-center justify-between text-sm border-b border-gray-800/50 last:border-0 py-1.5">
-                <span className="text-gray-400">{e.link_name}</span>
-                <span className="text-gray-600 font-mono text-xs">{e.mac}</span>
-                <span className="text-white font-mono">{e.interface} → {e.stable_name}</span>
-              </div>
-            ))}
-          </div>
-          {stableApplied ? (
-            <p className="text-green-400 text-sm">{t('net.if.stable.applied')}</p>
-          ) : (
-            <button onClick={applyStableNames} disabled={applyingStable} className="btn-primary text-sm disabled:opacity-50">
-              {applyingStable ? t('net.if.stable.applying') : t('net.if.stable.apply')}
-            </button>
-          )}
-        </Panel>
-      )}
-
       {tab === 'list' && (
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -414,13 +231,8 @@ export default function Interfaces() {
                 {filtered.map((i) => {
                   const roleCfg = roleTag[i.role] ?? roleTag.unassigned;
                   const physAbnormal = portIsAbnormal(i);
-                  const path = settingsPath(i);
                   return (
-                    <div
-                      key={i.name}
-                      onClick={openSettings(i)}
-                      className={`rounded-lg border bg-gray-950/40 p-3 border-gray-800 ${path ? 'cursor-pointer active:bg-gray-900/60' : ''}`}
-                    >
+                    <div key={i.name} className="rounded-lg border bg-gray-950/40 p-3 border-gray-800">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -430,15 +242,6 @@ export default function Interfaces() {
                           {i.alias && <div className="text-gray-500 text-xs font-mono truncate">{i.name}</div>}
                           <Tag variant={roleCfg.variant} className="mt-1">{roleCfg.label}</Tag>
                         </div>
-                        {i.kind === 'physical' && (
-                          <div className="flex shrink-0 gap-1">
-                            <IconButton
-                              icon={Pencil}
-                              to={`/interfaces/${encodeURIComponent(i.name)}/edit`}
-                              label={t('net.if.action.edit')}
-                            />
-                          </div>
-                        )}
                       </div>
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                         <dt className="text-gray-500">{t('net.if.col.kind')}</dt>
@@ -475,21 +278,15 @@ export default function Interfaces() {
                       <th className="pb-3 pr-4 font-medium">{t('net.if.col.kind')}</th>
                       <th className="pb-3 pr-4 font-medium">{t('net.if.col.address')}</th>
                       <th className="pb-3 pr-4 font-medium">{t('net.if.col.physical')}</th>
-                      <th className="pb-3 pr-4 font-medium">{t('net.if.col.role')}</th>
-                      <th className="pb-3 font-medium">{t('net.col.actions')}</th>
+                      <th className="pb-3 font-medium">{t('net.if.col.role')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((i) => {
                       const roleCfg = roleTag[i.role] ?? roleTag.unassigned;
                       const physAbnormal = portIsAbnormal(i);
-                      const path = settingsPath(i);
                       return (
-                        <tr
-                          key={i.name}
-                          onClick={openSettings(i)}
-                          className={`table-row ${path ? 'cursor-pointer hover:bg-gray-800/40' : ''}`}
-                        >
+                        <tr key={i.name} className="table-row">
                           <td className="py-3 pr-4">
                             <div className="flex items-center gap-2">
                               <PortIcon state={portState(i)} label={portLabel(i)} />
@@ -512,24 +309,15 @@ export default function Interfaces() {
                               <span className="text-gray-600">—</span>
                             )}
                           </td>
-                          <td className="py-3 pr-4">
-                            <Tag variant={roleCfg.variant}>{roleCfg.label}</Tag>
-                          </td>
                           <td className="py-3">
-                            {i.kind === 'physical' && (
-                              <IconButton
-                                icon={Pencil}
-                                to={`/interfaces/${encodeURIComponent(i.name)}/edit`}
-                                label={t('net.if.action.edit')}
-                              />
-                            )}
+                            <Tag variant={roleCfg.variant}>{roleCfg.label}</Tag>
                           </td>
                         </tr>
                       );
                     })}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-6 text-center text-gray-500">
+                        <td colSpan={5} className="py-6 text-center text-gray-500">
                           {t('net.if.noneFound')}
                         </td>
                       </tr>

@@ -19,10 +19,8 @@ const (
 	PermFirewallRead   Permission = "firewall.read"
 	PermHostsRead      Permission = "hosts.read"
 	PermSystemRead     Permission = "system.read"
-	PermDHCPRead       Permission = "dhcp.read"
 	PermDNSRead        Permission = "dns.read"
 	PermInterfacesRead Permission = "interfaces.read"
-	PermNTPRead        Permission = "ntp.read"
 	PermVPNRead        Permission = "vpn.read"
 
 	// Write / action access per feature area.
@@ -45,13 +43,10 @@ const (
 	// A separação é a mesma lição de traffic.capture logo abaixo: capacidades
 	// diferentes sobre o mesmo assunto não se herdam por conveniência de quem
 	// escreveu a rota.
-	PermHostsQuota      Permission = "hosts.quota"
-	PermSystemWrite     Permission = "system.write"     // settings, retenção, aliases
-	PermDHCPWrite       Permission = "dhcp.write"       // ranges, reservas, aplicar
-	PermDNSWrite        Permission = "dns.write"        // upstreams, blocklist, aplicar
-	PermInterfacesWrite Permission = "interfaces.write" // editar interface, identificar porta fisicamente
-	PermNTPWrite        Permission = "ntp.write"        // config de servidores/timezone, aplicar, instalar chrony
-	PermVPNWrite        Permission = "vpn.write"        // configurar serviço e revogar peers
+	PermHostsQuota  Permission = "hosts.quota"
+	PermSystemWrite Permission = "system.write" // settings, retenção, aliases
+	PermDNSWrite    Permission = "dns.write"    // upstreams, blocklist, aplicar
+	PermVPNWrite    Permission = "vpn.write"    // configurar serviço e revogar peers
 	// PermVPNEnroll entrega uma credencial de rede privada, mesmo que somente
 	// para o próprio usuário. É separada de vpn.read/write para que observar o
 	// estado ou operar o serviço não conceda acesso ao túnel por acidente.
@@ -121,17 +116,10 @@ var Catalog = []CatalogEntry{
 	{PermSystemRead, "Sistema", "Ver sistema", "Métricas de sistema e configurações"},
 	{PermSystemWrite, "Sistema", "Alterar configurações", "Retenção, aliases de interface e ajustes globais"},
 
-	{PermDHCPRead, "DHCP", "Ver DHCP", "Ver config, reservas e leases ativos"},
-	{PermDHCPWrite, "DHCP", "Gerenciar DHCP", "Editar range/reservas e aplicar (Kea)"},
-
-	{PermDNSRead, "DNS", "Ver DNS", "Ver upstreams, cache e blocklist"},
+	{PermDNSRead, "DNS", "Ver DNS", "Ver encaminhadores, log de consultas e blocklist"},
 	{PermDNSWrite, "DNS", "Gerenciar DNS", "Editar upstreams/blocklist e aplicar (unbound)"},
 
 	{PermInterfacesRead, "Interfaces", "Ver interfaces", "Topologia de rede, estado físico e diagnóstico"},
-	{PermInterfacesWrite, "Interfaces", "Gerenciar interfaces", "Identificar porta fisicamente (piscar LED)"},
-
-	{PermNTPRead, "NTP", "Ver NTP", "Ver status de sincronização, servidores configurados e fuso horário"},
-	{PermNTPWrite, "NTP", "Gerenciar NTP", "Configurar servidores/fuso horário, aplicar e instalar o chrony"},
 
 	{PermVPNRead, "VPN", "Ver WireGuard", "Ver estado, configuração pública e peers sem chaves privadas"},
 	{PermVPNWrite, "VPN", "Gerenciar WireGuard", "Ativar/configurar o serviço e revogar peers"},
@@ -177,7 +165,7 @@ func readOnlyPermissions() []Permission {
 		switch e.Key {
 		case PermDashboardRead, PermMonitoringRead, PermLogsRead,
 			PermLinksRead, PermRoutesRead, PermFirewallRead,
-			PermHostsRead, PermSystemRead, PermDHCPRead, PermDNSRead, PermInterfacesRead, PermNTPRead:
+			PermHostsRead, PermSystemRead, PermDNSRead, PermInterfacesRead:
 			perms = append(perms, e.Key)
 		}
 	}
@@ -203,9 +191,8 @@ var DefaultRoles = []DefaultRole{
 			PermFirewallRead, PermFirewallWrite,
 			PermHostsRead, PermHostsBlock, PermHostsAssign, PermHostsQuota,
 			PermSystemRead,
-			PermDHCPRead, PermDHCPWrite, PermDNSRead, PermDNSWrite,
-			PermInterfacesRead, PermInterfacesWrite,
-			PermNTPRead, PermNTPWrite,
+			PermDNSRead, PermDNSWrite,
+			PermInterfacesRead,
 		},
 	},
 	{

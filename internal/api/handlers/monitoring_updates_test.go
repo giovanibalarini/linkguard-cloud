@@ -1,8 +1,10 @@
 package handlers_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,14 +14,27 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
+// fakeEmptyIfaceExec is a firewall.Executor test double that reports a
+// kernel with no interfaces at all: every `ip` read answers a valid empty
+// JSON array (an empty string would fail json.Unmarshal in the collectors).
+type fakeEmptyIfaceExec struct{}
+
+func (f *fakeEmptyIfaceExec) Execute(context.Context, string, ...string) (string, error) {
+	return "", nil
+}
+func (f *fakeEmptyIfaceExec) ExecuteRead(_ context.Context, cmd string, args ...string) (string, error) {
+	if cmd == "ip" {
+		return "[]", nil
+	}
+	return "", nil
+}
+func (f *fakeEmptyIfaceExec) IsDryRun() bool                              { return false }
+func (_ *fakeEmptyIfaceExec) WriteFile(string, []byte, os.FileMode) error { return nil }
+
 // TestUpdatesReturnsEmptyPackagesNotNull guards the same JSON contract the
 // rest of this codebase follows: a nil slice marshals to `null` and breaks
 // the frontend's .map(). A fresh box that has never run the check must
 // return an empty list, not null.
-//
-// This lives in package handlers_test (not handlers, as the plan's snippet
-// showed) because fakeEmptyIfaceExec is declared in netif_test.go under
-// package handlers_test — an internal-test-package file can't see it.
 func TestUpdatesReturnsEmptyPackagesNotNull(t *testing.T) {
 	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

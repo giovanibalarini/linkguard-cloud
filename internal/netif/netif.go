@@ -1,8 +1,6 @@
 // Package netif models network interfaces (physical, VLAN, bridge) as
-// first-class entities. Phase 1 is read-only: the model is derived live from
-// kernel state via `ip -j`, never written back. Applying configuration
-// (systemd-networkd) is a later phase — see
-// docs/superpowers/specs/2026-07-19-network-interface-management-design.md.
+// first-class entities, derived live from kernel state via `ip -j` and never
+// written back: on the cloud the NIC belongs to the VCN.
 package netif
 
 import "strings"
@@ -25,9 +23,8 @@ const (
 	AddrModeNone   AddrMode = "none"
 )
 
-// Role is a display label, not behavior — the real WAN/LAN designation comes
-// from links.Link (WAN) and netsvc.Config (LAN), which this package's
-// Service cross-references. Never treated as authoritative on its own.
+// Role is a display label, not behavior — the real WAN designation comes
+// from links.Link, which this package's Service cross-references. Never treated as authoritative on its own.
 type Role string
 
 const (
@@ -44,9 +41,7 @@ type Address struct {
 }
 
 // Iface is one network interface. Name is the stable identifier — the same
-// string internal/links.Link.Interface and DHCP config already reference.
-// This is the core model that will eventually be persisted (Phase 2+);
-// Managed is always false in Phase 1 (nothing is adopted yet).
+// string internal/links.Link.Interface already references.
 type Iface struct {
 	Name        string   `json:"name"`
 	Kind        Kind     `json:"kind"`
@@ -57,9 +52,8 @@ type Iface struct {
 	Members     []string `json:"members,omitempty"` // bridge: member interface names
 	AddrMode    AddrMode `json:"addr_mode"`
 	CIDR        string   `json:"cidr,omitempty"`    // static: ex. "192.168.3.3/24"
-	Gateway     string   `json:"gateway,omitempty"` // static: opcional, deve estar dentro da rede de CIDR
+	Gateway     string   `json:"gateway,omitempty"` // do Link cadastrado, quando houver
 	Role        Role     `json:"role"`
-	Managed     bool     `json:"managed"`
 }
 
 // LiveState is diagnostic data read fresh from the kernel on every request —

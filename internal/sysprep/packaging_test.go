@@ -69,9 +69,8 @@ func readWritePaths(t *testing.T) []string {
 // que não esteja aqui quebra o teste de propósito: a decisão "quem garante
 // este caminho?" tem que ser tomada por alguém, não esquecida.
 var optionalPathsWeDoNotCreate = map[string]string{
-	"/etc/systemd/network": "vem do pacote systemd, sempre presente numa máquina com systemd",
-	"/etc/resolv.conf":     "sempre presente; e criar um vazio seria pior que não ter",
-	"/etc/dhcp":            "vem do isc-dhcp-client, que este pacote não declara nem em Recommends: — num box só com WAN estática, ou no Debian 13, ele legitimamente não existe",
+	"/etc/resolv.conf": "sempre presente; e criar um vazio seria pior que não ter",
+	"/etc/dhcp":        "vem do isc-dhcp-client, que este pacote não declara nem em Recommends: — num box só com WAN estática, ou no Debian 13, ele legitimamente não existe",
 }
 
 // A armadilha original, em forma de teste: uma entrada SEM o prefixo `-` que

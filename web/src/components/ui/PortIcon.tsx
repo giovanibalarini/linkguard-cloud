@@ -9,12 +9,6 @@ interface PortIconProps {
    * o leitor de tela anunciar a mesma porta duas vezes.
    */
   label?: string;
-  /**
-   * Pisca os DOIS LEDs enquanto o `ethtool --identify` está piscando os de
-   * verdade na placa. Diferente do LED de atividade: aqui é a placa inteira
-   * chamando atenção, e por isso ganha os dois.
-   */
-  blink?: boolean;
   className?: string;
 }
 
@@ -34,7 +28,7 @@ const PIN_X = Array.from({ length: 8 }, (_, i) => 7.3 + i * (9.4 / 7));
  * Os LEDs não piscam. Um LED de atividade exigiria taxa, o /api/interfaces
  * não devolve taxa nenhuma, e piscar sem medir é afirmar tráfego.
  */
-export default function PortIcon({ state, label, blink = false, className = 'w-5 h-5' }: PortIconProps) {
+export default function PortIcon({ state, label, className = 'w-5 h-5' }: PortIconProps) {
   const decorative = !label;
   const { physical, link, degraded, activity } = state;
   const bodyOpacity = physical ? (link ? 'opacity-90' : 'opacity-50') : 'opacity-40';
@@ -91,7 +85,7 @@ export default function PortIcon({ state, label, blink = false, className = 'w-5
       {/* Os dois LEDs. O brilho é um círculo atrás, não um filtro: filtro de
           SVG não herda o tema e some no modo claro. */}
       {physical && (
-        <g className={blink ? 'animate-pulse' : undefined}>
+        <g>
           {link && <circle cx="6.4" cy="7.4" r="2.6" className="fill-emerald-400 opacity-25" />}
           {link && (activity !== false || degraded) && (
             <circle cx="17.6" cy="7.4" r="2.6" className={`${degraded ? 'fill-amber-400' : 'fill-emerald-400'} opacity-25`} />
@@ -101,7 +95,7 @@ export default function PortIcon({ state, label, blink = false, className = 'w-5
             cx="17.6"
             cy="7.4"
             r="1.3"
-            className={`${rightLed} ${rightBlinks && !blink ? 'animate-pulse' : ''}`}
+            className={`${rightLed} ${rightBlinks ? 'animate-pulse' : ''}`}
           />
         </g>
       )}

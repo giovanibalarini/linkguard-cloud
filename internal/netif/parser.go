@@ -159,7 +159,6 @@ func mergeLinks(links []parsedLink, addrs map[string][]addrInfo) []IfaceView {
 				Members:  membersByBridge[l.Name],
 				AddrMode: addrMode,
 				Role:     RoleUnassigned, // filled in by Service, which knows configured Links/LAN interface
-				Managed:  false,          // nothing is adopted in Phase 1
 			},
 			Live: LiveState{
 				Carrier:   l.Carrier,

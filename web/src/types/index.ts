@@ -815,39 +815,7 @@ export interface IfaceView {
   cidr?: string;
   gateway?: string;
   role: IfaceRole;
-  managed: boolean;
   live: IfaceLiveState;
-}
-
-export interface StableNameEntry {
-  interface: string;
-  mac: string;
-  link_name: string;
-  stable_name: string;
-}
-
-export interface IfaceEdit {
-  name: string;
-  addr_mode: 'static' | 'dhcp' | 'none';
-  cidr?: string;
-  gateway?: string;
-  description?: string;
-}
-
-export interface FileDiff {
-  path: string;
-  old_content: string;
-  new_content: string;
-}
-
-export interface PreviewResult {
-  files: FileDiff[];
-  warnings: string[];
-}
-
-export interface PendingChange {
-  interface: string;
-  deadline_unix: number;
 }
 
 // ─── Captura de pacotes (issue #114) ─────────────────────────────────────────

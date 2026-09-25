@@ -162,6 +162,38 @@ var schemaMigrations = []migration{
 	{21, "QoS: journal durável de operações", upQoSOperationLease},
 	{22, "host_groups: grupos de ativos para firewall e ZTNA", upHostGroups},
 	{23, "wireguard: modo de túnel, rotas e MTU por peer", upWireGuardSplitTunnel},
+
+	// ─── Só da versão cloud, de 100 em diante ───────────────────────────────
+	//
+	// Até a 23 a história é a mesma do linkguard-fw, de quem este banco veio
+	// (o preinst copia a base da caixa antiga). Dali em diante os dois
+	// produtos seguem separados, e o linkguard-fw vai ganhar a SUA 24. Uma
+	// caixa que rodasse essa versão e só depois migrasse para cá já teria a 24
+	// registrada — e a nossa 24 seria dada como aplicada sem nunca ter rodado.
+	// O salto para 100 tira a colisão do caminho.
+	{100, "papéis: saem as permissões de DHCP, NTP e edição de placa", upRetirePermissionsCloud},
+}
+
+// upRetirePermissionsCloud tira dos papéis as permissões que a versão cloud
+// não tem mais: dhcp.*, ntp.* (o produto não serve DHCP nem hora; na VCN os
+// dois são da Oracle) e interfaces.write (a placa é da VCN, não se edita por
+// aqui).
+//
+// NÃO É LIMPEZA COSMÉTICA. Salvar um papel valida cada chave contra o
+// catálogo (handlers.invalidPermissions), e o editor devolve as chaves que o
+// papel já tinha. Um papel vindo do linkguard-fw com "dhcp.read" passaria a
+// ser impossível de salvar: 400 "permissão inválida" numa chave que a tela nem
+// mostra.
+//
+// Sem marcador: apagar é idempotente, e ninguém consegue conceder de novo uma
+// chave que saiu do catálogo.
+func upRetirePermissionsCloud(tx *sql.Tx) error {
+	if _, err := tx.Exec(`
+		DELETE FROM role_permissions
+		WHERE permission IN ('dhcp.read', 'dhcp.write', 'ntp.read', 'ntp.write', 'interfaces.write')`); err != nil {
+		return fmt.Errorf("tirar dos papéis as permissões aposentadas: %w", err)
+	}
+	return nil
 }
 
 func upWireGuard(tx *sql.Tx) error {
@@ -1251,6 +1283,11 @@ CREATE INDEX IF NOT EXISTS idx_state_intervals_open
 ON state_intervals(kind, label) WHERE ended_at IS NULL;`
 
 // ─── Managed interfaces schema (netif Fase 2) ───────────────────────────────
+
+// managed_interfaces e pending_interface_changes são herança do linkguard-fw,
+// que editava o endereçamento das placas. A versão cloud não lê nem grava
+// estas tabelas; elas continuam sendo criadas só para o schema das caixas
+// migradas e o das novas não divergirem.
 
 const createManagedInterfacesTable = `
 CREATE TABLE IF NOT EXISTS managed_interfaces (

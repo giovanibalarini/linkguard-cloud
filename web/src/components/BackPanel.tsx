@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import client from '../api/client';
 import { useI18n } from '../i18n';
 import PortIcon from './ui/PortIcon';
@@ -9,8 +8,6 @@ import type { IfaceView, SystemMetrics } from '../types';
 
 interface BackPanelProps {
   ifaces: IfaceView[];
-  identifying: string | null;
-  onIdentify: (name: string) => void;
 }
 
 // A cor da tarja embaixo da porta é o papel que o BACKEND já calculou. A tela
@@ -76,7 +73,7 @@ function useTaxas(): Record<string, InterfaceRate> {
   return taxas;
 }
 
-export default function BackPanel({ ifaces, identifying, onIdentify }: BackPanelProps) {
+export default function BackPanel({ ifaces }: BackPanelProps) {
   const { t } = useI18n();
   const taxas = useTaxas();
   const ports = ifaces.filter((i) => i.kind === 'physical');
@@ -89,26 +86,22 @@ export default function BackPanel({ ifaces, identifying, onIdentify }: BackPanel
           const s = portState(i, taxas[i.name] ?? null);
           const ipv4 = i.live.addresses?.find((a) => a.family === 'ipv4')?.cidr;
           const accent = ROLE_ACCENT[i.role] ?? ROLE_ACCENT.unassigned;
-          const blinking = identifying === i.name;
           return (
             <div key={i.name} className="group relative">
-              <Link
-                to={`/interfaces/${encodeURIComponent(i.name)}/edit`}
-                aria-label={t('net.if.openSettings', { name: i.alias || i.name })}
-                className={`flex w-[76px] flex-col items-center gap-1 rounded-lg border px-2 py-2.5 transition-all
-                  ${blinking ? 'border-blue-500/60 bg-blue-500/10' : 'border-gray-800 bg-gray-900/40 hover:border-gray-600 hover:bg-gray-800/60'}
-                  focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`}
+              <div
+                tabIndex={0}
+                aria-label={i.alias || i.name}
+                className="flex w-[76px] flex-col items-center gap-1 rounded-lg border border-gray-800 bg-gray-900/40 px-2 py-2.5 transition-all hover:border-gray-600 hover:bg-gray-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <PortIcon state={s} label={''} blink={blinking} className="w-9 h-9 text-gray-400" />
+                <PortIcon state={s} label={''} className="w-9 h-9 text-gray-400" />
                 <span className="w-full truncate text-center font-mono text-[10px] text-gray-300">
                   {i.name}
                 </span>
                 <span className={`h-1 w-8 rounded-full ${accent}`} />
-              </Link>
+              </div>
 
               {/* Etiqueta no hover: o que a porta é, sem ocupar o painel o
-                  tempo todo. `pointer-events-none` para ela não engolir o
-                  clique que a levou até ali. */}
+                  tempo todo. */}
               <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-[11px] shadow-xl group-hover:block">
                 <div className="text-white">{i.alias || i.name}</div>
                 <div className="font-mono text-gray-400">{ipv4 ?? t('net.if.port.noAddress')}</div>
@@ -129,18 +122,6 @@ export default function BackPanel({ ifaces, identifying, onIdentify }: BackPanel
                   </div>
                 )}
               </div>
-
-              {/* Piscar a porta é do lado do metal: chama ethtool --identify.
-                  Fora do <Link> de propósito — botão dentro de âncora é HTML
-                  inválido, e o clique de um roubaria o do outro. */}
-              <button
-                type="button"
-                onClick={() => onIdentify(i.name)}
-                disabled={blinking}
-                className="mt-1 w-full text-center text-[10px] text-gray-600 transition-colors hover:text-blue-400 disabled:text-blue-400"
-              >
-                {blinking ? t('net.if.blinking') : t('net.if.identify')}
-              </button>
             </div>
           );
         })}

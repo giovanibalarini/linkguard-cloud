@@ -53,9 +53,8 @@ SyslogIdentifier=linkguard-cloud
 NoNewPrivileges=yes
 ProtectSystem=strict
 # Writable paths so the app can persist generated configs: nftables (firewall),
-# unbound (DNS), WireGuard (VPN), the conntrack-accounting sysctl drop-in, the
-# stable-interface-name .link files (Fase A: nomes estáveis por MAC), and the
-# resolver/dhclient files that keep DNS pointed at the local unbound.
+# unbound (DNS), WireGuard (VPN), the conntrack-accounting sysctl drop-in, and
+# the resolver/dhclient files that keep DNS pointed at the local unbound.
 #
 # Paths whose owning package is only Recommends: (or, for /etc/dhcp, not
 # depended on at all) are prefixed with `-`: per systemd.exec(5), an
@@ -97,12 +96,11 @@ ProtectSystem=strict
 # por causa desse pre-comando que a entrada precisa do `-`: sem ele, o
 # pre-comando morre em 226/NAMESPACE antes de criar o arquivo (medido).
 #
-# Os três caminhos com `-` que o LinkGuard NÃO cria são deliberados:
-# /etc/systemd/network (do pacote systemd, sempre presente),
+# Os dois caminhos com `-` que o LinkGuard NÃO cria são deliberados:
 # /etc/resolv.conf (sempre presente) e /etc/dhcp (do isc-dhcp-client, que
 # este pacote não declara em lugar nenhum — num box só com WAN estática, ou
 # no Debian 13, ele legitimamente não existe).
-ReadWritePaths=/var/lib/linkguard-cloud /etc/linkguard-cloud /etc/sysctl.d -/etc/nftables.conf -/etc/unbound -/etc/systemd/network -/etc/resolv.conf -/etc/dhcp -/etc/apparmor.d/local -/etc/wireguard
+ReadWritePaths=/var/lib/linkguard-cloud /etc/linkguard-cloud /etc/sysctl.d -/etc/nftables.conf -/etc/unbound -/etc/resolv.conf -/etc/dhcp -/etc/apparmor.d/local -/etc/wireguard
 
 # RuntimeDirectory cria /run/linkguard-cloud ANTES do serviço subir, já gravável,
 # e o remove quando ele para (issue #116).

@@ -1,4 +1,4 @@
-# Área "rede": Rotas, Interfaces, edição/revisão de interface e Tráfego por
+# Área "rede": Rotas, Interfaces e Tráfego por
 # interface. Todas as chaves começam com `net.` (ver scripts/gen-i18n.mjs:
 # chave repetida entre áreas é erro de build, não "o último ganha").
 #
@@ -215,15 +215,6 @@ net.if.kind.physical:
 net.if.role.unassigned:
   pt: "não atribuída"
   en: "unassigned"
-net.if.pending.body:
-  pt: "foi alterada e aguarda confirmação. Verifique se o acesso continua funcionando antes de confirmar. Em caso de dúvida, reverta."
-  en: "was changed and is waiting for confirmation. Check that your access still works before you confirm. If in doubt, roll it back."
-net.if.pending.confirm:
-  pt: "Confirmar"
-  en: "Confirm"
-net.if.pending.rollback:
-  pt: "Reverter"
-  en: "Roll back"
 net.if.backPanel:
   pt: "Painel traseiro"
   en: "Back panel"
@@ -233,15 +224,6 @@ net.if.link.up:
 net.if.link.down:
   pt: "sem link"
   en: "no link"
-net.if.blinking:
-  pt: "piscando…"
-  en: "blinking…"
-net.if.identify:
-  pt: "identificar"
-  en: "identify"
-net.if.edit:
-  pt: "editar"
-  en: "edit"
 net.if.group.unassigned:
   pt: "Não atribuídas"
   en: "Unassigned"
@@ -263,9 +245,6 @@ net.if.port.degraded:
 net.if.port.virtual:
   pt: "interface virtual — não há porta física atrás dela"
   en: "virtual interface — there is no physical port behind it"
-net.if.openSettings:
-  pt: "Abrir as configurações de {name}"
-  en: "Open {name} settings"
 net.if.port.noAddress:
   pt: "sem endereço IPv4"
   en: "no IPv4 address"
@@ -279,32 +258,8 @@ net.if.port.act.unknown:
   pt: "tráfego ainda não medido"
   en: "traffic not measured yet"
 net.if.panel.hint:
-  pt: "Clique numa porta para configurá-la. \"Identificar\" pisca o LED da porta na máquina."
-  en: "Click a port to configure it. \"Identify\" blinks that port's LED on the machine."
-net.if.stable.title:
-  pt: "Nomes estáveis por MAC"
-  en: "Stable names by MAC"
-net.if.stable.body:
-  pt: "Fixa o nome de cada interface WAN pelo endereço MAC da placa, não pela posição física no computador — troca de hardware não muda mais o nome."
-  en: "Pins each WAN interface name to the card's MAC address instead of its physical slot in the machine, so swapping hardware no longer changes the name."
-net.if.stable.reboot:
-  pt: "Só tem efeito depois de um "
-  en: "Only takes effect after a "
-net.if.stable.reboot.strong:
-  pt: "reboot"
-  en: "reboot"
-net.if.stable.reboot.tail:
-  pt: "."
-  en: "."
-net.if.stable.applied:
-  pt: "Aplicado — reinicie a máquina para os nomes valerem."
-  en: "Applied — reboot the machine for the names to take effect."
-net.if.stable.applying:
-  pt: "Aplicando…"
-  en: "Applying…"
-net.if.stable.apply:
-  pt: "Aplicar (requer reboot)"
-  en: "Apply (requires reboot)"
+  pt: "Passe o mouse numa porta para ver o endereço e o estado. Endereço, rota e nome da placa vêm da VCN: mudam pelo console da Oracle, não por aqui."
+  en: "Hover a port to see its address and state. The card's address, route and name come from the VCN: change them in the Oracle console, not here."
 net.if.search.ph:
   pt: "buscar por nome, apelido ou descrição"
   en: "search by name, alias or description"
@@ -314,9 +269,6 @@ net.if.toggle.show:
 net.if.toggle.hide:
   pt: "ocultar {n} interfaces de sistema"
   en: "hide {n} system interfaces"
-net.if.action.edit:
-  pt: "Editar interface"
-  en: "Edit interface"
 net.if.noneFound:
   pt: "Nenhuma interface encontrada."
   en: "No interfaces found."
@@ -355,92 +307,8 @@ net.if.bridges.none:
   en: "No bridges detected."
 
 # ─── Edição de interface ────────────────────────────────────────────────────
-net.ifedit.title:
-  pt: "Editar {name}"
-  en: "Edit {name}"
-net.ifedit.notFound:
-  pt: "Interface não encontrada."
-  en: "Interface not found."
-net.ifedit.physicalOnly:
-  pt: "Só é possível editar interfaces físicas nesta fase."
-  en: "Only physical interfaces can be edited at this stage."
-net.ifedit.loadFailed:
-  pt: "Falha ao carregar a interface."
-  en: "Could not load the interface."
-net.ifedit.previewFailed:
-  pt: "Falha ao gerar a prévia."
-  en: "Could not generate the preview."
-net.ifedit.addressing:
-  pt: "Endereçamento"
-  en: "Addressing"
-net.ifedit.mode:
-  pt: "Modo"
-  en: "Mode"
-net.ifedit.mode.static:
-  pt: "Estático"
-  en: "Static"
-net.ifedit.mode.none:
-  pt: "Nenhum"
-  en: "None"
-net.ifedit.cidr:
-  pt: "Endereço (CIDR)"
-  en: "Address (CIDR)"
-net.ifedit.gateway:
-  pt: "Gateway (opcional)"
-  en: "Gateway (optional)"
-net.ifedit.description:
-  pt: "Descrição"
-  en: "Description"
-net.ifedit.description.ph:
-  pt: "ex: patch painel P02, sala dos servidores"
-  en: "e.g. patch panel P02, server room"
-net.ifedit.generating:
-  pt: "Gerando prévia..."
-  en: "Generating preview..."
-net.ifedit.review:
-  pt: "Revisar mudanças"
-  en: "Review changes"
 
 # ─── Revisão da mudança de interface ────────────────────────────────────────
-net.ifreview.nothing:
-  pt: "Nada para revisar. "
-  en: "Nothing to review. "
-net.ifreview.nothing.link:
-  pt: "Volte pro formulário"
-  en: "Go back to the form"
-net.ifreview.nothing.tail:
-  pt: "."
-  en: "."
-net.ifreview.back:
-  pt: "Voltar pro formulário"
-  en: "Back to the form"
-net.ifreview.title:
-  pt: "Revisar mudanças — {name}"
-  en: "Review changes — {name}"
-net.ifreview.subtitle:
-  pt: "Confira o que vai ser escrito antes de aplicar."
-  en: "Check what will be written before applying."
-net.ifreview.before:
-  pt: "Antes"
-  en: "Before"
-net.ifreview.after:
-  pt: "Depois"
-  en: "After"
-net.ifreview.fileMissing:
-  pt: "(arquivo não existe ainda)"
-  en: "(file does not exist yet)"
-net.ifreview.apply:
-  pt: "Aplicar"
-  en: "Apply"
-net.ifreview.applying:
-  pt: "Aplicando..."
-  en: "Applying..."
-net.ifreview.applyFailed:
-  pt: "Falha ao aplicar."
-  en: "Could not apply the change."
-net.ifreview.deadline:
-  pt: "Vai pedir confirmação em até 90s ou reverte sozinho"
-  en: "Asks for confirmation within 90s or rolls itself back"
 
 # ─── Tráfego por interface ──────────────────────────────────────────────────
 net.traffic.subtitle:

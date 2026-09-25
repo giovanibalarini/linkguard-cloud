@@ -17,7 +17,6 @@ const iface = (over: {
   kind: over.kind ?? 'physical',
   addr_mode: 'dhcp',
   role: 'wan',
-  managed: true,
   live: {
     carrier: over.carrier ?? true,
     rx_errors: over.rx ?? 0,
@@ -130,13 +129,11 @@ check(interfaces.includes('<BackPanel'), 'a visão geral monta o painel traseiro
 check(interfaces.includes('portIsAbnormal(i)'), 'as duas abas usam o MESMO critério de anomalia');
 check(!/!i\.live\.carrier \|\| i\.live\.rx_errors/.test(interfaces), 'nenhuma cópia solta do critério antigo sobrou');
 
-check(interfaces.includes('openSettings'), 'clicar na interface entra nas configurações');
-check(/kind === 'physical'\s*\?\s*`\/interfaces\//.test(interfaces), 'só interface física navega: a tela de edição recusa VLAN e bridge');
-check(interfaces.includes("closest('a,button')"), 'o clique da linha não rouba o clique de quem já é clicável');
+// Na nuvem a placa é da VCN: a tela mostra, não edita.
+check(!interfaces.includes('/edit') && !painel.includes('/edit'), 'nenhum link para a edição de placa, que a versão cloud não tem');
 
 check(painel.includes("i.kind === 'physical'"), 'o painel traseiro só desenha porta que existe no metal');
-check(painel.includes('onIdentify'), 'o painel pisca a porta de verdade pelo ethtool');
-check(icone.includes('animate-pulse'), 'os LEDs piscam durante o identify');
+check(icone.includes('animate-pulse'), 'o LED de atividade pisca');
 check(!/animate-(bounce|ping|spin)/.test(icone), 'nenhuma outra animação além do pisca');
 check(icone.includes("activity === null"), 'o ícone trata "não medido" como estado próprio, não como apagado');
 check(/rightBlinks\s*=\s*!degraded/.test(icone), 'erro no contador ganha do pisca de atividade: é o único estado acionável');
@@ -152,7 +149,6 @@ for (const chave of [
   'net.if.port.degraded',
   'net.if.port.virtual',
   'net.if.port.noAddress',
-  'net.if.openSettings',
   'net.if.panel.hint',
 ]) {
   check(rede.includes(`${chave}:`), `a chave ${chave} existe no YAML`);

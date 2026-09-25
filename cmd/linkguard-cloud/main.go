@@ -85,23 +85,28 @@ func main() {
 	os.Exit(run())
 }
 
-// anyWANIsDHCP diz se alguma interface gerenciada pega endereço por DHCP.
+// algumaPlacaPorDHCP diz se alguma placa da máquina pega endereço por DHCP.
 //
 // Decide se a chain input precisa aceitar udp/68: a renovação unicast em T1
 // passa por conntrack, mas o REBIND sai de 0.0.0.0:68 para broadcast e não casa
 // a tupla de retorno. Sem a linha, a WAN nunca mais renova depois de um flap de
 // link — e o sintoma aparece dias depois, como "a internet caiu sozinha".
 //
+// Lê o KERNEL (o flag `dynamic` do endereço), e não a tabela de interfaces
+// editadas pelo painel: na nuvem ninguém edita a placa, e a VNIC primária da
+// Oracle pega endereço por DHCP. A tabela vazia fazia esta função dizer "não"
+// justamente na máquina que depende da linha.
+//
 // Erro de leitura devolve TRUE: emitir a linha à toa numa máquina estática não
 // abre nada (ninguém manda DHCP para ela), enquanto omiti-la numa máquina que
 // precisa dela derruba a internet. O lado seguro é o permissivo aqui, e só aqui.
-func anyWANIsDHCP(db *storage.DB) bool {
-	ifaces, err := db.ListManagedInterfaces()
+func algumaPlacaPorDHCP(ctx context.Context, svc *netif.Service) bool {
+	views, err := svc.List(ctx)
 	if err != nil {
 		return true
 	}
-	for _, i := range ifaces {
-		if i.AddrMode == "dhcp" {
+	for _, v := range views {
+		if !v.Live.System && v.AddrMode == netif.AddrModeDHCP {
 			return true
 		}
 	}
@@ -358,7 +363,6 @@ type services struct {
 	trafficSvc   *hosttraffic.Service
 	fluxosSvc    *hostflows.Servico
 	hostSvc      *hosts.Service
-	netifSvc     *netif.Service
 	sysCollector *system.Collector
 	rrdSvc       *tsdb.Service
 	hostSampler  *hosttraffic.Sampler
@@ -536,7 +540,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	trafficSvc := hosttraffic.NewService(exec)
 	hostSvc := hosts.NewService(exec, db, nftSvc)
 	netifSvc := netif.NewService(exec, db, linkSvc)
-	netifSvc.SetAlertService(alertSvc)
 	// Regra que cita uma interface inexistente carrega no nft SEM ERRO e nunca
 	// casa — o painel mostra a regra ativa e ela não protege nada. Aconteceu em
 	// produção (reshuffle de PCI, enp4s0 → enp5s0). Esta ligação é o que permite
@@ -619,7 +622,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 			SSHPorts:    system.SSHPorts(context.Background(), exec),
 			ExtraPorts:  cfg.ExtraPorts,
 			LANNetworks: redes,
-			WANIsDHCP:   anyWANIsDHCP(db),
+			WANIsDHCP:   algumaPlacaPorDHCP(context.Background(), netifSvc),
 		}, nil
 	})
 
@@ -840,7 +843,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		trafficSvc:       trafficSvc,
 		fluxosSvc:        fluxosSvc,
 		hostSvc:          hostSvc,
-		netifSvc:         netifSvc,
 		sysCollector:     sysCollector,
 		rrdSvc:           rrdSvc,
 		hostSampler:      hostSampler,
@@ -966,7 +968,7 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	wgSvc, server := s.wgSvc, s.server
 	hostSampler := s.hostSampler
 	backupSched, journalSched, updatesSched := s.backupSched, s.journalSched, s.updatesSched
-	netifSvc, aiClient := s.netifSvc, s.aiClient
+	aiClient := s.aiClient
 	domainRouting := s.domainRouting
 	ntpInputState := s.ntpInputState
 	interval := s.interval
@@ -1535,7 +1537,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	spawnWriter("backup", func() { backupSched.Run(ctx) })
 	go journalSched.Run(ctx)
 	go updatesSched.Run(ctx)
-	go netifSvc.RunExpirySweep(ctx, 10*time.Second)
 	go ai.RunDigest(ctx, aiClient, rrdSvc, alertSvc, db, func() []string {
 		all, _ := db.GetLinks()
 		names := make([]string, 0, len(all))
