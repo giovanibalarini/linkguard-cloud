@@ -16,16 +16,16 @@ import (
 
 // LinhaView descreve a representação consumida pela tabela do painel web.
 type LinhaView struct {
-	Chave     string             `json:"chave"`
-	Tipo      string             `json:"tipo"`
-	Zona      fwmodel.Zona       `json:"zona"`
-	Regra     fwmodel.Regra      `json:"regra"`
-	Nomes     LinhaNomesView     `json:"nomes"`
-	EditarEm  string             `json:"editar_em"`
-	DescChave string             `json:"desc_chave"`
-	DescVars  map[string]string  `json:"desc_vars,omitempty"`
-	Contador  ContadorView       `json:"contador"`
-	Mudanca   string             `json:"mudanca"`
+	Chave     string              `json:"chave"`
+	Tipo      string              `json:"tipo"`
+	Zona      fwmodel.Zona        `json:"zona"`
+	Regra     fwmodel.Regra       `json:"regra"`
+	Nomes     LinhaNomesView      `json:"nomes"`
+	EditarEm  string              `json:"editar_em"`
+	DescChave string              `json:"desc_chave"`
+	DescVars  map[string]string   `json:"desc_vars,omitempty"`
+	Contador  ContadorView        `json:"contador"`
+	Mudanca   string              `json:"mudanca"`
 	Nft       []nftables.LinhaNft `json:"nft"`
 }
 

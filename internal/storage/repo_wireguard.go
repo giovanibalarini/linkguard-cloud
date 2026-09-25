@@ -442,4 +442,3 @@ func (db *DB) DeleteWireGuardPeer(userID string) (*WireGuardPeer, error) {
 	}
 	return p, nil
 }
-

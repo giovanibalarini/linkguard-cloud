@@ -300,8 +300,8 @@ func TestRestoreFirewallLeavesAppliedUntouchedAndDraftUpdated(t *testing.T) {
 			{
 				ID: "r-1", Zona: fwmodel.ZonaInternet, Posicao: 1, Ativa: true,
 				Acao: fwmodel.AcaoAccept, Proto: fwmodel.ProtoTCP,
-				Origem: fwmodel.Ponta{Tipo: fwmodel.PontaQualquer},
-				Destino: fwmodel.Ponta{Tipo: fwmodel.PontaEste},
+				Origem:       fwmodel.Ponta{Tipo: fwmodel.PontaQualquer},
+				Destino:      fwmodel.Ponta{Tipo: fwmodel.PontaEste},
 				PortaDestino: fwmodel.Porta{Tipo: fwmodel.PortaValor, Valor: "443"},
 			},
 		},

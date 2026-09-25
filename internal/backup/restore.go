@@ -120,6 +120,7 @@ var knownSettingsValidators = map[string]func(raw string) error{
 //     tem a própria defesa — o instantâneo carrega um fingerprint da máquina
 //     e é descartado quando não bate (internal/platform) —, mas essa defesa
 //     só age no próximo boot, e platform.Load é lido sem detectar nada. A
+//
 //   - fw_zonas_convertido / fw_conversao_relatorio: registram que a migração
 //     do firewall legado para zonas já rodou nesta máquina e o relatório da
 //     conversão local. Não devem viajar entre máquinas.

@@ -349,8 +349,6 @@ func TestUnwiredPersistGuardLetsTheUnconfirmedRuleReachTheBootFile(t *testing.T)
 	}
 }
 
-
-
 // seedInputScopeGroup cria no banco um grupo de escopo input ativado, como o
 // CRUD real cria, e devolve o nome da chain dele.
 func seedInputScopeGroup(t *testing.T, db *storage.DB) string {

@@ -151,11 +151,11 @@ func TestPendingChangeIsRevertedBeforeAnyReconcileOnBoot(t *testing.T) {
 	// Só o que APLICA firewall entra na lista. frSvc.WatchPending não entra:
 	// é a goroutine do timer, e ela não aplica nada por si.
 	applies := map[string]bool{
-		"frSvc.ConverterLegadoUmaVez":        true,
-		"frSvc.RenderizarNoBoot":             true,
-		"nftSvc.Restore":                     true,
-		"nftSvc.ReconcileMasquerade":         true,
-		"nftSvc.ReconcileStructuralChains":   true,
+		"frSvc.ConverterLegadoUmaVez":      true,
+		"frSvc.RenderizarNoBoot":           true,
+		"nftSvc.Restore":                   true,
+		"nftSvc.ReconcileMasquerade":       true,
+		"nftSvc.ReconcileStructuralChains": true,
 	}
 
 	revert := -1
