@@ -110,9 +110,16 @@ func (s *Service) EditarConfig(ctx context.Context, por string, f func(db *stora
 }
 
 // Aplicar executa os 12 passos da aplicação segura do firewall por zonas (§2.8).
-func (s *Service) Aplicar(ctx context.Context, por string) (*Applied, error) {
+func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied, errOut error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer func() {
+		if errOut != nil {
+			s.ultimoErro = errOut.Error()
+		} else {
+			s.ultimoErro = ""
+		}
+		s.mu.Unlock()
+	}()
 
 	// 1 & 2. Janela aberta -> 409 (StageLocked)
 	if err := s.guardWindowOpen(); err != nil {
@@ -306,6 +313,7 @@ func (s *Service) Aplicar(ctx context.Context, por string) (*Applied, error) {
 	return &Applied{
 		WindowID: windowID,
 		Pending:  pendingObj,
+		Summary:  resumo,
 	}, nil
 }
 
@@ -500,9 +508,16 @@ func (s *Service) AplicarMudancaVPN(ctx context.Context, por, resumo string,
 
 // RenderizarNoBoot renderiza e aplica o ruleset no arranque do sistema (§2.8, §4 T5).
 // Se fw_aplicado estiver vazio, inicializa com o conteúdo de em edição (motivo: "conversao").
-func (s *Service) RenderizarNoBoot(ctx context.Context) error {
+func (s *Service) RenderizarNoBoot(ctx context.Context) (errOut error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer func() {
+		if errOut != nil {
+			s.ultimoErro = errOut.Error()
+		} else {
+			s.ultimoErro = ""
+		}
+		s.mu.Unlock()
+	}()
 
 	aplicada, existe, err := s.db.CarregarConfigAplicada()
 	if err != nil {
@@ -591,6 +606,89 @@ func (s *Service) RedesVCNExtrasAplicadas() []string {
 		return nil
 	}
 	return aplicada.Ajustes.RedesVCNExtras
+}
+
+// PreviaRegra avalia a regra e devolve os problemas de validação e a representação nftables correspondente.
+func (s *Service) PreviaRegra(ctx context.Context, r fwmodel.Regra) ([]nftables.LinhaNft, []fwmodel.Problema, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	emEdicao, err := s.db.CarregarConfigEmEdicao()
+	if err != nil {
+		return nil, nil, fmt.Errorf("carregar config em edição: %w", err)
+	}
+
+	ins, err := s.insumos(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ler insumos: %w", err)
+	}
+
+	if r.ID == "" {
+		r.ID = "previa"
+	}
+
+	// Lista de IDs de pessoas para validação
+	pessoas := make([]string, 0, len(ins.Pessoas))
+	for _, p := range ins.Pessoas {
+		pessoas = append(pessoas, p.UserID)
+	}
+
+	// Cria uma cópia da configuração com a regra adicionada ou substituída
+	testCfg := emEdicao
+	substituiu := false
+	for i, reg := range testCfg.Regras {
+		if reg.ID == r.ID {
+			testCfg.Regras[i] = r
+			substituiu = true
+			break
+		}
+	}
+	if !substituiu {
+		testCfg.Regras = append(testCfg.Regras, r)
+	}
+
+	todosProblemas := fwmodel.Validar(testCfg, pessoas)
+	var problemas []fwmodel.Problema
+	for _, p := range todosProblemas {
+		if p.Onde == "regra:"+r.ID {
+			problemas = append(problemas, p)
+		}
+	}
+	if problemas == nil {
+		problemas = []fwmodel.Problema{}
+	}
+
+	if fwmodel.TemErro(problemas) {
+		return []nftables.LinhaNft{}, problemas, nil
+	}
+
+	// Força ativa para gerar os comandos nftables
+	rAtiva := r
+	rAtiva.Ativa = true
+	for i, reg := range testCfg.Regras {
+		if reg.ID == r.ID {
+			testCfg.Regras[i] = rAtiva
+			break
+		}
+	}
+
+	ruleset, err := nftables.RenderZonas(testCfg, ins)
+	if err != nil {
+		return nil, problemas, err
+	}
+
+	var nft []nftables.LinhaNft
+	for _, linha := range ruleset.Linhas[r.Zona] {
+		if linha.Chave == "r:"+r.ID {
+			nft = linha.Nft
+			break
+		}
+	}
+	if nft == nil {
+		nft = []nftables.LinhaNft{}
+	}
+
+	return nft, problemas, nil
 }
 
 func resumoMudancas(mudancas []fwmodel.Mudanca) string {

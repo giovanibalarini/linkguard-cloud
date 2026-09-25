@@ -133,6 +133,14 @@ type Service struct {
 
 	// fonteInsumos fornece os fatos dinâmicos do firewall por zonas (§2.8).
 	fonteInsumos FonteInsumos
+	ultimoErro   string
+}
+
+// UltimoErro devolve o último erro registrado durante a aplicação ou boot do firewall.
+func (s *Service) UltimoErro() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ultimoErro
 }
 
 // FonteInsumos fornece os fatos dinâmicos do firewall por zonas (§2.8).
@@ -168,6 +176,11 @@ func (s *Service) insumos(ctx context.Context) (nftables.Insumos, error) {
 		}
 	}
 	return ins, nil
+}
+
+// Insumos carrega os fatos dinâmicos e preenche os objetos existentes no nftables.
+func (s *Service) Insumos(ctx context.Context) (nftables.Insumos, error) {
+	return s.insumos(ctx)
 }
 
 // saveNftSnapshot guarda o ruleset vivo em disco via setting nft_live_snapshot.

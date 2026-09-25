@@ -188,6 +188,7 @@ var allowedInternalImports = map[string]bool{
 	"internal/metrics":       true,
 	"internal/dnslog":        true,
 	"internal/firewallrules": true,
+	"internal/fwmodel":       true,
 	// internal/hostquota entrou com a cota por aparelho (#126, metade "por
 	// host"): o handler decodifica, chama e traduz erro em status. A validação
 	// (endereço físico canônico, período, dia de fechamento, percentual), o

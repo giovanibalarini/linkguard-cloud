@@ -163,6 +163,9 @@ type Applied struct {
 	// AppliedBy, CreatedAt, ExpiresAt e do próprio Snapshot, e recortar aqui
 	// só criaria um segundo tipo para manter em dia com o primeiro.
 	Pending *storage.PendingChange
+
+	// Summary é o resumo descritivo das mudanças aplicadas.
+	Summary string
 }
 
 // ApplyGuarded executa a ordem obrigatória para m.

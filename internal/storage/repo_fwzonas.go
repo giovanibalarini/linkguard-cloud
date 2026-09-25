@@ -286,6 +286,18 @@ func (db *DB) CarregarConfigAplicada() (c fwmodel.Config, existe bool, err error
 	return fwmodel.Normalizar(c), true, nil
 }
 
+// CarregarMetadadosAplicada devolve a data/hora (unix timestamp) e o usuário que aplicou a configuração.
+func (db *DB) CarregarMetadadosAplicada() (aplicadoEm int64, aplicadoPor string, existe bool, err error) {
+	err = db.conn.QueryRow(`SELECT aplicado_em, aplicado_por FROM fw_aplicado WHERE only_row = 1`).Scan(&aplicadoEm, &aplicadoPor)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, "", false, nil
+		}
+		return 0, "", false, fmt.Errorf("carregar metadados fw_aplicado: %w", err)
+	}
+	return aplicadoEm, aplicadoPor, true, nil
+}
+
 // SalvarAplicadaERevisao grava em transação a configuração aplicada, gera uma revisão no histórico
 // e poda o histórico de revisões para manter no máximo 30 registros.
 func (db *DB) SalvarAplicadaERevisao(c fwmodel.Config, por, resumo, motivo string, agora time.Time) error {
@@ -512,6 +524,91 @@ func (db *DB) AtivarRegraFW(id string, ativa bool) error {
 		return fmt.Errorf("regra %q não encontrada", id)
 	}
 	return nil
+}
+
+// DuplicarRegraFW duplica uma regra existente, posicionando a nova regra logo abaixo da original.
+func (db *DB) DuplicarRegraFW(id string) (*fwmodel.Regra, error) {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("iniciar transação DuplicarRegraFW: %w", err)
+	}
+	defer tx.Rollback()
+
+	var r fwmodel.Regra
+	var ativaInt, regInt int
+	var origTipo, origVal, destTipo, destVal, portaTipo, portaVal, agID sql.NullString
+	err = tx.QueryRow(`
+		SELECT id, zona, posicao, ativa, acao, proto,
+		       origem_tipo, origem_valor, destino_tipo, destino_valor,
+		       porta_tipo, porta_valor, agendamento_id, registrar, descricao
+		FROM fw_regras
+		WHERE id = ?`, id,
+	).Scan(
+		&r.ID, &r.Zona, &r.Posicao, &ativaInt, &r.Acao, &r.Proto,
+		&origTipo, &origVal, &destTipo, &destVal,
+		&portaTipo, &portaVal, &agID, &regInt, &r.Descricao,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("regra %q não encontrada", id)
+		}
+		return nil, fmt.Errorf("consultar regra para duplicar: %w", err)
+	}
+
+	r.Ativa = ativaInt == 1
+	r.Registrar = regInt == 1
+	r.Origem = fwmodel.Ponta{Tipo: fwmodel.PontaTipo(origTipo.String), Valor: origVal.String}
+	r.Destino = fwmodel.Ponta{Tipo: fwmodel.PontaTipo(destTipo.String), Valor: destVal.String}
+	r.PortaDestino = fwmodel.Porta{Tipo: fwmodel.PortaTipo(portaTipo.String), Valor: portaVal.String}
+	r.AgendamentoID = agID.String
+
+	novaPosicao := r.Posicao + 1
+	_, err = tx.Exec(`
+		UPDATE fw_regras
+		SET posicao = posicao + 1
+		WHERE zona = ? AND posicao >= ?`,
+		string(r.Zona), novaPosicao,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("deslocar posições para duplicar regra: %w", err)
+	}
+
+	r.ID = uuid.NewString()
+	r.Posicao = novaPosicao
+	if r.Descricao != "" {
+		r.Descricao = "Cópia de " + r.Descricao
+	} else {
+		r.Descricao = "Cópia"
+	}
+
+	rAtivaInt := 0
+	if r.Ativa {
+		rAtivaInt = 1
+	}
+	rRegInt := 0
+	if r.Registrar {
+		rRegInt = 1
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO fw_regras (
+			id, zona, posicao, ativa, acao, proto,
+			origem_tipo, origem_valor, destino_tipo, destino_valor,
+			porta_tipo, porta_valor, agendamento_id, registrar, descricao
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, string(r.Zona), r.Posicao, rAtivaInt, string(r.Acao), string(r.Proto),
+		string(r.Origem.Tipo), r.Origem.Valor, string(r.Destino.Tipo), r.Destino.Valor,
+		string(r.PortaDestino.Tipo), r.PortaDestino.Valor, r.AgendamentoID, rRegInt, r.Descricao,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inserir cópia da regra: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("comitar transação DuplicarRegraFW: %w", err)
+	}
+
+	return &r, nil
 }
 
 // ReordenarRegrasFW altera as posições das regras de uma zona, exigindo a lista completa de IDs da zona.
@@ -745,6 +842,23 @@ func (db *DB) ApagarEncaminhamentoFW(id string) error {
 	res, err := db.conn.Exec(`DELETE FROM fw_encaminhamentos WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("apagar fw_encaminhamentos: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("encaminhamento %q não encontrado", id)
+	}
+	return nil
+}
+
+// AtivarEncaminhamentoFW ativa ou desativa um encaminhamento DNAT existente.
+func (db *DB) AtivarEncaminhamentoFW(id string, ativo bool) error {
+	ativoInt := 0
+	if ativo {
+		ativoInt = 1
+	}
+	res, err := db.conn.Exec(`UPDATE fw_encaminhamentos SET ativo = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?`, ativoInt, id)
+	if err != nil {
+		return fmt.Errorf("ativar/desativar encaminhamento %q: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
