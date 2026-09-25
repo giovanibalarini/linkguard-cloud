@@ -16,11 +16,16 @@ import (
 // UsersHandler handles user management (RBAC). All routes require users.manage.
 type UsersHandler struct {
 	db *storage.DB
+	fr vpnApplier
 }
 
 // NewUsersHandler creates a UsersHandler.
 func NewUsersHandler(db *storage.DB) *UsersHandler {
 	return &UsersHandler{db: db}
+}
+
+func (h *UsersHandler) SetVPNApplier(fr vpnApplier) {
+	h.fr = fr
 }
 
 // List returns all users with their assigned role IDs (no password hashes).
@@ -235,9 +240,28 @@ func (h *UsersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := h.db.DeleteUser(id); err != nil {
+	peer, err := h.db.GetWireGuardPeer(id)
+	if err != nil {
 		writeInternalError(w, err)
 		return
+	}
+	if peer != nil && h.fr != nil {
+		actor := actorName(r)
+		escrever := func() error {
+			return h.db.DeleteUser(id)
+		}
+		desfazer := func() error {
+			return nil
+		}
+		if _, err := h.fr.AplicarMudancaVPN(r.Context(), actor, "apagar usuário "+user.Username, escrever, desfazer); err != nil {
+			writeInternalError(w, err)
+			return
+		}
+	} else {
+		if err := h.db.DeleteUser(id); err != nil {
+			writeInternalError(w, err)
+			return
+		}
 	}
 	auditAction(h.db, r, "user.delete", "user:"+user.Username, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})

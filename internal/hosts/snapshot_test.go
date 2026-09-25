@@ -108,7 +108,6 @@ func TestAMaquinaDeOutraSubRedeEntraPeloContador(t *testing.T) {
 	}
 	if _, err := db.UpsertWireGuardPeer(
 		&storage.WireGuardPeer{UserID: "u-diego", PublicKey: "chave", Address: "10.7.0.5/32", SecretName: "wg-diego"},
-		&storage.FirewallGroup{Name: "VPN: diego", Kind: "wireguard_peer", Enabled: true},
 	); err != nil {
 		t.Fatalf("peer: %v", err)
 	}

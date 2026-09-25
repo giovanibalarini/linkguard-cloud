@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // WireGuardConfig is the public desired state. Private keys never enter this
@@ -167,9 +169,9 @@ func (db *DB) ListWireGuardPeers() ([]WireGuardPeer, error) {
 	return out, rows.Err()
 }
 
-// UpsertWireGuardPeer creates or rotates a peer and its managed firewall group
-// in one transaction. Rotation preserves the address, group and all rules.
-func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuardPeer, error) {
+// UpsertWireGuardPeer creates or rotates a peer in one transaction.
+// Rotation preserves the address and previous profile settings.
+func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer) (*WireGuardPeer, error) {
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return nil, err
@@ -213,38 +215,13 @@ func (db *DB) UpsertWireGuardPeer(p *WireGuardPeer, g *FirewallGroup) (*WireGuar
 			p.MTU = prior.MTU
 		}
 		p.RoutesUpdatedAt = prior.RoutesUpdatedAt
-		g.ID = prior.FirewallGroupID
-		if _, err := tx.Exec(`
-			UPDATE firewall_groups
-			   SET name=?, enabled=1, cond_saddr=?, cond_daddr='', cond_iif='',
-			       fallthrough=?, kind=?, scope=?, conn_state=?,
-			       sched_days='', sched_start='', sched_end='', updated_at=?
-			 WHERE id=?`, g.Name, p.Address, g.Fallthrough, g.Kind, g.Scope,
-			g.ConnState, time.Now(), g.ID); err != nil {
-			return nil, err
-		}
 	} else if scanErr != sql.ErrNoRows {
 		return nil, scanErr
 	} else {
-		var maxPos sql.NullInt64
-		if err := tx.QueryRow(`SELECT MAX(position) FROM firewall_groups`).Scan(&maxPos); err != nil {
-			return nil, err
-		}
-		g.Position = 0
-		if maxPos.Valid {
-			g.Position = int(maxPos.Int64) + 1
-		}
-		now := time.Now()
-		g.CreatedAt, g.UpdatedAt = now, now
-		if _, err := tx.Exec(`
-			INSERT INTO firewall_groups
-				(id, name, chain_name, position, enabled, cond_saddr, cond_daddr,
-				 cond_iif, fallthrough, kind, scope, conn_state, sched_days,
-				 sched_start, sched_end, created_at, updated_at)
-			VALUES (?, ?, ?, ?, 1, ?, '', '', ?, ?, ?, ?, '', '', '', ?, ?)`,
-			g.ID, g.Name, g.ChainName, g.Position, p.Address, g.Fallthrough,
-			g.Kind, g.Scope, g.ConnState, now, now); err != nil {
-			return nil, err
+		// A coluna firewall_group_id tem constraint UNIQUE no esquema legado;
+		// geramos um UUID novo para ela ao cadastrar novo peer.
+		if p.FirewallGroupID == "" {
+			p.FirewallGroupID = uuid.NewString()
 		}
 	}
 
@@ -460,59 +437,9 @@ func (db *DB) DeleteWireGuardPeer(userID string) (*WireGuardPeer, error) {
 	if _, err := tx.Exec(`DELETE FROM wireguard_peers WHERE user_id = ?`, userID); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(`DELETE FROM firewall_rules WHERE group_id = ?`, p.FirewallGroupID); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(`DELETE FROM firewall_groups WHERE id = ?`, p.FirewallGroupID); err != nil {
-		return nil, err
-	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return p, nil
 }
 
-// EnsureWireGuardPeerGroup repairs the managed projection without touching
-// its position or rules. It is safe on every boot and every VPN apply.
-func (db *DB) EnsureWireGuardPeerGroup(g *FirewallGroup) error {
-	tx, err := db.conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck
-	var exists int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM firewall_groups WHERE id = ?`, g.ID).Scan(&exists); err != nil {
-		return err
-	}
-	now := time.Now()
-	if exists == 0 {
-		var maxPos sql.NullInt64
-		if err := tx.QueryRow(`SELECT MAX(position) FROM firewall_groups`).Scan(&maxPos); err != nil {
-			return err
-		}
-		g.Position = 0
-		if maxPos.Valid {
-			g.Position = int(maxPos.Int64) + 1
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO firewall_groups
-				(id, name, chain_name, position, enabled, cond_saddr, cond_daddr,
-				 cond_iif, fallthrough, kind, scope, conn_state, sched_days,
-				 sched_start, sched_end, created_at, updated_at)
-			VALUES (?, ?, ?, ?, 1, ?, '', '', ?, ?, ?, ?, '', '', '', ?, ?)`,
-			g.ID, g.Name, g.ChainName, g.Position, g.CondSaddr, g.Fallthrough,
-			g.Kind, g.Scope, g.ConnState, now, now); err != nil {
-			return err
-		}
-	} else {
-		if _, err := tx.Exec(`
-			UPDATE firewall_groups SET name=?, chain_name=?, enabled=1, cond_saddr=?,
-				cond_daddr='', cond_iif='', fallthrough=?, kind=?, scope=?, conn_state=?,
-				sched_days='', sched_start='', sched_end='', updated_at=? WHERE id=?`,
-			g.Name, g.ChainName, g.CondSaddr, g.Fallthrough, g.Kind, g.Scope,
-			g.ConnState, now, g.ID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}

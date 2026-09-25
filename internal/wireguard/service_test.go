@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
@@ -303,31 +304,23 @@ func TestReconcileRepairsMissingManagedPeerGroup(t *testing.T) {
 	if _, err := svc.Enroll(context.Background(), user.ID); err != nil {
 		t.Fatal(err)
 	}
-	peer, _ := db.GetWireGuardPeer(user.ID)
-	if err := db.DeleteFirewallGroup(peer.FirewallGroupID); err != nil {
-		t.Fatal(err)
-	}
 	if err := svc.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	found := false
-	for _, g := range mustWireGuardGroups(t, db) {
-		if g.ID == peer.FirewallGroupID && g.Kind == "wireguard_peer" && g.CondSaddr == peer.Address {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("reconcile did not recreate the peer firewall group")
-	}
-}
-
-func mustWireGuardGroups(t *testing.T, db *storage.DB) []storage.FirewallGroup {
-	t.Helper()
 	groups, err := db.ListFirewallGroups()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return groups
+	if len(groups) != 0 {
+		t.Fatalf("Reconcile escreveu grupos de firewall no banco: %+v", groups)
+	}
+	rules, err := db.ListFirewallRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("Reconcile escreveu regras de firewall no banco: %+v", rules)
+	}
 }
 
 func callsContaining(calls []string, needle string) int {
@@ -482,13 +475,19 @@ func TestSplitTunnelDerivaAsRotasDosGruposLiberados(t *testing.T) {
 		t.Fatalf("enrolamento novo deveria ser full tunnel:\n%s", primeira.ClientConfig)
 	}
 
-	grupo := &storage.HostGroup{Name: "Cluster K3s", Hosts: []string{"10.0.1.20", "10.0.1.21"}}
-	if err := db.CreateHostGroup(grupo); err != nil {
-		t.Fatalf("CreateHostGroup: %v", err)
+	cfg := fwmodel.Config{
+		Formato: 1,
+		Aliases: []fwmodel.Alias{
+			{ID: "k3s-alias", Nome: "Cluster K3s", Tipo: fwmodel.AliasTipoEnderecos, Itens: []string{"10.0.1.20", "10.0.1.21"}},
+		},
+		Ajustes: fwmodel.AjustesPadrao(),
+	}
+	if err := db.SalvarAplicadaERevisao(cfg, "admin", "setup", "", time.Now()); err != nil {
+		t.Fatalf("GravarConfigAplicada: %v", err)
 	}
 	if err := svc.SetPeerAccess(context.Background(), userID, PeerAccess{
 		AccessMode:        "restricted",
-		AllowedHostGroups: []string{grupo.ID},
+		AllowedHostGroups: []string{"k3s-alias"},
 		AllowedPorts:      "22,6443",
 		TunnelMode:        TunnelSplit,
 		ExtraRoutes:       []string{"192.168.50.0/24"},

@@ -20,6 +20,7 @@ import (
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
@@ -216,23 +217,6 @@ func (s *Service) applyEnabled(ctx context.Context, c Config) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range storedPeers {
-		fallthroughMode := nftables.FallthroughContinue
-		if p.AccessMode == "restricted" {
-			fallthroughMode = nftables.FallthroughDrop
-		}
-		group := storage.FirewallGroup{ID: p.FirewallGroupID, Name: "VPN — " + p.Username,
-			ChainName: nftables.GroupChainName(p.FirewallGroupID), Enabled: true,
-			CondSaddr: p.Address, Fallthrough: fallthroughMode,
-			Kind: nftables.GroupKindWireGuardPeer, Scope: nftables.ScopeForward,
-			ConnState: nftables.ConnStateAny}
-		if err := s.db.EnsureWireGuardPeerGroup(&group); err != nil {
-			return fmt.Errorf("não foi possível reconciliar o grupo do peer %s: %w", p.UserID, err)
-		}
-		if err := s.reconcilePeerZTNARules(ctx, p); err != nil {
-			return fmt.Errorf("não foi possível reconciliar regras ZTNA do peer %s: %w", p.UserID, err)
-		}
-	}
 	peers := peersFromStorage(storedPeers)
 	content, err := RenderServerConfig(c, private, peers)
 	if err != nil {
@@ -374,7 +358,7 @@ func (s *Service) Enroll(ctx context.Context, userID string) (Enrollment, error)
 // peer existir. Aqui o perfil entra junto: a primeira configuração entregue já
 // é a definitiva, e um peer novo nunca existe com acesso total.
 func (s *Service) EnrollFor(ctx context.Context, userID string, access PeerAccess) (Enrollment, error) {
-	normalized, err := normalizeAccess(access)
+	normalized, err := normalizeAccess(s.db, access)
 	if err != nil {
 		return Enrollment{}, err
 	}
@@ -472,11 +456,7 @@ func (s *Service) enroll(ctx context.Context, userID string, access *PeerAccess)
 		SecretName: secretName, FirewallGroupID: groupID, AccessMode: accessMode,
 		AllowedHostGroups: allowedGroups, AllowedPorts: allowedPorts, TunnelMode: tunnelMode,
 		ExtraRoutes: extraRoutes, MTU: mtu}
-	group := storage.FirewallGroup{ID: groupID, Name: "VPN — " + user.Username,
-		ChainName: nftables.GroupChainName(groupID), Enabled: true, CondSaddr: address,
-		Fallthrough: peerFallthrough(accessMode), Kind: nftables.GroupKindWireGuardPeer,
-		Scope: nftables.ScopeForward, ConnState: nftables.ConnStateAny}
-	old, err := s.db.UpsertWireGuardPeer(&row, &group)
+	old, err := s.db.UpsertWireGuardPeer(&row)
 	if err != nil {
 		_ = s.secrets.Delete(secretName)
 		return Enrollment{}, err
@@ -498,11 +478,6 @@ func (s *Service) enroll(ctx context.Context, userID string, access *PeerAccess)
 	// A config que sai daqui já tem o perfil vigente: ela não está desatualizada.
 	if err := s.db.MarkWireGuardConfigIssued(userID); err != nil {
 		return Enrollment{}, err
-	}
-	if stored, err := s.db.GetWireGuardPeer(userID); err == nil && stored != nil {
-		if err := s.reconcilePeerZTNARules(ctx, *stored); err != nil {
-			return Enrollment{}, err
-		}
 	}
 	peer.CreatedAt, peer.RotatedAt = row.CreatedAt.Unix(), row.RotatedAt.Unix()
 	result := Enrollment{Peer: peer, ClientConfig: clientConfig}
@@ -530,9 +505,6 @@ func (s *Service) Revoke(ctx context.Context, userID string) error {
 		return err
 	}
 	secretErr := s.secrets.Delete(removed.SecretName)
-	if err := s.deletePeerInputGroup(removed.FirewallGroupID); err != nil {
-		return err
-	}
 	applyErr := s.reconcileLocked(ctx)
 	if secretErr != nil {
 		return secretErr
@@ -553,22 +525,29 @@ type PeerAccess struct {
 }
 
 // resolveRoutes traduz o perfil do peer nos destinos que entram no AllowedIPs
-// do cliente: os hosts dos grupos liberados, mais as rotas extras digitadas.
+// do cliente: os hosts dos aliases da config aplicada, mais as rotas extras digitadas.
 //
 // Só o serviço faz isto porque só ele alcança o banco; o render recebe a lista
 // pronta e a revalida antes de escrever.
 func (s *Service) resolveRoutes(accessMode string, allowedHostGroups, extraRoutes []string) ([]string, error) {
 	routes := append([]string(nil), extraRoutes...)
 	if accessMode == "restricted" {
+		cfg, existe, err := s.db.CarregarConfigAplicada()
+		if err != nil {
+			return nil, err
+		}
+		aliasMap := make(map[string][]string)
+		if existe {
+			for _, a := range cfg.Aliases {
+				if a.Tipo == fwmodel.AliasTipoEnderecos {
+					aliasMap[a.ID] = a.Itens
+				}
+			}
+		}
 		for _, id := range allowedHostGroups {
-			group, err := s.db.GetHostGroup(id)
-			if err != nil {
-				return nil, err
+			if itens, ok := aliasMap[id]; ok {
+				routes = append(routes, itens...)
 			}
-			if group == nil {
-				continue
-			}
-			routes = append(routes, group.Hosts...)
 		}
 	}
 	return NormalizeRoutes(routes)
@@ -646,7 +625,7 @@ func (s *Service) ClientConfig(ctx context.Context, userID string) (Enrollment, 
 }
 
 func (s *Service) SetPeerAccess(ctx context.Context, userID string, access PeerAccess) error {
-	access, err := normalizeAccess(access)
+	access, err := normalizeAccess(s.db, access)
 	if err != nil {
 		return err
 	}
@@ -673,102 +652,7 @@ func (s *Service) SetPeerAccess(ctx context.Context, userID string, access PeerA
 		return err
 	}
 
-	updated, err := s.db.GetWireGuardPeer(userID)
-	if err != nil || updated == nil {
-		return err
-	}
-
-	fallthroughMode := nftables.FallthroughContinue
-	if updated.AccessMode == "restricted" {
-		fallthroughMode = nftables.FallthroughDrop
-	}
-	group := storage.FirewallGroup{
-		ID:          updated.FirewallGroupID,
-		Name:        "VPN — " + updated.Username,
-		ChainName:   nftables.GroupChainName(updated.FirewallGroupID),
-		Enabled:     true,
-		CondSaddr:   updated.Address,
-		Fallthrough: fallthroughMode,
-		Kind:        nftables.GroupKindWireGuardPeer,
-		Scope:       nftables.ScopeForward,
-		ConnState:   nftables.ConnStateAny,
-	}
-	if err := s.db.EnsureWireGuardPeerGroup(&group); err != nil {
-		return err
-	}
-
-	if err := s.reconcilePeerZTNARules(ctx, *updated); err != nil {
-		return err
-	}
-
 	return s.reconcileLocked(ctx)
-}
-
-func (s *Service) reconcilePeerZTNARules(_ context.Context, p storage.WireGuardPeer) error {
-	if err := s.reconcilePeerInputGroup(p); err != nil {
-		return err
-	}
-	rules, err := s.db.ListFirewallRules()
-	if err != nil {
-		return err
-	}
-	for _, r := range rules {
-		if r.GroupID == p.FirewallGroupID && strings.HasPrefix(r.Description, "ZTNA:") {
-			_ = s.db.DeleteFirewallRule(r.ID)
-		}
-	}
-
-	if p.AccessMode != "restricted" || len(p.AllowedHostGroups) == 0 {
-		return nil
-	}
-
-	for _, hgID := range p.AllowedHostGroups {
-		hg, err := s.db.GetHostGroup(hgID)
-		if err != nil || hg == nil {
-			continue
-		}
-		for _, host := range hg.Hosts {
-			host = strings.TrimSpace(host)
-			if host == "" {
-				continue
-			}
-			if p.AllowedPorts != "" {
-				ports := strings.Split(p.AllowedPorts, ",")
-				for _, port := range ports {
-					port = strings.TrimSpace(port)
-					if port == "" {
-						continue
-					}
-					rule := storage.FirewallRule{
-						GroupID:     p.FirewallGroupID,
-						Action:      "accept",
-						Daddr:       host,
-						Proto:       "tcp",
-						Dport:       port,
-						Description: "ZTNA: " + hg.Name + " (TCP:" + port + ")",
-					}
-					_ = s.db.CreateFirewallRule(&rule)
-				}
-				icmpRule := storage.FirewallRule{
-					GroupID:     p.FirewallGroupID,
-					Action:      "accept",
-					Daddr:       host,
-					Proto:       "icmp",
-					Description: "ZTNA: " + hg.Name + " (ICMP)",
-				}
-				_ = s.db.CreateFirewallRule(&icmpRule)
-			} else {
-				rule := storage.FirewallRule{
-					GroupID:     p.FirewallGroupID,
-					Action:      "accept",
-					Daddr:       host,
-					Description: "ZTNA: " + hg.Name,
-				}
-				_ = s.db.CreateFirewallRule(&rule)
-			}
-		}
-	}
-	return nil
 }
 
 func (s *Service) Overview(ctx context.Context) (Overview, error) {
@@ -948,19 +832,10 @@ func (s *Service) DNSBinding() (address, network string, enabled bool, err error
 	return prefix.Addr().String(), prefix.Masked().String(), true, nil
 }
 
-// peerFallthrough é o fim da chain de encaminhamento de um peer: restrito
-// termina em drop; o resto devolve a decisão às regras seguintes.
-func peerFallthrough(accessMode string) string {
-	if accessMode == "restricted" {
-		return nftables.FallthroughDrop
-	}
-	return nftables.FallthroughContinue
-}
-
 // normalizeAccess valida e completa um perfil de acesso antes de ele tocar o
 // banco. É a mesma porta para quem edita o perfil de um peer que já existe e
 // para quem entrega o acesso de alguém já com o perfil.
-func normalizeAccess(access PeerAccess) (PeerAccess, error) {
+func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 	access.AccessMode = strings.TrimSpace(access.AccessMode)
 	if access.AccessMode == "" {
 		access.AccessMode = "full"
@@ -986,6 +861,33 @@ func normalizeAccess(access PeerAccess) (PeerAccess, error) {
 	if access.AllowedHostGroups == nil {
 		access.AllowedHostGroups = []string{}
 	}
+
+	if len(access.AllowedHostGroups) > 0 {
+		if db == nil {
+			return PeerAccess{}, fmt.Errorf("alias de endereços inexistente ou ainda não aplicado")
+		}
+		aplicada, existe, err := db.CarregarConfigAplicada()
+		if err != nil {
+			return PeerAccess{}, fmt.Errorf("carregar config aplicada: %w", err)
+		}
+		if !existe {
+			return PeerAccess{}, fmt.Errorf("alias de endereços inexistente ou ainda não aplicado")
+		}
+		aliasAddr := make(map[string]bool)
+		aliasAddr[fwmodel.AliasVCN] = true
+		aliasAddr[fwmodel.AliasVPN] = true
+		for _, a := range aplicada.Aliases {
+			if a.Tipo == fwmodel.AliasTipoEnderecos {
+				aliasAddr[a.ID] = true
+			}
+		}
+		for _, id := range access.AllowedHostGroups {
+			if !aliasAddr[id] {
+				return PeerAccess{}, fmt.Errorf("alias de endereços inexistente ou ainda não aplicado")
+			}
+		}
+	}
+
 	var ports []string
 	for _, port := range strings.Split(access.AllowedPorts, ",") {
 		port = strings.TrimSpace(port)
@@ -999,80 +901,6 @@ func normalizeAccess(access PeerAccess) (PeerAccess, error) {
 	}
 	access.AllowedPorts = strings.Join(ports, ",")
 	return access, nil
-}
-
-// inputGroupID identifica o grupo de ENTRADA de um peer. É derivado do grupo
-// de encaminhamento, e não guardado, para dispensar coluna nova e sobreviver a
-// um backup restaurado.
-func inputGroupID(forwardGroupID string) string {
-	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("linkguard-cloud/wireguard/entrada/"+forwardGroupID)).String()
-}
-
-// reconcilePeerInputGroup fecha a própria caixa para um peer restrito.
-//
-// O perfil restrito vive na chain forward: decide o que o peer alcança ATRAVÉS
-// do gateway. A caixa em si fica na chain input, que aceita o que vem de rede
-// privada — e a rede da VPN é privada. Um peer liberado só para o k3s alcançava,
-// pelo 10.7.0.1, o SSH, o painel e qualquer outra porta do gateway (achado de
-// 24/09/2026). Este grupo, de escopo input, deixa passar só o que o túnel
-// precisa para funcionar — o DNS para onde a config do cliente aponta e o ping
-// — e descarta conexão nova para o resto. O filtro vale só para estado new:
-// o que a caixa abre na direção do peer (a sonda de latência) continua voltando.
-func (s *Service) reconcilePeerInputGroup(p storage.WireGuardPeer) error {
-	if p.AccessMode != "restricted" {
-		return s.deletePeerInputGroup(p.FirewallGroupID)
-	}
-	id := inputGroupID(p.FirewallGroupID)
-	group := storage.FirewallGroup{
-		ID:          id,
-		Name:        "VPN — " + p.Username + " (entrada na caixa)",
-		ChainName:   nftables.GroupChainName(id),
-		Enabled:     true,
-		CondSaddr:   p.Address,
-		Fallthrough: nftables.FallthroughDrop,
-		Kind:        nftables.GroupKindWireGuardPeer,
-		Scope:       nftables.ScopeInput,
-		ConnState:   nftables.ConnStateNew,
-	}
-	if err := s.db.EnsureWireGuardPeerGroup(&group); err != nil {
-		return err
-	}
-	rules, err := s.db.ListFirewallRules()
-	if err != nil {
-		return err
-	}
-	for _, r := range rules {
-		if r.GroupID == id {
-			if err := s.db.DeleteFirewallRule(r.ID); err != nil {
-				return err
-			}
-		}
-	}
-	for _, r := range []storage.FirewallRule{
-		{Proto: "udp", Dport: "53", Description: "ZTNA: DNS do túnel (UDP)"},
-		{Proto: "tcp", Dport: "53", Description: "ZTNA: DNS do túnel (TCP)"},
-		{Proto: "icmp", Description: "ZTNA: ping da caixa"},
-	} {
-		r.GroupID, r.Action = id, "accept"
-		if err := s.db.CreateFirewallRule(&r); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) deletePeerInputGroup(forwardGroupID string) error {
-	id := inputGroupID(forwardGroupID)
-	groups, err := s.db.ListFirewallGroups()
-	if err != nil {
-		return err
-	}
-	for _, g := range groups {
-		if g.ID == id {
-			return s.db.DeleteFirewallGroup(id)
-		}
-	}
-	return nil
 }
 
 // MyVPN é o que um usuário vê da PRÓPRIA VPN, sem enxergar a de ninguém.
@@ -1122,20 +950,34 @@ func (s *Service) Mine(ctx context.Context, userID string) (MyVPN, error) {
 	}
 	out.Peer = &peers[0]
 	if stored.AccessMode == "restricted" {
-		for _, id := range stored.AllowedHostGroups {
-			g, err := s.db.GetHostGroup(id)
-			if err != nil {
-				return MyVPN{}, err
+		cfg, existe, err := s.db.CarregarConfigAplicada()
+		if err != nil {
+			return MyVPN{}, err
+		}
+		aliasMap := make(map[string]fwmodel.Alias)
+		if existe {
+			for _, a := range cfg.Aliases {
+				aliasMap[a.ID] = a
 			}
-			if g == nil {
+		}
+		for _, id := range stored.AllowedHostGroups {
+			if id == fwmodel.AliasVCN {
+				out.Reach = append(out.Reach, Reach{Name: "VCN", Hosts: []string{}, Ports: stored.AllowedPorts})
 				continue
 			}
-			// O grupo guarda o host como /32; para quem usa, é só o endereço.
-			hosts := make([]string, 0, len(g.Hosts))
-			for _, h := range g.Hosts {
+			if id == fwmodel.AliasVPN {
+				out.Reach = append(out.Reach, Reach{Name: "VPN", Hosts: []string{}, Ports: stored.AllowedPorts})
+				continue
+			}
+			a, ok := aliasMap[id]
+			if !ok {
+				continue
+			}
+			hosts := make([]string, 0, len(a.Itens))
+			for _, h := range a.Itens {
 				hosts = append(hosts, strings.TrimSuffix(h, "/32"))
 			}
-			out.Reach = append(out.Reach, Reach{Name: g.Name, Hosts: hosts, Ports: stored.AllowedPorts})
+			out.Reach = append(out.Reach, Reach{Name: a.Nome, Hosts: hosts, Ports: stored.AllowedPorts})
 		}
 	}
 	return out, nil
@@ -1143,4 +985,10 @@ func (s *Service) Mine(ctx context.Context, userID string) (MyVPN, error) {
 
 // NormalizeAccess expõe a validação do perfil para a borda HTTP recusar um
 // perfil inválido com 400 antes de chamar o serviço.
-func NormalizeAccess(access PeerAccess) (PeerAccess, error) { return normalizeAccess(access) }
+func (s *Service) NormalizeAccess(access PeerAccess) (PeerAccess, error) {
+	return normalizeAccess(s.db, access)
+}
+
+func NormalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
+	return normalizeAccess(db, access)
+}

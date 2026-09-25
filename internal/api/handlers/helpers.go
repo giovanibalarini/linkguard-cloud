@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
@@ -115,4 +116,11 @@ func actingUser(r *http.Request) string {
 		return c.Username
 	}
 	return "unknown"
+}
+
+func actorName(r *http.Request) string {
+	if c := auth.ClaimsFromContext(r.Context()); c != nil && strings.TrimSpace(c.Username) != "" {
+		return c.Username
+	}
+	return "sistema"
 }

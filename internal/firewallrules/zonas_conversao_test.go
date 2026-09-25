@@ -568,7 +568,8 @@ func TestConversaoCaminhosPreservados(t *testing.T) {
 		AccessMode:        "full",
 		AllowedHostGroups: []string{},
 	}
-	_, _ = db.UpsertWireGuardPeer(pAdmin, gAdmin)
+	_ = db.CreateFirewallGroup(gAdmin)
+	_, _ = db.UpsertWireGuardPeer(pAdmin)
 
 	uRestrito := &storage.User{ID: "uid-restrito", Username: "restrito"}
 	_ = db.CreateUser(uRestrito, "hash", nil)
@@ -587,7 +588,8 @@ func TestConversaoCaminhosPreservados(t *testing.T) {
 		AccessMode:        "restricted",
 		AllowedHostGroups: []string{},
 	}
-	_, _ = db.UpsertWireGuardPeer(pRestrito, gRestrito)
+	_ = db.CreateFirewallGroup(gRestrito)
+	_, _ = db.UpsertWireGuardPeer(pRestrito)
 
 	// Executa a conversão
 	if err := svc.ConverterLegadoUmaVez(ctx, f); err != nil {

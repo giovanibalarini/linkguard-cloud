@@ -13,6 +13,7 @@ import (
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
@@ -285,5 +286,67 @@ func TestUpdateAllowsPasswordResetOnEquallyOrLessPrivilegedTarget(t *testing.T) 
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 — reset legítimo de conta menos privilegiada, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+type testVPNApplier struct {
+	called bool
+	por    string
+	resumo string
+}
+
+func (a *testVPNApplier) AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error) {
+	a.called = true
+	a.por = por
+	a.resumo = resumo
+	if escrever != nil {
+		if err := escrever(); err != nil {
+			return nil, err
+		}
+	}
+	return &firewallrules.Applied{}, nil
+}
+
+func TestDeleteUserWithWireGuardPeerTriggersVPNApplier(t *testing.T) {
+	h, db := newUsersTestHandler(t)
+	adminRole := adminRoleID(t, db)
+	admin := &storage.User{Username: "superadmin"}
+	if err := db.CreateUser(admin, "$2a$10$fakehashfakehashfakehashfakehashfakehashfakehashfa", []string{adminRole}); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	target := &storage.User{Username: "alvo-vpn"}
+	if err := db.CreateUser(target, "$2a$10$fakehashfakehashfakehashfakehashfakehashfakehashfa", []string{adminRole}); err != nil {
+		t.Fatalf("CreateUser target: %v", err)
+	}
+
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: target.ID, Username: target.Username, Address: "10.7.0.10/32"}); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
+
+	applier := &testVPNApplier{}
+	h.SetVPNApplier(applier)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/users/"+target.ID, nil)
+	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: admin.ID, Username: admin.Username}))
+	req = withChiURLParam(req, "id", target.ID)
+	w := httptest.NewRecorder()
+	h.Delete(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Delete status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if !applier.called {
+		t.Fatal("AplicarMudancaVPN não foi chamado ao deletar usuário com peer WireGuard")
+	}
+	if applier.por != admin.Username {
+		t.Fatalf("por = %q, want %q", applier.por, admin.Username)
+	}
+	deletedUser, err := db.GetUserByID(target.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if deletedUser != nil {
+		t.Fatal("usuário ainda existe no banco após Delete")
 	}
 }

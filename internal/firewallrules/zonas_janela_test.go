@@ -35,7 +35,7 @@ func createTestPeer(t *testing.T, db *storage.DB, userID, username, ip, accessMo
 		AllowedHostGroups: aliases,
 		AllowedPorts:      ports,
 	}
-	_, err := db.UpsertWireGuardPeer(p, g)
+	_, err := db.UpsertWireGuardPeer(p)
 	if err != nil {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}

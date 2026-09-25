@@ -450,7 +450,8 @@ func montarLinhasVPN(ctx *contextoRender, pessoasProntas []pessoaPronta) ([]Linh
 	}
 
 	// 2. s:dns-vpn (se VPN ligada)
-	if strings.TrimSpace(ctx.insumos.RedeVPN) != "" {
+	vpnLigada := strings.TrimSpace(ctx.insumos.RedeVPN) != "" && ctx.insumos.PortaWireGuard > 0
+	if vpnLigada {
 		txtDNS := "meta l4proto { tcp, udp } th dport 53 counter accept comment \"s:dns-vpn\""
 		lDNS := Linha{
 			Chave:     "s:dns-vpn",
@@ -465,85 +466,85 @@ func montarLinhasVPN(ctx *contextoRender, pessoasProntas []pessoaPronta) ([]Linh
 		}
 		linhas = append(linhas, lDNS)
 		regrasIn = append(regrasIn, txtDNS)
-	}
 
-	// 3. Regras derivadas dos perfis das pessoas da VPN
-	// Primeiro pessoas com acesso Total (in e fwd)
-	for _, pr := range pessoasProntas {
-		p := pr.p
-		if p.Total {
-			txtIn := fmt.Sprintf("ip saddr %s counter accept comment \"s:vpn:%s:total\"", p.Endereco, p.UserID)
-			txtFwd := fmt.Sprintf("ip saddr %s counter accept comment \"s:vpn:%s:total\"", p.Endereco, p.UserID)
+		// 3. Regras derivadas dos perfis das pessoas da VPN
+		// Primeiro pessoas com acesso Total (in e fwd)
+		for _, pr := range pessoasProntas {
+			p := pr.p
+			if p.Total {
+				txtIn := fmt.Sprintf("ip saddr %s counter accept comment \"s:vpn:%s:total\"", p.Endereco, p.UserID)
+				txtFwd := fmt.Sprintf("ip saddr %s counter accept comment \"s:vpn:%s:total\"", p.Endereco, p.UserID)
 
-			lTotal := Linha{
-				Chave:     "s:vpn:" + p.UserID + ":total",
-				Zona:      fwmodel.ZonaVPN,
-				Tipo:      "travada",
-				Regra:     fwmodel.Regra{ID: "s:vpn:" + p.UserID + ":total", Zona: fwmodel.ZonaVPN, Ativa: true, Acao: fwmodel.AcaoAccept, Origem: fwmodel.Ponta{Tipo: fwmodel.PontaEndereco, Valor: p.Endereco}, Destino: fwmodel.Ponta{Tipo: fwmodel.PontaQualquer}, Descricao: "Acesso total: " + p.Usuario},
-				EditarEm:  "vpn",
-				DescChave: "fw.travada.vpn_total",
-				DescVars:  map[string]string{"usuario": p.Usuario},
-				Nft: []LinhaNft{
-					{Chain: "zona_vpn_in", Texto: txtIn},
-					{Chain: "zona_vpn_fwd", Texto: txtFwd},
-				},
-			}
-			linhas = append(linhas, lTotal)
-			regrasIn = append(regrasIn, txtIn)
-			regrasFwd = append(regrasFwd, txtFwd)
-		}
-	}
-
-	// Depois pessoas restritas (só fwd, ordenadas por usuario e depois por nome do alias)
-	for _, pr := range pessoasProntas {
-		p := pr.p
-		if p.Total {
-			continue
-		}
-		portasFormatadas := formatarPortasVPN(p.Portas)
-
-		for _, av := range pr.aliases {
-			var nftList []LinhaNft
-			if portasFormatadas == "" {
-				// Sem restrição de portas: IP + alias
-				txtFwd := fmt.Sprintf("ip saddr %s ip daddr @%s counter accept comment \"s:vpn:%s:%s\"",
-					p.Endereco, av.set, p.UserID, av.id)
-				nftList = append(nftList, LinhaNft{Chain: "zona_vpn_fwd", Texto: txtFwd})
+				lTotal := Linha{
+					Chave:     "s:vpn:" + p.UserID + ":total",
+					Zona:      fwmodel.ZonaVPN,
+					Tipo:      "travada",
+					Regra:     fwmodel.Regra{ID: "s:vpn:" + p.UserID + ":total", Zona: fwmodel.ZonaVPN, Ativa: true, Acao: fwmodel.AcaoAccept, Origem: fwmodel.Ponta{Tipo: fwmodel.PontaEndereco, Valor: p.Endereco}, Destino: fwmodel.Ponta{Tipo: fwmodel.PontaQualquer}, Descricao: "Acesso total: " + p.Usuario},
+					EditarEm:  "vpn",
+					DescChave: "fw.travada.vpn_total",
+					DescVars:  map[string]string{"usuario": p.Usuario},
+					Nft: []LinhaNft{
+						{Chain: "zona_vpn_in", Texto: txtIn},
+						{Chain: "zona_vpn_fwd", Texto: txtFwd},
+					},
+				}
+				linhas = append(linhas, lTotal)
+				regrasIn = append(regrasIn, txtIn)
 				regrasFwd = append(regrasFwd, txtFwd)
-			} else {
-				// Com portas: TCP + ICMP (ZTNA)
-				txtTCP := fmt.Sprintf("ip saddr %s ip daddr @%s tcp dport { %s } counter accept comment \"s:vpn:%s:%s\"",
-					p.Endereco, av.set, portasFormatadas, p.UserID, av.id)
-				txtICMP := fmt.Sprintf("ip saddr %s ip daddr @%s meta l4proto icmp counter accept comment \"s:vpn:%s:%s:icmp\"",
-					p.Endereco, av.set, p.UserID, av.id)
-				nftList = append(nftList,
-					LinhaNft{Chain: "zona_vpn_fwd", Texto: txtTCP},
-					LinhaNft{Chain: "zona_vpn_fwd", Texto: txtICMP},
-				)
-				regrasFwd = append(regrasFwd, txtTCP, txtICMP)
 			}
+		}
 
-			protoRegra := fwmodel.ProtoQualquer
-			var portaRegra fwmodel.Porta
-			if portasFormatadas != "" {
-				protoRegra = fwmodel.ProtoTCP
-				portaRegra = fwmodel.Porta{Tipo: fwmodel.PortaValor, Valor: p.Portas}
+		// Depois pessoas restritas (só fwd, ordenadas por usuario e depois por nome do alias)
+		for _, pr := range pessoasProntas {
+			p := pr.p
+			if p.Total {
+				continue
 			}
+			portasFormatadas := formatarPortasVPN(p.Portas)
 
-			lRestrito := Linha{
-				Chave:     fmt.Sprintf("s:vpn:%s:%s", p.UserID, av.id),
-				Zona:      fwmodel.ZonaVPN,
-				Tipo:      "travada",
-				Regra:     fwmodel.Regra{ID: fmt.Sprintf("s:vpn:%s:%s", p.UserID, av.id), Zona: fwmodel.ZonaVPN, Ativa: true, Acao: fwmodel.AcaoAccept, Proto: protoRegra, Origem: fwmodel.Ponta{Tipo: fwmodel.PontaEndereco, Valor: p.Endereco}, Destino: fwmodel.Ponta{Tipo: fwmodel.PontaAlias, Valor: av.id}, PortaDestino: portaRegra, Descricao: fmt.Sprintf("Acesso restrito: %s (%s)", p.Usuario, av.nome)},
-				EditarEm:  "vpn",
-				DescChave: "fw.travada.vpn_restrito",
-				DescVars: map[string]string{
-					"usuario": p.Usuario,
-					"alias":   av.nome,
-				},
-				Nft: nftList,
+			for _, av := range pr.aliases {
+				var nftList []LinhaNft
+				if portasFormatadas == "" {
+					// Sem restrição de portas: IP + alias
+					txtFwd := fmt.Sprintf("ip saddr %s ip daddr @%s counter accept comment \"s:vpn:%s:%s\"",
+						p.Endereco, av.set, p.UserID, av.id)
+					nftList = append(nftList, LinhaNft{Chain: "zona_vpn_fwd", Texto: txtFwd})
+					regrasFwd = append(regrasFwd, txtFwd)
+				} else {
+					// Com portas: TCP + ICMP (ZTNA)
+					txtTCP := fmt.Sprintf("ip saddr %s ip daddr @%s tcp dport { %s } counter accept comment \"s:vpn:%s:%s\"",
+						p.Endereco, av.set, portasFormatadas, p.UserID, av.id)
+					txtICMP := fmt.Sprintf("ip saddr %s ip daddr @%s meta l4proto icmp counter accept comment \"s:vpn:%s:%s:icmp\"",
+						p.Endereco, av.set, p.UserID, av.id)
+					nftList = append(nftList,
+						LinhaNft{Chain: "zona_vpn_fwd", Texto: txtTCP},
+						LinhaNft{Chain: "zona_vpn_fwd", Texto: txtICMP},
+					)
+					regrasFwd = append(regrasFwd, txtTCP, txtICMP)
+				}
+
+				protoRegra := fwmodel.ProtoQualquer
+				var portaRegra fwmodel.Porta
+				if portasFormatadas != "" {
+					protoRegra = fwmodel.ProtoTCP
+					portaRegra = fwmodel.Porta{Tipo: fwmodel.PortaValor, Valor: p.Portas}
+				}
+
+				lRestrito := Linha{
+					Chave:     fmt.Sprintf("s:vpn:%s:%s", p.UserID, av.id),
+					Zona:      fwmodel.ZonaVPN,
+					Tipo:      "travada",
+					Regra:     fwmodel.Regra{ID: fmt.Sprintf("s:vpn:%s:%s", p.UserID, av.id), Zona: fwmodel.ZonaVPN, Ativa: true, Acao: fwmodel.AcaoAccept, Proto: protoRegra, Origem: fwmodel.Ponta{Tipo: fwmodel.PontaEndereco, Valor: p.Endereco}, Destino: fwmodel.Ponta{Tipo: fwmodel.PontaAlias, Valor: av.id}, PortaDestino: portaRegra, Descricao: fmt.Sprintf("Acesso restrito: %s (%s)", p.Usuario, av.nome)},
+					EditarEm:  "vpn",
+					DescChave: "fw.travada.vpn_restrito",
+					DescVars: map[string]string{
+						"usuario": p.Usuario,
+						"alias":   av.nome,
+					},
+					Nft: nftList,
+				}
+				linhas = append(linhas, lRestrito)
 			}
-			linhas = append(linhas, lRestrito)
 		}
 	}
 

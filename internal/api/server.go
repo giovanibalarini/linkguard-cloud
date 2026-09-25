@@ -616,6 +616,9 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 
 		// User & role management (RBAC administration)
 		usersH := handlers.NewUsersHandler(s.db)
+		if s.frSvc != nil {
+			usersH.SetVPNApplier(s.frSvc)
+		}
 		r.With(require(auth.PermUsersManage)).Get("/api/users", usersH.List)
 		r.With(require(auth.PermUsersManage)).Post("/api/users", usersH.Create)
 		r.With(require(auth.PermUsersManage)).Put("/api/users/{id}", usersH.Update)

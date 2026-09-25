@@ -105,12 +105,7 @@ func TestUpdateWireGuardPeerAccess(t *testing.T) {
 		SecretName:      "secret_test",
 		FirewallGroupID: "fg_test",
 	}
-	group := &storage.FirewallGroup{
-		ID:        "fg_test",
-		Name:      "VPN — accessuser",
-		ChainName: "grp_fgtest",
-	}
-	if _, err := db.UpsertWireGuardPeer(peer, group); err != nil {
+	if _, err := db.UpsertWireGuardPeer(peer); err != nil {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
 

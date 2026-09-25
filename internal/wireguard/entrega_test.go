@@ -5,19 +5,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"time"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entrega de VPN pelo admin e isolamento do peer restrito (24/09/2026).
-//
-// O caso real: dar a um colega acesso só à API do k3s (10.0.1.20:6443). Antes
-// disto foi preciso logar como ele, enrolar, restringir e reemitir; e mesmo
-// restrito ele ainda alcançava o SSH e o painel da própria caixa pelo 10.7.0.1.
+// No modelo de firewall por zonas, o serviço da VPN não escreve em firewall_rules
+// nem em firewall_groups; as permissões vêm dos aliases da config aplicada.
 // ─────────────────────────────────────────────────────────────────────────────
 
-func preparaVPN(t *testing.T, svc *Service, db *storage.DB) *storage.HostGroup {
+func preparaVPN(t *testing.T, svc *Service, db *storage.DB) string {
 	t.Helper()
 	c := DefaultConfig()
 	c.Enabled = true
@@ -25,11 +24,17 @@ func preparaVPN(t *testing.T, svc *Service, db *storage.DB) *storage.HostGroup {
 	if err := svc.UpdateConfig(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
-	k3s := &storage.HostGroup{Name: "K3s API", Hosts: []string{"10.0.1.20"}}
-	if err := db.CreateHostGroup(k3s); err != nil {
+	cfg := fwmodel.Config{
+		Formato: 1,
+		Aliases: []fwmodel.Alias{
+			{ID: "k3s-alias", Nome: "K3s API", Tipo: fwmodel.AliasTipoEnderecos, Itens: []string{"10.0.1.20"}},
+		},
+		Ajustes: fwmodel.AjustesPadrao(),
+	}
+	if err := db.SalvarAplicadaERevisao(cfg, "admin", "setup", "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	return k3s
+	return "k3s-alias"
 }
 
 func novoUsuario(t *testing.T, db *storage.DB, nome string) string {
@@ -41,38 +46,9 @@ func novoUsuario(t *testing.T, db *storage.DB, nome string) string {
 	return u.ID
 }
 
-func soK3s(k3s *storage.HostGroup) PeerAccess {
-	return PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{k3s.ID},
+func soK3s(aliasID string) PeerAccess {
+	return PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{aliasID},
 		AllowedPorts: "6443", TunnelMode: TunnelSplit}
-}
-
-func grupoPorID(t *testing.T, db *storage.DB, id string) *storage.FirewallGroup {
-	t.Helper()
-	groups, err := db.ListFirewallGroups()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := range groups {
-		if groups[i].ID == id {
-			return &groups[i]
-		}
-	}
-	return nil
-}
-
-func regrasDoGrupo(t *testing.T, db *storage.DB, id string) []storage.FirewallRule {
-	t.Helper()
-	rules, err := db.ListFirewallRules()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out []storage.FirewallRule
-	for _, r := range rules {
-		if r.GroupID == id {
-			out = append(out, r)
-		}
-	}
-	return out
 }
 
 func TestEntregaDoAdminJaNasceComOPerfilRestrito(t *testing.T) {
@@ -98,45 +74,61 @@ func TestEntregaDoAdminJaNasceComOPerfilRestrito(t *testing.T) {
 	if peer.ConfigStale {
 		t.Fatal("a config acabou de ser entregue com este perfil; não pode nascer desatualizada")
 	}
-	if g := grupoPorID(t, db, peer.FirewallGroupID); g == nil || g.Fallthrough != nftables.FallthroughDrop {
-		t.Fatalf("grupo de encaminhamento do peer restrito = %+v, queria drop no fim", g)
-	}
 }
 
-func TestPeerRestritoNaoAlcancaAPropriaCaixa(t *testing.T) {
+func TestVPNNaoEscreveEmRegrasDeFirewall(t *testing.T) {
 	svc, db, _, _ := newServiceTest(t)
 	k3s := preparaVPN(t, svc, db)
 	diego := novoUsuario(t, db, "diego")
+
+	contarLinhas := func() (int, int) {
+		groups, err := db.ListFirewallGroups()
+		if err != nil {
+			t.Fatal(err)
+		}
+		rules, err := db.ListFirewallRules()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(groups), len(rules)
+	}
+
+	g0, r0 := contarLinhas()
+
+	// 1. EnrollFor não deve escrever regras nem grupos legados
 	if _, err := svc.EnrollFor(context.Background(), diego, soK3s(k3s)); err != nil {
 		t.Fatalf("EnrollFor: %v", err)
 	}
-	peer, _ := db.GetWireGuardPeer(diego)
-
-	entrada := grupoPorID(t, db, inputGroupID(peer.FirewallGroupID))
-	if entrada == nil {
-		t.Fatal("o peer restrito ficou sem grupo de entrada: alcança SSH e painel da caixa")
-	}
-	if entrada.Scope != nftables.ScopeInput || entrada.Fallthrough != nftables.FallthroughDrop ||
-		entrada.ConnState != nftables.ConnStateNew || entrada.CondSaddr != peer.Address {
-		t.Fatalf("grupo de entrada mal formado: %+v", entrada)
-	}
-	var liberado []string
-	for _, r := range regrasDoGrupo(t, db, entrada.ID) {
-		if r.Action != "accept" {
-			t.Fatalf("regra inesperada no grupo de entrada: %+v", r)
-		}
-		liberado = append(liberado, r.Proto+"/"+r.Dport)
-	}
-	if strings.Join(liberado, " ") != "udp/53 tcp/53 icmp/" {
-		t.Fatalf("a caixa libera para o peer restrito: %v; queria só DNS e ping", liberado)
+	g1, r1 := contarLinhas()
+	if g1 != g0 || r1 != r0 {
+		t.Fatalf("EnrollFor escreveu no firewall legado: grupos=%d->%d regras=%d->%d", g0, g1, r0, r1)
 	}
 
-	// Reconciliar de novo não duplica as regras.
+	// 2. SetPeerAccess não deve escrever regras nem grupos legados
 	if err := svc.SetPeerAccess(context.Background(), diego, soK3s(k3s)); err != nil {
 		t.Fatalf("SetPeerAccess: %v", err)
 	}
-	if n := len(regrasDoGrupo(t, db, entrada.ID)); n != 3 {
-		t.Fatalf("depois de reconciliar o grupo de entrada tem %d regras, queria 3", n)
+	g2, r2 := contarLinhas()
+	if g2 != g0 || r2 != r0 {
+		t.Fatalf("SetPeerAccess escreveu no firewall legado: grupos=%d->%d regras=%d->%d", g0, g2, r0, r2)
+	}
+
+	// 3. Reconcile não deve escrever regras nem grupos legados
+	if err := svc.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	g3, r3 := contarLinhas()
+	if g3 != g0 || r3 != r0 {
+		t.Fatalf("Reconcile escreveu no firewall legado: grupos=%d->%d regras=%d->%d", g0, g3, r0, r3)
+	}
+
+	// 4. Revoke não deve mexer no firewall legado
+	if err := svc.Revoke(context.Background(), diego); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	g4, r4 := contarLinhas()
+	if g4 != g0 || r4 != r0 {
+		t.Fatalf("Revoke alterou o firewall legado: grupos=%d->%d regras=%d->%d", g0, g4, r0, r4)
 	}
 }
 
@@ -148,16 +140,13 @@ func TestTrocarAChaveDoPeerRestritoMantemARestricao(t *testing.T) {
 		t.Fatalf("EnrollFor: %v", err)
 	}
 
-	// O "Gerar configuração" da própria tela rotaciona a chave. Até 24/09/2026 o
-	// grupo era regravado com "continue" e só voltava a drop se a reconciliação
-	// chegasse até o fim.
 	rotacionada, err := svc.Enroll(context.Background(), diego)
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
 	peer, _ := db.GetWireGuardPeer(diego)
-	if g := grupoPorID(t, db, peer.FirewallGroupID); g == nil || g.Fallthrough != nftables.FallthroughDrop {
-		t.Fatalf("depois de trocar a chave o grupo ficou %+v", g)
+	if peer.AccessMode != "restricted" {
+		t.Fatalf("depois de trocar a chave o accessMode ficou %s", peer.AccessMode)
 	}
 	if peer.AllowedPorts != "6443" || !strings.Contains(rotacionada.ClientConfig, "10.0.1.20/32") ||
 		strings.Contains(rotacionada.ClientConfig, "0.0.0.0/0") {
@@ -183,34 +172,6 @@ func TestEntregaEmPeerExistenteTrocaOPerfilPorInteiro(t *testing.T) {
 	peer, _ := db.GetWireGuardPeer(bia)
 	if len(peer.ExtraRoutes) != 0 || strings.Contains(e.ClientConfig, "192.168.50.0/24") {
 		t.Fatalf("a rota antiga sobreviveu ao perfil novo: %+v\n%s", peer.ExtraRoutes, e.ClientConfig)
-	}
-}
-
-func TestTirarARestricaoOuRevogarApagaOGrupoDeEntrada(t *testing.T) {
-	svc, db, _, _ := newServiceTest(t)
-	k3s := preparaVPN(t, svc, db)
-	diego := novoUsuario(t, db, "diego")
-	if _, err := svc.EnrollFor(context.Background(), diego, soK3s(k3s)); err != nil {
-		t.Fatalf("EnrollFor: %v", err)
-	}
-	peer, _ := db.GetWireGuardPeer(diego)
-	entradaID := inputGroupID(peer.FirewallGroupID)
-
-	if err := svc.SetPeerAccess(context.Background(), diego, PeerAccess{AccessMode: "full"}); err != nil {
-		t.Fatalf("SetPeerAccess: %v", err)
-	}
-	if grupoPorID(t, db, entradaID) != nil {
-		t.Fatal("o peer liberado continuou barrado na entrada da caixa")
-	}
-
-	if err := svc.SetPeerAccess(context.Background(), diego, soK3s(k3s)); err != nil {
-		t.Fatalf("SetPeerAccess: %v", err)
-	}
-	if err := svc.Revoke(context.Background(), diego); err != nil {
-		t.Fatalf("Revoke: %v", err)
-	}
-	if grupoPorID(t, db, entradaID) != nil || len(regrasDoGrupo(t, db, entradaID)) != 0 {
-		t.Fatal("revogar deixou o grupo de entrada (ou as regras dele) para trás")
 	}
 }
 
@@ -243,12 +204,60 @@ func TestMinhaVPNMostraSoOProprioPeerEOQueEleAlcanca(t *testing.T) {
 
 func TestPerfilRecusaPortaQueONftRecusaria(t *testing.T) {
 	for _, portas := range []string{"70000", "8080-80", "22; flush ruleset", "abc"} {
-		if _, err := normalizeAccess(PeerAccess{AccessMode: "restricted", AllowedPorts: portas}); err == nil {
+		if _, err := normalizeAccess(nil, PeerAccess{AccessMode: "restricted", AllowedPorts: portas}); err == nil {
 			t.Errorf("aceitou portas %q", portas)
 		}
 	}
-	a, err := normalizeAccess(PeerAccess{AccessMode: "restricted", AllowedPorts: " 22 , 8000-8100,,"})
+	a, err := normalizeAccess(nil, PeerAccess{AccessMode: "restricted", AllowedPorts: " 22 , 8000-8100,,"})
 	if err != nil || a.AllowedPorts != "22,8000-8100" {
 		t.Fatalf("normalizou para %q, %v", a.AllowedPorts, err)
+	}
+}
+
+func TestPerfilRecusaAliasInexistente(t *testing.T) {
+	_, db, _, _ := newServiceTest(t)
+	// Com banco vazio (sem config aplicada)
+	if _, err := normalizeAccess(db, PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{"inexistente"}}); err == nil {
+		t.Fatal("deveria recusar alias inexistente")
+	} else if !strings.Contains(err.Error(), "alias de endereços inexistente ou ainda não aplicado") {
+		t.Fatalf("mensagem inesperada: %v", err)
+	}
+
+	// Com config aplicada contendo alias de portas e de endereços
+	cfg := fwmodel.Config{
+		Formato: 1,
+		Aliases: []fwmodel.Alias{
+			{ID: "alias-port", Nome: "Portas Web", Tipo: fwmodel.AliasTipoPortas, Itens: []string{"80", "443"}},
+			{ID: "alias-addr", Nome: "Servidores", Tipo: fwmodel.AliasTipoEnderecos, Itens: []string{"10.0.1.10"}},
+		},
+		Ajustes: fwmodel.AjustesPadrao(),
+	}
+	if err := db.SalvarAplicadaERevisao(cfg, "admin", "setup", "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Alias de porta recusado para host group
+	if _, err := normalizeAccess(db, PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{"alias-port"}}); err == nil {
+		t.Fatal("deveria recusar alias do tipo portas como host group")
+	}
+
+	// Alias de endereço válido aceito
+	acc, err := normalizeAccess(db, PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{"alias-addr"}})
+	if err != nil {
+		t.Fatalf("deveria aceitar alias de endereços: %v", err)
+	}
+	if len(acc.AllowedHostGroups) != 1 || acc.AllowedHostGroups[0] != "alias-addr" {
+		t.Fatalf("AllowedHostGroups incorreto: %+v", acc.AllowedHostGroups)
+	}
+
+	// Aliases embutidos válidos aceitos
+	for _, embutido := range []string{fwmodel.AliasVCN, fwmodel.AliasVPN} {
+		acc, err := normalizeAccess(db, PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{embutido}})
+		if err != nil {
+			t.Fatalf("deveria aceitar alias embutido %s: %v", embutido, err)
+		}
+		if len(acc.AllowedHostGroups) != 1 || acc.AllowedHostGroups[0] != embutido {
+			t.Fatalf("AllowedHostGroups incorreto para embutido: %+v", acc.AllowedHostGroups)
+		}
 	}
 }

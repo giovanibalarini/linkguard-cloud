@@ -14,16 +14,11 @@ func TestWireGuardPeerPersistsWithStableFirewallGroup(t *testing.T) {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
-	group := storage.FirewallGroup{
-		ID: "550e8400-e29b-41d4-a716-446655440001", Name: "VPN — ana",
-		ChainName: "grp_550e8400e29b", Enabled: true, CondSaddr: "10.7.0.2/32",
-		Fallthrough: "continue", Kind: "wireguard_peer", Scope: "forward", ConnState: "any",
-	}
 	peer := storage.WireGuardPeer{
 		UserID: u.ID, PublicKey: "public-one", Address: "10.7.0.2/32",
-		SecretName: "wireguard_peer_secret_one", FirewallGroupID: group.ID,
+		SecretName: "wireguard_peer_secret_one", FirewallGroupID: "550e8400-e29b-41d4-a716-446655440001",
 	}
-	old, err := db.UpsertWireGuardPeer(&peer, &group)
+	old, err := db.UpsertWireGuardPeer(&peer)
 	if err != nil {
 		t.Fatalf("UpsertWireGuardPeer(create): %v", err)
 	}
@@ -33,7 +28,7 @@ func TestWireGuardPeerPersistsWithStableFirewallGroup(t *testing.T) {
 
 	peer.PublicKey = "public-two"
 	peer.SecretName = "wireguard_peer_secret_two"
-	old, err = db.UpsertWireGuardPeer(&peer, &group)
+	old, err = db.UpsertWireGuardPeer(&peer)
 	if err != nil {
 		t.Fatalf("UpsertWireGuardPeer(rotate): %v", err)
 	}
@@ -44,24 +39,8 @@ func TestWireGuardPeerPersistsWithStableFirewallGroup(t *testing.T) {
 	if err != nil || got == nil {
 		t.Fatalf("GetWireGuardPeer = %+v, %v", got, err)
 	}
-	if got.FirewallGroupID != group.ID || got.Address != "10.7.0.2/32" || got.Username != "ana" {
+	if got.FirewallGroupID != "550e8400-e29b-41d4-a716-446655440001" || got.Address != "10.7.0.2/32" || got.Username != "ana" {
 		t.Fatalf("peer association changed: %+v", got)
-	}
-	groups, err := db.ListFirewallGroups()
-	if err != nil {
-		t.Fatal(err)
-	}
-	count := 0
-	for _, g := range groups {
-		if g.Kind == "wireguard_peer" {
-			count++
-			if g.CondSaddr != peer.Address {
-				t.Fatalf("group source = %q, want %q", g.CondSaddr, peer.Address)
-			}
-		}
-	}
-	if count != 1 {
-		t.Fatalf("wireguard groups = %d, want 1", count)
 	}
 }
 
@@ -71,9 +50,8 @@ func TestDeleteUserCleansWireGuardOwnershipAndEncryptedSecret(t *testing.T) {
 	if err := db.CreateUser(u, "hash", nil); err != nil {
 		t.Fatal(err)
 	}
-	group := storage.FirewallGroup{ID: "g-user", Name: "VPN — carla", ChainName: "grp_carla", Enabled: true, CondSaddr: "10.7.0.2/32", Fallthrough: "continue", Kind: "wireguard_peer", Scope: "forward", ConnState: "any"}
-	peer := storage.WireGuardPeer{UserID: u.ID, PublicKey: "pub-carla", Address: "10.7.0.2/32", SecretName: "secret-carla", FirewallGroupID: group.ID}
-	if _, err := db.UpsertWireGuardPeer(&peer, &group); err != nil {
+	peer := storage.WireGuardPeer{UserID: u.ID, PublicKey: "pub-carla", Address: "10.7.0.2/32", SecretName: "secret-carla", FirewallGroupID: "g-user"}
+	if _, err := db.UpsertWireGuardPeer(&peer); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Conn().Exec(`INSERT INTO secrets (name, nonce, ciphertext, updated_at) VALUES (?, ?, ?, ?)`, peer.SecretName, []byte("nonce"), []byte("ciphertext"), time.Now()); err != nil {
@@ -92,11 +70,6 @@ func TestDeleteUserCleansWireGuardOwnershipAndEncryptedSecret(t *testing.T) {
 	if secrets != 0 {
 		t.Fatal("encrypted peer secret survived user deletion")
 	}
-	for _, g := range mustGroups(t, db) {
-		if g.ID == group.ID {
-			t.Fatal("peer firewall group survived user deletion")
-		}
-	}
 }
 
 func TestDeleteWireGuardPeerDeletesItsGroupAndRules(t *testing.T) {
@@ -105,13 +78,8 @@ func TestDeleteWireGuardPeerDeletesItsGroupAndRules(t *testing.T) {
 	if err := db.CreateUser(u, "hash", nil); err != nil {
 		t.Fatal(err)
 	}
-	group := storage.FirewallGroup{ID: "g-peer", Name: "VPN — bia", ChainName: "grp_aabbcc", Enabled: true, CondSaddr: "10.7.0.2/32", Fallthrough: "continue", Kind: "wireguard_peer", Scope: "forward", ConnState: "any"}
-	peer := storage.WireGuardPeer{UserID: u.ID, PublicKey: "pub", Address: "10.7.0.2/32", SecretName: "sec", FirewallGroupID: group.ID}
-	if _, err := db.UpsertWireGuardPeer(&peer, &group); err != nil {
-		t.Fatal(err)
-	}
-	rule := &storage.FirewallRule{GroupID: group.ID, Action: "accept", Description: "VPN rule"}
-	if err := db.CreateFirewallRule(rule); err != nil {
+	peer := storage.WireGuardPeer{UserID: u.ID, PublicKey: "pub", Address: "10.7.0.2/32", SecretName: "sec", FirewallGroupID: "g-peer"}
+	if _, err := db.UpsertWireGuardPeer(&peer); err != nil {
 		t.Fatal(err)
 	}
 	removed, err := db.DeleteWireGuardPeer(u.ID)
@@ -120,16 +88,6 @@ func TestDeleteWireGuardPeerDeletesItsGroupAndRules(t *testing.T) {
 	}
 	if got, _ := db.GetWireGuardPeer(u.ID); got != nil {
 		t.Fatalf("peer still exists: %+v", got)
-	}
-	for _, g := range mustGroups(t, db) {
-		if g.ID == group.ID {
-			t.Fatal("managed group still exists")
-		}
-	}
-	for _, r := range mustRules(t, db) {
-		if r.GroupID == group.ID {
-			t.Fatal("group rule still exists")
-		}
 	}
 }
 

@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
 )
@@ -16,6 +16,7 @@ import (
 const wireGuardApplyFailure = "a configuração foi salva, mas a reconciliação da VPN não terminou; tente aplicar novamente"
 
 type wireGuardService interface {
+	Config() (wireguard.Config, error)
 	Overview(context.Context) (wireguard.Overview, error)
 	UpdateConfig(context.Context, wireguard.Config) error
 	Enroll(context.Context, string) (wireguard.Enrollment, error)
@@ -35,18 +36,21 @@ type wireGuardInputReconciler interface {
 	ReconcileInputProtection(context.Context) error
 }
 
+type vpnApplier interface {
+	AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error)
+}
+
 // WireGuardHandler keeps HTTP concerns at the boundary. Key generation,
 // persistence, vault access and process execution remain in internal/wireguard.
 type WireGuardHandler struct {
 	db        *storage.DB
 	svc       wireGuardService
-	groups    wireGuardReconciler
-	input     wireGuardInputReconciler
+	fr        vpnApplier
 	reloadDNS func(context.Context) error
 }
 
-func NewWireGuardHandler(db *storage.DB, svc wireGuardService, groups wireGuardReconciler, input wireGuardInputReconciler) *WireGuardHandler {
-	return &WireGuardHandler{db: db, svc: svc, groups: groups, input: input}
+func NewWireGuardHandler(db *storage.DB, svc wireGuardService, fr vpnApplier, _ wireGuardInputReconciler) *WireGuardHandler {
+	return &WireGuardHandler{db: db, svc: svc, fr: fr}
 }
 
 func (h *WireGuardHandler) SetDNSReload(reload func(context.Context) error) {
@@ -74,16 +78,32 @@ func (h *WireGuardHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := h.svc.UpdateConfig(r.Context(), config); err != nil {
+	actor := actorName(r)
+	oldConfig, err := h.svc.Config()
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	escrever := func() error {
+		return h.svc.UpdateConfig(r.Context(), config)
+	}
+	desfazer := func() error {
+		return h.svc.UpdateConfig(r.Context(), oldConfig)
+	}
+	var applyErr error
+	if h.fr != nil {
+		_, applyErr = h.fr.AplicarMudancaVPN(r.Context(), actor, "atualizar configuração da VPN", escrever, desfazer)
+	} else {
+		applyErr = escrever()
+	}
+	if applyErr != nil {
+		h.svc.RecordIntegrationError(applyErr)
 		auditAction(h.db, r, "vpn.config", "vpn", "reconciliação pendente")
 		writeError(w, http.StatusServiceUnavailable, wireGuardApplyFailure)
 		return
 	}
-	if err := h.reconcileIntegrations(r.Context()); err != nil {
-		h.svc.RecordIntegrationError(err)
-		auditAction(h.db, r, "vpn.config", "vpn", "reconciliação pendente")
-		writeError(w, http.StatusServiceUnavailable, wireGuardApplyFailure)
-		return
+	if h.reloadDNS != nil {
+		_ = h.reloadDNS(r.Context())
 	}
 	auditAction(h.db, r, "vpn.config", "vpn", "")
 	writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
@@ -95,8 +115,27 @@ func (h *WireGuardHandler) EnrollSelf(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "autenticação necessária")
 		return
 	}
-	result, err := h.svc.Enroll(r.Context(), claims.UserID)
-	if err != nil {
+	actor := actorName(r)
+	prior, _ := h.db.GetWireGuardPeer(claims.UserID)
+	var result wireguard.Enrollment
+	escrever := func() error {
+		var err error
+		result, err = h.svc.Enroll(r.Context(), claims.UserID)
+		return err
+	}
+	desfazer := func() error {
+		if prior == nil {
+			return h.svc.Revoke(r.Context(), claims.UserID)
+		}
+		return nil
+	}
+	var applyErr error
+	if h.fr != nil {
+		_, applyErr = h.fr.AplicarMudancaVPN(r.Context(), actor, "gerar VPN para "+actor, escrever, desfazer)
+	} else {
+		applyErr = escrever()
+	}
+	if applyErr != nil && result.ClientConfig == "" {
 		writeError(w, http.StatusServiceUnavailable, "não foi possível criar a identidade WireGuard")
 		return
 	}
@@ -105,9 +144,11 @@ func (h *WireGuardHandler) EnrollSelf(w http.ResponseWriter, r *http.Request) {
 		// also carries private material, so keep every other field generic.
 		result.ApplyError = wireGuardApplyFailure
 	}
-	if err := h.reconcileIntegrations(r.Context()); err != nil {
-		h.svc.RecordIntegrationError(err)
+	if applyErr != nil {
+		h.svc.RecordIntegrationError(applyErr)
 		result.ApplyError = wireGuardApplyFailure
+	} else if h.reloadDNS != nil {
+		_ = h.reloadDNS(r.Context())
 	}
 	auditAction(h.db, r, "vpn.enroll", "vpn-user:"+claims.UserID, "")
 	// This is the sole response that may contain the client private key and
@@ -134,38 +175,30 @@ func (h *WireGuardHandler) RevokePeer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WireGuardHandler) revoke(w http.ResponseWriter, r *http.Request, userID string) {
-	serviceErr := h.svc.Revoke(r.Context(), userID)
-	integrationErr := h.reconcileIntegrations(r.Context())
-	if integrationErr != nil {
-		h.svc.RecordIntegrationError(integrationErr)
+	actor := actorName(r)
+	escrever := func() error {
+		return h.svc.Revoke(r.Context(), userID)
 	}
-	auditAction(h.db, r, "vpn.revoke", "vpn-user:"+userID, "")
-	if serviceErr != nil || integrationErr != nil {
+	desfazer := func() error {
+		return nil
+	}
+	var applyErr error
+	if h.fr != nil {
+		_, applyErr = h.fr.AplicarMudancaVPN(r.Context(), actor, "revogar VPN do usuário "+userID, escrever, desfazer)
+	} else {
+		applyErr = escrever()
+	}
+	if applyErr != nil {
+		h.svc.RecordIntegrationError(applyErr)
+		auditAction(h.db, r, "vpn.revoke", "vpn-user:"+userID, "erro: "+applyErr.Error())
 		writeError(w, http.StatusServiceUnavailable, wireGuardApplyFailure)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"revoked": true})
-}
-
-func (h *WireGuardHandler) reconcileIntegrations(ctx context.Context) error {
-	var failures []error
-	if h.input != nil {
-		failures = appendIfError(failures, h.input.ReconcileInputProtection(ctx))
-	}
-	if h.groups != nil {
-		failures = appendIfError(failures, h.groups.Reconcile(ctx))
-	}
 	if h.reloadDNS != nil {
-		failures = appendIfError(failures, h.reloadDNS(ctx))
+		_ = h.reloadDNS(r.Context())
 	}
-	return errors.Join(failures...)
-}
-
-func appendIfError(errs []error, err error) []error {
-	if err != nil {
-		return append(errs, err)
-	}
-	return errs
+	auditAction(h.db, r, "vpn.revoke", "vpn-user:"+userID, "")
+	writeJSON(w, http.StatusOK, map[string]bool{"revoked": true})
 }
 
 type peerAccessBody struct {
@@ -188,50 +221,52 @@ func (h *WireGuardHandler) SetPeerAccess(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "corpo inválido")
 		return
 	}
-	req.AccessMode = strings.TrimSpace(req.AccessMode)
-	if req.AccessMode == "" {
-		req.AccessMode = "full"
-	}
-	if req.AccessMode != "full" && req.AccessMode != "restricted" {
-		writeError(w, http.StatusBadRequest, "modo de acesso inválido: use 'full' ou 'restricted'")
+	access, verr := wireguard.NormalizeAccess(h.db, req.access())
+	if verr != nil {
+		writeError(w, http.StatusBadRequest, verr.Error())
 		return
 	}
-	req.TunnelMode = strings.TrimSpace(req.TunnelMode)
-	if req.TunnelMode == "" {
-		req.TunnelMode = wireguard.TunnelFull
-	}
-	if req.TunnelMode != wireguard.TunnelFull && req.TunnelMode != wireguard.TunnelSplit {
-		writeError(w, http.StatusBadRequest, "modo de túnel inválido: use 'full' ou 'split'")
+	prior, err := h.db.GetWireGuardPeer(userID)
+	if err != nil {
+		writeInternalError(w, err)
 		return
 	}
-	// Rotas e MTU são validados aqui para que um valor digitado errado volte
-	// como 400 com o motivo, e não como falha interna. O serviço revalida.
-	if err := wireguard.ValidateMTU(req.MTU); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if prior == nil {
+		writeError(w, http.StatusNotFound, "peer não encontrado")
 		return
 	}
-	if _, err := wireguard.NormalizeRoutes(req.ExtraRoutes); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	actor := actorName(r)
+	escrever := func() error {
+		return h.svc.SetPeerAccess(r.Context(), userID, access)
 	}
-	access := wireguard.PeerAccess{
-		AccessMode:        req.AccessMode,
-		AllowedHostGroups: req.AllowedHostGroups,
-		AllowedPorts:      strings.TrimSpace(req.AllowedPorts),
-		TunnelMode:        req.TunnelMode,
-		ExtraRoutes:       req.ExtraRoutes,
-		MTU:               req.MTU,
+	desfazer := func() error {
+		return h.db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
+			AccessMode:        prior.AccessMode,
+			AllowedHostGroups: prior.AllowedHostGroups,
+			AllowedPorts:      prior.AllowedPorts,
+			TunnelMode:        prior.TunnelMode,
+			ExtraRoutes:       prior.ExtraRoutes,
+			MTU:               prior.MTU,
+		})
 	}
-	if err := h.svc.SetPeerAccess(r.Context(), userID, access); err != nil {
-		auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID, "erro: "+err.Error())
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if h.fr != nil {
+		if _, err := h.fr.AplicarMudancaVPN(r.Context(), actor, "alterar perfil VPN de "+prior.Username, escrever, desfazer); err != nil {
+			auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID, "erro: "+err.Error())
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	} else {
+		if err := escrever(); err != nil {
+			auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID, "erro: "+err.Error())
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
-	if err := h.reconcileIntegrations(r.Context()); err != nil {
-		h.svc.RecordIntegrationError(err)
+	if h.reloadDNS != nil {
+		_ = h.reloadDNS(r.Context())
 	}
 	auditAction(h.db, r, "vpn.peer_access", "vpn-user:"+userID,
-		"modo: "+req.AccessMode+", túnel: "+req.TunnelMode)
+		"modo: "+access.AccessMode+", túnel: "+access.TunnelMode)
 	writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
 
@@ -270,54 +305,67 @@ func (h *WireGuardHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 // EnrollPeer é o admin entregando a VPN de outra pessoa.
-//
-// Até 24/09/2026 o desenho era que só o dono da identidade visse a própria
-// chave privada: nenhum admin gerava nem reemitia a config de outro. Na prática
-// isso obrigava o admin a logar COMO a pessoa para entregar o acesso — ele via a
-// chave do mesmo jeito, só que por um caminho pior e fora da auditoria. Agora a
-// entrega é uma ação de admin, com vpn.write, registrada como "vpn.enroll_for".
-// Quem recebe pode trocar a chave depois pela própria tela e ficar com uma que
-// o admin nunca viu.
-//
-// Corpo opcional: sem ele, gera ou rotaciona mantendo o perfil atual; com ele,
-// o perfil informado já vale para a primeira configuração.
 func (h *WireGuardHandler) EnrollPeer(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(chi.URLParam(r, "userID"))
 	if userID == "" {
 		writeError(w, http.StatusBadRequest, "userID é obrigatório")
 		return
 	}
+	prior, _ := h.db.GetWireGuardPeer(userID)
+	actor := actorName(r)
 	var (
 		result wireguard.Enrollment
-		err    error
 		detail string
 	)
+	var escrever func() error
 	if r.ContentLength != 0 {
 		var req peerAccessBody
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "corpo inválido")
 			return
 		}
-		access, verr := wireguard.NormalizeAccess(req.access())
+		access, verr := wireguard.NormalizeAccess(h.db, req.access())
 		if verr != nil {
 			writeError(w, http.StatusBadRequest, verr.Error())
 			return
 		}
 		detail = "modo: " + access.AccessMode + ", túnel: " + access.TunnelMode
-		result, err = h.svc.EnrollFor(r.Context(), userID, access)
+		escrever = func() error {
+			var err error
+			result, err = h.svc.EnrollFor(r.Context(), userID, access)
+			return err
+		}
 	} else {
-		result, err = h.svc.Enroll(r.Context(), userID)
+		escrever = func() error {
+			var err error
+			result, err = h.svc.Enroll(r.Context(), userID)
+			return err
+		}
 	}
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
+	desfazer := func() error {
+		if prior == nil {
+			return h.svc.Revoke(r.Context(), userID)
+		}
+		return nil
+	}
+	var applyErr error
+	if h.fr != nil {
+		_, applyErr = h.fr.AplicarMudancaVPN(r.Context(), actor, "entregar VPN para "+userID, escrever, desfazer)
+	} else {
+		applyErr = escrever()
+	}
+	if applyErr != nil && result.ClientConfig == "" {
+		writeError(w, http.StatusServiceUnavailable, applyErr.Error())
 		return
 	}
 	if result.ApplyError != "" {
 		result.ApplyError = wireGuardApplyFailure
 	}
-	if err := h.reconcileIntegrations(r.Context()); err != nil {
-		h.svc.RecordIntegrationError(err)
+	if applyErr != nil {
+		h.svc.RecordIntegrationError(applyErr)
 		result.ApplyError = wireGuardApplyFailure
+	} else if h.reloadDNS != nil {
+		_ = h.reloadDNS(r.Context())
 	}
 	auditAction(h.db, r, "vpn.enroll_for", "vpn-user:"+userID, detail)
 	writeJSON(w, http.StatusCreated, result)

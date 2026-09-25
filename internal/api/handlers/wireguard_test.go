@@ -8,10 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
 )
@@ -67,10 +70,32 @@ func (s *wireGuardServiceStub) Mine(_ context.Context, userID string) (wireguard
 	s.mineUserID = userID
 	return s.mine, nil
 }
+func (s *wireGuardServiceStub) Config() (wireguard.Config, error) {
+	return wireguard.Config{
+		Enabled:    true,
+		Address:    "10.7.0.1/24",
+		ListenPort: 51820,
+	}, nil
+}
 
 type wireGuardReconcilerStub struct{ err error }
 
 func (s wireGuardReconcilerStub) Reconcile(context.Context) error { return s.err }
+
+func (s wireGuardReconcilerStub) AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error) {
+	if escrever != nil {
+		if err := escrever(); err != nil {
+			return nil, err
+		}
+	}
+	if s.err != nil {
+		if desfazer != nil {
+			_ = desfazer()
+		}
+		return nil, s.err
+	}
+	return &firewallrules.Applied{}, nil
+}
 
 type wireGuardInputStub struct{ err error }
 
@@ -83,6 +108,28 @@ func newWireGuardHandlerTestDB(t *testing.T) *storage.DB {
 		t.Fatalf("storage.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	cfg := fwmodel.Config{
+		Formato: 1,
+		Aliases: []fwmodel.Alias{
+			{
+				ID:    "hg-1",
+				Nome:  "hg-1",
+				Tipo:  fwmodel.AliasTipoEnderecos,
+				Itens: []string{"10.0.1.0/24"},
+			},
+			{
+				ID:    "hg-k3s",
+				Nome:  "hg-k3s",
+				Tipo:  fwmodel.AliasTipoEnderecos,
+				Itens: []string{"10.0.2.0/24"},
+			},
+		},
+		Ajustes: fwmodel.AjustesPadrao(),
+	}
+	if err := db.SalvarAplicadaERevisao(cfg, "teste", "seed", "aplicar", time.Now()); err != nil {
+		t.Fatalf("SalvarAplicadaERevisao: %v", err)
+	}
+	_ = db.CreateUser(&storage.User{ID: "u-123", Username: "user123"}, "hash", nil)
 	return db
 }
 
@@ -161,6 +208,9 @@ func TestWireGuardEnrollmentSurvivesIntegrationFailure(t *testing.T) {
 
 func TestWireGuardSetPeerAccess(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-123", Username: "user123", Address: "10.7.0.5/32"}); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
 	svc := &wireGuardServiceStub{}
 	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
 
@@ -186,6 +236,9 @@ func TestWireGuardSetPeerAccess(t *testing.T) {
 
 func TestWireGuardSetPeerAccessGuardaOPerfilDeTunel(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-123", Username: "user123", Address: "10.7.0.5/32"}); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
 	svc := &wireGuardServiceStub{}
 	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
 
@@ -206,6 +259,78 @@ func TestWireGuardSetPeerAccessGuardaOPerfilDeTunel(t *testing.T) {
 	}
 	if len(svc.access.ExtraRoutes) != 1 || svc.access.ExtraRoutes[0] != "10.0.1.0/24" {
 		t.Fatalf("rotas extras não chegaram: %+v", svc.access.ExtraRoutes)
+	}
+}
+
+func TestWireGuardSetPeerAccessRecusaAliasInexistente(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-123", Username: "user123", Address: "10.7.0.5/32"}); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
+	svc := &wireGuardServiceStub{}
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	r := chi.NewRouter()
+	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
+
+	body := `{"access_mode":"restricted","allowed_host_groups":["alias-inexistente"]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/vpn/peers/u-123/access", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "alias de endereços inexistente ou ainda não aplicado") {
+		t.Fatalf("mensagem inesperada: %s", w.Body.String())
+	}
+}
+
+type wireGuardServiceRealUpdateStub struct {
+	wireGuardServiceStub
+	db *storage.DB
+}
+
+func (s *wireGuardServiceRealUpdateStub) SetPeerAccess(_ context.Context, userID string, access wireguard.PeerAccess) error {
+	return s.db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
+		AccessMode:        access.AccessMode,
+		AllowedHostGroups: access.AllowedHostGroups,
+		AllowedPorts:      access.AllowedPorts,
+		TunnelMode:        access.TunnelMode,
+		ExtraRoutes:       access.ExtraRoutes,
+		MTU:               access.MTU,
+	})
+}
+
+func TestWireGuardSetPeerAccessReverteEmFalhaDoFirewall(t *testing.T) {
+	db := newWireGuardHandlerTestDB(t)
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{
+		UserID:     "u-123",
+		Username:   "user123",
+		Address:    "10.7.0.5/32",
+		AccessMode: "full",
+	}); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
+	svc := &wireGuardServiceRealUpdateStub{db: db}
+	applierFalha := wireGuardReconcilerStub{err: errors.New("falha nftables")}
+	h := NewWireGuardHandler(db, svc, applierFalha, wireGuardInputStub{})
+	r := chi.NewRouter()
+	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
+
+	body := `{"access_mode":"restricted","allowed_host_groups":["hg-1"]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/vpn/peers/u-123/access", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", w.Code, w.Body.String())
+	}
+	peer, err := db.GetWireGuardPeer("u-123")
+	if err != nil {
+		t.Fatalf("GetWireGuardPeer: %v", err)
+	}
+	if peer.AccessMode != "full" {
+		t.Fatalf("perfil no banco não reverteu: modo=%s", peer.AccessMode)
 	}
 }
 
@@ -397,8 +522,7 @@ func TestWireGuardCandidatosSaoQuemAindaNaoTemVPN(t *testing.T) {
 			t.Fatalf("CreateUser: %v", err)
 		}
 	}
-	grupo := &storage.FirewallGroup{ID: "g-bia", Name: "VPN — bia", ChainName: "grp_bia"}
-	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-bia", PublicKey: "pk", Address: "10.7.0.2/32", SecretName: "s"}, grupo); err != nil {
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-bia", PublicKey: "pk", Address: "10.7.0.2/32", SecretName: "s"}); err != nil {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
 	h := NewWireGuardHandler(db, &wireGuardServiceStub{}, wireGuardReconcilerStub{}, wireGuardInputStub{})

@@ -19,10 +19,7 @@ func novoPeerDeTeste(t *testing.T, db *storage.DB, username string) *storage.Wir
 		SecretName:      "secret_" + username,
 		FirewallGroupID: "fg_" + username,
 	}
-	group := &storage.FirewallGroup{
-		ID: "fg_" + username, Name: "VPN — " + username, ChainName: "grp_" + username,
-	}
-	if _, err := db.UpsertWireGuardPeer(peer, group); err != nil {
+	if _, err := db.UpsertWireGuardPeer(peer); err != nil {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
 	return peer
