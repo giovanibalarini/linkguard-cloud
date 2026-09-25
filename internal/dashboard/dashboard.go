@@ -60,6 +60,9 @@ type Widget struct {
 // do próprio painel e "O que você quer fazer" é estático.
 var Catalog = []Widget{
 	{Name: "system_health", Permission: "monitoring.read"},
+	// A saída para a Internet: a sonda de internal/saida e a placa de onde ela
+	// sai. interfaces.read porque é o mesmo dado de GET /api/uplink.
+	{Name: "uplink", Permission: "interfaces.read"},
 	{Name: "interface_traffic", Permission: "monitoring.read"},
 	{Name: "top_talkers", Permission: "hosts.read"},
 	{Name: "open_alerts", Permission: "monitoring.read"},
@@ -90,9 +93,10 @@ func Permission(name string) (string, bool) {
 	return "", false
 }
 
-// Default é o painel de fábrica: saúde e alertas na primeira dobra; tráfego,
-// consumo e recursos abaixo (spec §5). O cartão de links WAN saiu com o
-// multi-WAN; um layout salvo que ainda o tenha perde só ele (Sanitize).
+// Default é o painel de fábrica: saúde, saída para a Internet e alertas na
+// primeira dobra; tráfego, consumo e recursos abaixo (spec §5). O cartão de
+// links WAN saiu com o multi-WAN (um layout salvo que ainda o tenha perde só
+// ele, em Sanitize) e o da saída ocupa o lugar dele.
 //
 // "Primeiros passos" NÃO está aqui de propósito. Ele é justamente o que motivou
 // esta entrega: parado em 5 de 6 há meses por causa do usuário padrão, ocupando
@@ -104,8 +108,9 @@ func Permission(name string) (string, bool) {
 // arrastar o resultado sem alterar o padrão de todo mundo.
 func Default() []LayoutItem {
 	return []LayoutItem{
-		{Widget: "system_health", X: 0, Y: 0, W: 6, H: 2},
-		{Widget: "open_alerts", X: 6, Y: 0, W: 6, H: 2},
+		{Widget: "system_health", X: 0, Y: 0, W: 4, H: 2},
+		{Widget: "uplink", X: 4, Y: 0, W: 4, H: 2},
+		{Widget: "open_alerts", X: 8, Y: 0, W: 4, H: 2},
 		{Widget: "interface_traffic", X: 0, Y: 2, W: 8, H: 3},
 		{Widget: "top_talkers", X: 8, Y: 2, W: 4, H: 3},
 		{Widget: "system_resources", X: 0, Y: 5, W: 12, H: 2},

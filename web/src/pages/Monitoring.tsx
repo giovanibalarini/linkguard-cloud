@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import client from '../api/client';
 import Panel from '../components/ui/Panel';
+import UplinkCard from '../components/UplinkCard';
 import type { SystemMetrics } from '../types';
 import { useI18n } from '../i18n';
 
@@ -86,6 +87,9 @@ export default function Monitoring() {
           ))}
         </div>
       )}
+
+      {/* A saída para a Internet: a sonda que substituiu o monitor de link. */}
+      <UplinkCard />
 
       {/* CPU / Memory chart */}
       <Panel title={<span className="flex items-center gap-2"><Activity className="w-4 h-4 text-purple-400" /><span className="text-white font-semibold">{t('mon.chart.cpuMem.title')}</span></span>}>

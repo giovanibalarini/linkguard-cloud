@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // O uplink na tela: por onde esta máquina sai para a Internet.
@@ -21,6 +22,18 @@ type UplinkView struct {
 	// Plataforma é o que a detecção diz ("oci", "onprem", "unknown"). É o que
 	// permite ao operador contestar o veredito sem ler log.
 	Plataforma string `json:"platform"`
+	// Saude é a última medição da sonda de saída (internal/saida): se a
+	// Internet responde daqui, com que latência e perda.
+	Saude UplinkHealth `json:"health"`
+}
+
+// UplinkHealth é o retrato da sonda de saída na tela.
+type UplinkHealth struct {
+	Estado       string    `json:"status"`
+	LatenciaMs   float64   `json:"latency_ms"`
+	PerdaPct     float64   `json:"loss_pct"`
+	VerificadoEm time.Time `json:"checked_at"`
+	Alvos        []string  `json:"targets"`
 }
 
 // As três origens possíveis de um uplink.

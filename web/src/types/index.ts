@@ -22,6 +22,18 @@ export interface Uplink {
   path_mtu: number;
   source: 'platform' | 'kernel' | 'none';
   platform: string;
+  // A última medição da sonda de saída: a Internet responde daqui?
+  health: UplinkHealth;
+}
+
+export type UplinkStatus = 'desconhecida' | 'online' | 'degradada' | 'offline';
+
+export interface UplinkHealth {
+  status: UplinkStatus;
+  latency_ms: number;
+  loss_pct: number;
+  checked_at: string;
+  targets: string[];
 }
 
 export interface TimelinePoint {

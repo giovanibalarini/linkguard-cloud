@@ -319,3 +319,21 @@ net.uplink.mtu.unknown:
 net.uplink.platform:
   pt: "Plataforma"
   en: "Platform"
+net.uplink.health.online:
+  pt: "Internet respondendo"
+  en: "Internet reachable"
+net.uplink.health.degraded:
+  pt: "Internet lenta ou com perda"
+  en: "Internet slow or lossy"
+net.uplink.health.offline:
+  pt: "Sem Internet"
+  en: "No Internet"
+net.uplink.health.unknown:
+  pt: "Medindo…"
+  en: "Measuring…"
+net.uplink.health.latency:
+  pt: "Latência"
+  en: "Latency"
+net.uplink.health.loss:
+  pt: "Perda"
+  en: "Loss"

@@ -46,10 +46,16 @@ const (
 	TypeJournalCorrupt = "journal_corrupt"
 	TypeJournalOK      = "journal_ok"
 
-	TypeFirewallNATDrift       = "firewall_nat_drift"
-	TypeFirewallNATOK          = "firewall_nat_ok"
-	TypeWANInterfaceMissing    = "wan_interface_missing"
-	TypeWANInterfaceOK         = "wan_interface_ok"
+	TypeFirewallNATDrift    = "firewall_nat_drift"
+	TypeFirewallNATOK       = "firewall_nat_ok"
+	TypeWANInterfaceMissing = "wan_interface_missing"
+	TypeWANInterfaceOK      = "wan_interface_ok"
+
+	// TypeSaidaOffline é a máquina sem saída para a Internet: nenhum dos alvos
+	// públicos respondeu por várias verificações seguidas (internal/saida). Num
+	// gateway de NAT é a queda de todas as instâncias da conta ao mesmo tempo.
+	TypeSaidaOffline           = "saida_offline"
+	TypeSaidaOnline            = "saida_online"
 	TypeDNSResolverDrift       = "dns_resolver_drift"
 	TypeDNSResolverOK          = "dns_resolver_ok"
 	TypeSecurityUpdatesPending = "security_updates_pending"
@@ -181,6 +187,7 @@ var stateAlertTypes = []string{
 	TypeJournalCorrupt,
 	TypeFirewallNATDrift,
 	TypeWANInterfaceMissing,
+	TypeSaidaOffline,
 	TypeDNSResolverDrift,
 	TypeCaminhoDNSForaDoLocal,
 	TypeResolucaoSemModuloDNS,
@@ -674,19 +681,35 @@ func (s *Service) FirewallNATOK() error {
 		"A regra de NAT voltou a corresponder às WANs configuradas.", "")
 }
 
-// WANInterfaceMissing raises a critical alert when a configured WAN link
-// points at a network interface that does not exist on the box — typically
-// after a NIC rename (PCI reshuffle), which is what happened in production.
+// WANInterfaceMissing raises a critical alert when the WAN (the uplink) points
+// at a network interface that does not exist on the box — on-prem typically
+// after a NIC rename; on the cloud, a cached platform snapshot naming a card
+// the VM no longer has.
 func (s *Service) WANInterfaceMissing(detail string) error {
 	return s.Create(TypeWANInterfaceMissing, SeverityCritical, "Interface WAN inexistente",
-		"Um link WAN aponta para uma interface que não existe: "+detail, "")
+		"A saída para a Internet aponta para uma placa que não existe: "+detail, "")
 }
 
 // WANInterfaceOK clears WANInterfaceMissing and notifies recovery.
 func (s *Service) WANInterfaceOK() error {
 	s.AutoResolve(TypeWANInterfaceMissing, "")
-	return s.createRecovery(TypeWANInterfaceOK, "Interfaces WAN consistentes",
-		"Todos os links WAN apontam para interfaces existentes.", "")
+	return s.createRecovery(TypeWANInterfaceOK, "Interface WAN consistente",
+		"A saída para a Internet aponta para uma placa existente.", "")
+}
+
+// SaidaOffline abre o alerta crítico de máquina sem saída para a Internet.
+// detalhe diz quais alvos foram tentados e por onde.
+func (s *Service) SaidaOffline(detalhe string) error {
+	return s.Create(TypeSaidaOffline, SeverityCritical, "Sem saída para a Internet",
+		"Nenhum dos alvos públicos respondeu nas últimas verificações: "+detalhe+
+			". As instâncias que saem por esta máquina estão sem Internet.", "")
+}
+
+// SaidaOnline fecha SaidaOffline e avisa a volta.
+func (s *Service) SaidaOnline(detalhe string) error {
+	s.AutoResolve(TypeSaidaOffline, "")
+	return s.createRecovery(TypeSaidaOnline, "Saída para a Internet de volta",
+		"Os alvos públicos voltaram a responder: "+detalhe+".", "")
 }
 
 // FirewallBootPersistFailed abre o aviso de que o firewall vivo não está

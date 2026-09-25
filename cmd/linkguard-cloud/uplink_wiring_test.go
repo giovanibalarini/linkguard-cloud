@@ -4,7 +4,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +84,24 @@ func TestOBootDerivaAsWANsPelaFonteUnica(t *testing.T) {
 		t.Error("main.go voltou a derivar o PathMTU de uplinkEfetivo: um link cadastrado pela tela " +
 			"passa a zerar a MTU do caminho, e em hairpin isso não devolve o `rt mtu` — deixa a " +
 			"chain de ajuste de MSS VAZIA")
+	}
+}
+
+// A sonda de saída substituiu o monitor de link: sem ela ninguém mais diz
+// "a Internet caiu" numa caixa que é a Internet de todas as instâncias da
+// conta. Ela precisa nascer com o gravador e os alertas, e rodar.
+func TestASondaDeSaidaNasceLigadaERoda(t *testing.T) {
+	_, thisFile, ok := localizar()
+	if !ok {
+		t.Fatal("não foi possível localizar o arquivo de teste")
+	}
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "main.go"))
+	if err != nil {
+		t.Fatalf("ler main.go: %v", err)
+	}
+	for _, trecho := range []string{"saida.Nova(rrdSvc, alertSvc)", "go s.sondaSaida.Run(ctx)", "sondaSaida.Atual()"} {
+		if !strings.Contains(string(b), trecho) {
+			t.Errorf("main.go não contém %q", trecho)
+		}
 	}
 }

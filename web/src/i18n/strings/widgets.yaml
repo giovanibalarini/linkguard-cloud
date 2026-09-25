@@ -103,3 +103,9 @@ wid.traffic.empty:
 wid.unknown:
   pt: "Widget desconhecido:"
   en: "Unknown widget:"
+wid.uplink.title:
+  pt: "Saída para a Internet"
+  en: "Path to the Internet"
+wid.uplink.error:
+  pt: "Não foi possível ler a saída agora."
+  en: "Could not read the path to the Internet right now."

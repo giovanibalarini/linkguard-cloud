@@ -3,6 +3,8 @@ import { Globe } from 'lucide-react';
 import client from '../api/client';
 import { useI18n } from '../i18n';
 import type { Uplink } from '../types';
+import Tag from './ui/Tag';
+import { healthNumbers, healthTag } from '../lib/uplinkHealth';
 
 /**
  * Por onde esta máquina sai para a Internet, e de onde veio essa resposta.
@@ -27,12 +29,17 @@ export default function UplinkCard() {
 
   if (!uplink) return null;
   const none = uplink.source === 'none' || !uplink.interface;
+  const tag = healthTag(uplink.health);
+  const nums = healthNumbers(uplink.health);
   return (
     <div className={`card border ${none ? 'border-amber-500/30 bg-amber-500/5' : 'border-blue-500/30 bg-blue-500/5'}`}>
       <div className="flex items-start gap-3">
         <Globe className={`w-5 h-5 shrink-0 mt-0.5 ${none ? 'text-amber-400' : 'text-blue-400'}`} />
         <div className="min-w-0">
-          <div className="text-white font-medium">{t('net.uplink.title')}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-white font-medium">{t('net.uplink.title')}</span>
+            <Tag variant={tag.variant} dot>{t(tag.key)}</Tag>
+          </div>
           <p className="text-gray-400 text-sm mt-1">{t(`net.uplink.source.${none ? 'none' : uplink.source}`)}</p>
           {!none && (
             <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm">
@@ -47,6 +54,12 @@ export default function UplinkCard() {
               </span>
               <span className="text-gray-500">
                 {t('net.uplink.platform')}: <span className="text-gray-200 font-mono">{uplink.platform}</span>
+              </span>
+              <span className="text-gray-500">
+                {t('net.uplink.health.latency')}: <span className="text-gray-200 font-mono">{nums.latency}</span>
+              </span>
+              <span className="text-gray-500">
+                {t('net.uplink.health.loss')}: <span className="text-gray-200 font-mono">{nums.loss}</span>
               </span>
             </div>
           )}

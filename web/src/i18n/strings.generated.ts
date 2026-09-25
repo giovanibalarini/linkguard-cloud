@@ -1215,6 +1215,12 @@ export const pt: Dict = {
   "net.uplink.mtu": "MTU do caminho",
   "net.uplink.mtu.unknown": "desconhecida",
   "net.uplink.platform": "Plataforma",
+  "net.uplink.health.online": "Internet respondendo",
+  "net.uplink.health.degraded": "Internet lenta ou com perda",
+  "net.uplink.health.offline": "Sem Internet",
+  "net.uplink.health.unknown": "Medindo…",
+  "net.uplink.health.latency": "Latência",
+  "net.uplink.health.loss": "Perda",
   "svc.common.applyNow": "Aplicar agora",
   "svc.common.applyNow.title": "Salvar já aplica sozinho; use para forçar agora",
   "svc.common.refresh": "Atualizar",
@@ -1502,7 +1508,9 @@ export const pt: Dict = {
   "wid.alerts.critical.one": "{n} alerta crítico ativo.",
   "wid.alerts.critical.many": "{n} alertas críticos ativos.",
   "wid.traffic.empty": "Nenhuma interface de rede para medir.",
-  "wid.unknown": "Widget desconhecido:"
+  "wid.unknown": "Widget desconhecido:",
+  "wid.uplink.title": "Saída para a Internet",
+  "wid.uplink.error": "Não foi possível ler a saída agora."
 };
 
 export const en: Dict = {
@@ -2711,6 +2719,12 @@ export const en: Dict = {
   "net.uplink.mtu": "Path MTU",
   "net.uplink.mtu.unknown": "unknown",
   "net.uplink.platform": "Platform",
+  "net.uplink.health.online": "Internet reachable",
+  "net.uplink.health.degraded": "Internet slow or lossy",
+  "net.uplink.health.offline": "No Internet",
+  "net.uplink.health.unknown": "Measuring…",
+  "net.uplink.health.latency": "Latency",
+  "net.uplink.health.loss": "Loss",
   "svc.common.applyNow": "Apply now",
   "svc.common.applyNow.title": "Saving already applies on its own; use this to force it now",
   "svc.common.refresh": "Refresh",
@@ -2998,7 +3012,9 @@ export const en: Dict = {
   "wid.alerts.critical.one": "{n} critical alert active.",
   "wid.alerts.critical.many": "{n} critical alerts active.",
   "wid.traffic.empty": "No network interface to measure.",
-  "wid.unknown": "Unknown widget:"
+  "wid.unknown": "Unknown widget:",
+  "wid.uplink.title": "Path to the Internet",
+  "wid.uplink.error": "Could not read the path to the Internet right now."
 };
 
 export const dicts: Record<Lang, Dict> = { pt, en };

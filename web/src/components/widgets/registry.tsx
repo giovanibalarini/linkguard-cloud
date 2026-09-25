@@ -4,6 +4,7 @@ import SystemHealth from '../SystemHealth';
 import InterfaceTrafficWidget from './InterfaceTrafficWidget';
 import LanHostsWidget from './LanHostsWidget';
 import OpenAlertsWidget from './OpenAlertsWidget';
+import UplinkWidget from './UplinkWidget';
 import SystemResourcesWidget from './SystemResourcesWidget';
 import TopTalkersWidget from './TopTalkersWidget';
 import { WidgetNote } from './WidgetCard';
@@ -44,6 +45,8 @@ export default function WidgetView({
   switch (item.widget) {
     case 'system_health':
       return <SystemHealth />;
+    case 'uplink':
+      return <UplinkWidget />;
     case 'interface_traffic':
       return <InterfaceTrafficWidget height={Math.max(120, alturaDaCelula(item.h) - CROMO_DO_GRAFICO)} />;
     case 'top_talkers':

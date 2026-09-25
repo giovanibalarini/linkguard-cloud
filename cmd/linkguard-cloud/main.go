@@ -46,6 +46,7 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
 	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
+	"github.com/giovanibalarini/linkguard-cloud/internal/saida"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/sysprep"
@@ -374,6 +375,7 @@ type services struct {
 	// não no banco, então não é um spawnWriter — ver startBackground.
 	domSvc        *domtargets.Servico
 	domainRouting *domainrouting.Coordinator
+	sondaSaida    *saida.Sonda
 
 	// ntpInputState é a MESMA fonte que foi entregue a
 	// nftSvc.SetInputChainSources, guardada aqui porque a reconciliação de
@@ -744,6 +746,11 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	porHost := metrics.NovoPorHost()
 	hostSampler.SetPorHost(porHost)
 
+	// A sonda de saída para a Internet: no lugar do monitor de link, que media
+	// cada WAN cadastrada. Grava as séries no tsdb e abre/fecha o alerta de
+	// queda. Ver internal/saida.
+	sondaSaida := saida.Nova(rrdSvc, alertSvc)
+
 	server := api.New(api.Config{
 		Addr:          cfg.Addr(),
 		DryRun:        cfg.DryRun,
@@ -761,7 +768,12 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		// tela e o kernel não podem discordar sobre quais são as WANs desta
 		// máquina. Ver cmd/linkguard-cloud/uplink.go.
 		WANSource: func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) },
-		Uplink:    func(ctx context.Context) handlers.UplinkView { return uplinkParaTela(ctx, exec, plat) },
+		Uplink: func(ctx context.Context) handlers.UplinkView {
+			v := uplinkParaTela(ctx, exec, plat)
+			l := sondaSaida.Atual()
+			v.Saude = handlers.UplinkHealth{Estado: l.Estado, LatenciaMs: l.LatenciaMs, PerdaPct: l.PerdaPct, VerificadoEm: l.VerificadoEm, Alvos: l.Alvos}
+			return v
+		},
 		WireGuard: wgSvc,
 	}, db, exec, iptSvc, routeSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
 
@@ -804,6 +816,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		dnstapSvc:        dnstapSvc,
 		domSvc:           domSvc,
 		domainRouting:    domainRouting,
+		sondaSaida:       sondaSaida,
 	}, nil
 }
 
@@ -1306,6 +1319,7 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	}
 
 	spawnWriter("metrics", func() { metricsCollector.Run(ctx, interval) })
+	go s.sondaSaida.Run(ctx)
 	spawnWriter("tsdb", func() { rrdSvc.Run(ctx) })
 	// Escritor: o Run grava o acumulado do minuto na saída, e perder isso a
 	// cada reinício abriria um buraco na contagem que a cota existe para fazer.
