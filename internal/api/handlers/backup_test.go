@@ -16,6 +16,7 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
 	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
 	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
@@ -592,5 +593,83 @@ func TestRestoreSkipsMachineLocalStateKeys(t *testing.T) {
 	}
 	if res.Settings != 1 {
 		t.Errorf("a contagem de settings restauradas não pode incluir as chaves puladas, obtive %d", res.Settings)
+	}
+}
+
+func TestRestoreReturnsFirewallPendente(t *testing.T) {
+	h, sec := newBackupTestHandler(t)
+	if err := sec.Set(backup.PassphraseSecretName, testPassphrase); err != nil {
+		t.Fatalf("sec.Set: %v", err)
+	}
+
+	dataWithoutFW := backup.BackupData{
+		Format:    2,
+		Version:   "test-version",
+		Kind:      "linkguard-fw-backup",
+		Settings:  map[string]string{"netsvc_config": validNetsvcConfigJSON},
+		Blocklist: []string{"good.example.com"},
+	}
+	rw1 := doRestore(t, h, dataWithoutFW, testPassphrase)
+	if rw1.Code != http.StatusOK {
+		t.Fatalf("restore sem firewall: esperava 200, obtive %d: %s", rw1.Code, rw1.Body.String())
+	}
+	var res1 struct {
+		FirewallPendente bool `json:"firewall_pendente"`
+	}
+	if err := json.Unmarshal(rw1.Body.Bytes(), &res1); err != nil {
+		t.Fatalf("unmarshal resposta: %v", err)
+	}
+	if res1.FirewallPendente {
+		t.Errorf("FirewallPendente esperava false quando backup não tem firewall, obtive true")
+	}
+
+	dataWithFW := backup.BackupData{
+		Format:    2,
+		Version:   "test-version",
+		Kind:      "linkguard-fw-backup",
+		Settings:  map[string]string{"netsvc_config": validNetsvcConfigJSON},
+		Blocklist: []string{"good.example.com"},
+		Firewall: &fwmodel.Config{
+			Ajustes: fwmodel.Ajustes{RegistrarPadrao: true},
+			Aliases: []fwmodel.Alias{
+				{ID: "al-1", Nome: "servidores", Tipo: fwmodel.AliasTipoEnderecos, Itens: []string{"10.0.0.1"}},
+			},
+		},
+	}
+	rw2 := doRestore(t, h, dataWithFW, testPassphrase)
+	if rw2.Code != http.StatusOK {
+		t.Fatalf("restore com firewall: esperava 200, obtive %d: %s", rw2.Code, rw2.Body.String())
+	}
+	var res2 struct {
+		FirewallPendente bool `json:"firewall_pendente"`
+	}
+	if err := json.Unmarshal(rw2.Body.Bytes(), &res2); err != nil {
+		t.Fatalf("unmarshal resposta: %v", err)
+	}
+	if !res2.FirewallPendente {
+		t.Errorf("FirewallPendente esperava true quando backup tem firewall, obtive false")
+	}
+}
+
+func TestRestoreRejectsInvalidFirewall(t *testing.T) {
+	h, sec := newBackupTestHandler(t)
+	if err := sec.Set(backup.PassphraseSecretName, testPassphrase); err != nil {
+		t.Fatalf("sec.Set: %v", err)
+	}
+
+	invalidFW := backup.BackupData{
+		Format:   2,
+		Version:  "test-version",
+		Kind:     "linkguard-fw-backup",
+		Settings: map[string]string{"netsvc_config": validNetsvcConfigJSON},
+		Firewall: &fwmodel.Config{
+			Regras: []fwmodel.Regra{
+				{ID: "r-invalida", Zona: "zona_desconhecida", Acao: "acao_invalida"},
+			},
+		},
+	}
+	rw := doRestore(t, h, invalidFW, testPassphrase)
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("esperava 400 para firewall com regra inválida, obtive %d: %s", rw.Code, rw.Body.String())
 	}
 }

@@ -3,6 +3,8 @@ package storage
 import (
 	"fmt"
 	"time"
+
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 )
 
 // ─── Restauração de backup ───────────────────────────────────────────────────
@@ -22,6 +24,7 @@ import (
 type RestorePayload struct {
 	Settings  map[string]string
 	Blocklist []string
+	Firewall  *fwmodel.Config
 }
 
 // RestoreCounts é quanto de cada coisa entrou.
@@ -66,6 +69,12 @@ func (db *DB) ApplyRestore(p RestorePayload) (RestoreCounts, error) {
 			return RestoreCounts{}, fmt.Errorf("restaurar o domínio bloqueado %q: %w", d, err)
 		}
 		c.Blocklist++
+	}
+
+	if p.Firewall != nil {
+		if err := db.substituirConfigEmEdicaoTx(tx, *p.Firewall); err != nil {
+			return RestoreCounts{}, fmt.Errorf("restaurar firewall em edição: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

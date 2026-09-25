@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
 	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
@@ -75,6 +77,8 @@ func TestApplySkipsMachineLocalStateKeys(t *testing.T) {
 		"firewall_rules_apply":    `{"ok":true,"at":1}`,
 		"netsvc_last_apply":       `{"ok":true,"at":1}`,
 		"platform_snapshot":       `{"format":1,"facts":{"kind":"oci","fingerprint":"outramaquina00"},"capabilities":{"multi_wan":false}}`,
+		"fw_zonas_convertido":     "1",
+		"fw_conversao_relatorio":  `{"convertidas":1}`,
 	})
 
 	res, err := backup.Apply(db, data)
@@ -82,7 +86,7 @@ func TestApplySkipsMachineLocalStateKeys(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	for _, k := range []string{"nft_live_snapshot", "firewall_rules_imported", "firewall_rules_apply", "netsvc_last_apply", "platform_snapshot"} {
+	for _, k := range []string{"nft_live_snapshot", "firewall_rules_imported", "firewall_rules_apply", "netsvc_last_apply", "platform_snapshot", "fw_zonas_convertido", "fw_conversao_relatorio"} {
 		if v, _ := db.GetSetting(k); v != "" {
 			t.Errorf("%q é estado local da máquina e não pode ser restaurado, mas foi gravado: %q", k, v)
 		}
@@ -93,8 +97,8 @@ func TestApplySkipsMachineLocalStateKeys(t *testing.T) {
 	if res.Settings != 1 {
 		t.Errorf("a contagem de settings restauradas não pode incluir as chaves puladas, obtive %d", res.Settings)
 	}
-	if res.SkippedLocal != 5 {
-		t.Errorf("SkippedLocal = %d, esperava 5", res.SkippedLocal)
+	if res.SkippedLocal != 7 {
+		t.Errorf("SkippedLocal = %d, esperava 7", res.SkippedLocal)
 	}
 }
 
@@ -139,6 +143,14 @@ func TestApplyRejectsAndWritesNothing(t *testing.T) {
 			Version: "test-version", Kind: "linkguard-fw-backup",
 			Blocklist: []string{"good.example.com", "evil.com\ninclude: \"/etc/passwd"},
 		}},
+		{"firewall com regra inválida", backup.BackupData{
+			Version: "test-version", Kind: "linkguard-fw-backup",
+			Firewall: &fwmodel.Config{
+				Regras: []fwmodel.Regra{
+					{ID: "invalida", Zona: "invalida", Acao: "invalida"},
+				},
+			},
+		}},
 	}
 
 	for _, tc := range cases {
@@ -180,7 +192,21 @@ func snapshotState(t *testing.T, db *storage.DB) map[string]any {
 	if err != nil {
 		t.Fatalf("ListDNSBlocklist: %v", err)
 	}
-	return map[string]any{"settings": settings, "blocklist": bl}
+	emEdicao, err := db.CarregarConfigEmEdicao()
+	if err != nil {
+		t.Fatalf("CarregarConfigEmEdicao: %v", err)
+	}
+	aplicada, existe, err := db.CarregarConfigAplicada()
+	if err != nil {
+		t.Fatalf("CarregarConfigAplicada: %v", err)
+	}
+	return map[string]any{
+		"settings":        settings,
+		"blocklist":       bl,
+		"em_edicao":       emEdicao,
+		"aplicada":        aplicada,
+		"aplicada_existe": existe,
+	}
 }
 
 // TestApplyCleanBackupRestoresEverything prova que a validação não recusa
@@ -260,5 +286,78 @@ func TestRestoreSuccessResetsAttempts(t *testing.T) {
 	// Contador zerado: mais uma errada não pode trancar.
 	if _, err := backup.Restore(db, lim, "u1", ciphertext, "errada-123456"); !errors.Is(err, backup.ErrBadPassphrase) {
 		t.Fatalf("esperava ErrBadPassphrase (contador zerado pelo acerto), obtive %v", err)
+	}
+}
+
+func TestRestoreFirewallLeavesAppliedUntouchedAndDraftUpdated(t *testing.T) {
+	dbOrig := newRestoreDB(t)
+	cfgOriginal := fwmodel.Config{
+		Ajustes: fwmodel.Ajustes{RegistrarPadrao: true},
+		Aliases: []fwmodel.Alias{
+			{ID: "al-1", Nome: "web_servers", Tipo: fwmodel.AliasTipoEnderecos, Itens: []string{"192.168.1.10"}},
+		},
+		Regras: []fwmodel.Regra{
+			{
+				ID: "r-1", Zona: fwmodel.ZonaInternet, Posicao: 1, Ativa: true,
+				Acao: fwmodel.AcaoAccept, Proto: fwmodel.ProtoTCP,
+				Origem: fwmodel.Ponta{Tipo: fwmodel.PontaQualquer},
+				Destino: fwmodel.Ponta{Tipo: fwmodel.PontaEste},
+				PortaDestino: fwmodel.Porta{Tipo: fwmodel.PortaValor, Valor: "443"},
+			},
+		},
+	}
+	if err := dbOrig.SalvarAplicadaERevisao(cfgOriginal, "admin", "teste", "teste", time.Now()); err != nil {
+		t.Fatalf("SalvarAplicadaERevisao dbOrig: %v", err)
+	}
+
+	snap, err := backup.Snapshot(dbOrig, "v2-test")
+	if err != nil {
+		t.Fatalf("Snapshot dbOrig: %v", err)
+	}
+	if snap.Format != 2 {
+		t.Fatalf("Snapshot Format = %d, want 2", snap.Format)
+	}
+	if snap.Firewall == nil {
+		t.Fatalf("Snapshot Firewall is nil, want populated config")
+	}
+
+	// Banco de destino novo
+	dbDest := newRestoreDB(t)
+	// Garante que o destino não tem aplicada
+	_, existeAntes, err := dbDest.CarregarConfigAplicada()
+	if err != nil {
+		t.Fatalf("CarregarConfigAplicada dbDest antes: %v", err)
+	}
+	if existeAntes {
+		t.Fatalf("dbDest já tinha configuração aplicada!")
+	}
+
+	res, err := backup.Apply(dbDest, snap)
+	if err != nil {
+		t.Fatalf("Apply no dbDest: %v", err)
+	}
+	if !res.FirewallPendente {
+		t.Fatalf("res.FirewallPendente = false, want true")
+	}
+
+	// 1. fw_aplicado no destino permanece intocado (não existe)
+	_, existeDepois, err := dbDest.CarregarConfigAplicada()
+	if err != nil {
+		t.Fatalf("CarregarConfigAplicada dbDest depois: %v", err)
+	}
+	if existeDepois {
+		t.Fatalf("fw_aplicado no destino foi escrito pelo restore! Deveria ter ficado intocado.")
+	}
+
+	// 2. em_edicao no destino recebeu as regras e aliases do snapshot
+	emEdicao, err := dbDest.CarregarConfigEmEdicao()
+	if err != nil {
+		t.Fatalf("CarregarConfigEmEdicao dbDest: %v", err)
+	}
+	if len(emEdicao.Aliases) != 1 || emEdicao.Aliases[0].Nome != "web_servers" {
+		t.Errorf("Aliases em edição = %+v, want web_servers", emEdicao.Aliases)
+	}
+	if len(emEdicao.Regras) != 1 || emEdicao.Regras[0].ID != "r-1" {
+		t.Errorf("Regras em edição = %+v, want r-1", emEdicao.Regras)
 	}
 }

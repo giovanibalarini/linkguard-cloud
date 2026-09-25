@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
@@ -21,13 +22,15 @@ const PassphraseSecretName = "backup_passphrase"
 
 // BackupData is the portable snapshot of the panel's configuration. Settings
 // carry the bulk of it (port forwards, notifications, DNS, 2FA), plus the DNS
-// blocklist. An old backup's "links" field (the WAN links of the multi-WAN
-// era) is ignored on read.
+// blocklist and the applied firewall configuration. An old backup's "links"
+// field (the WAN links of the multi-WAN era) is ignored on read.
 type BackupData struct {
+	Format    int               `json:"format,omitempty"`
 	Version   string            `json:"version"`
 	Kind      string            `json:"kind"`
 	Settings  map[string]string `json:"settings"`
 	Blocklist []string          `json:"dns_blocklist"`
+	Firewall  *fwmodel.Config   `json:"firewall,omitempty"`
 }
 
 // ErrPassphraseNotConfigured means EncryptSnapshot was called before a backup
@@ -47,11 +50,23 @@ func Snapshot(db *storage.DB, version string) (BackupData, error) {
 	if block == nil {
 		block = []string{}
 	}
+
+	var fwCfg *fwmodel.Config
+	applied, existe, err := db.CarregarConfigAplicada()
+	if err != nil {
+		return BackupData{}, fmt.Errorf("carregar firewall aplicado: %w", err)
+	}
+	if existe {
+		fwCfg = &applied
+	}
+
 	return BackupData{
+		Format:    2,
 		Version:   version,
 		Kind:      "linkguard-fw-backup",
 		Settings:  settings,
 		Blocklist: block,
+		Firewall:  fwCfg,
 	}, nil
 }
 

@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
 	"github.com/giovanibalarini/linkguard-cloud/internal/backupcrypt"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
@@ -60,6 +62,9 @@ func TestEncryptSnapshotThenDecryptRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecryptRestore: %v", err)
 	}
+	if data.Format != 2 {
+		t.Fatalf("Format = %d, want 2", data.Format)
+	}
 	if data.Version != "v-test" {
 		t.Fatalf("Version = %q, want v-test", data.Version)
 	}
@@ -96,5 +101,32 @@ func TestDecryptRestoreWrongPassphraseFails(t *testing.T) {
 	}
 	if _, err := backup.DecryptRestore(encrypted, "senha-errada-123456"); err == nil {
 		t.Fatal("expected error decrypting with wrong passphrase, got nil")
+	}
+}
+
+func TestSnapshotIncludesAppliedFirewall(t *testing.T) {
+	db := openTestDB(t)
+	cfg := fwmodel.Config{
+		Ajustes: fwmodel.Ajustes{RegistrarPadrao: true},
+		Aliases: []fwmodel.Alias{
+			{ID: "al-1", Nome: "lan_hosts", Tipo: fwmodel.AliasTipoEnderecos, Itens: []string{"10.0.0.1"}},
+		},
+	}
+	if err := db.SalvarAplicadaERevisao(cfg, "admin", "teste", "teste", time.Now()); err != nil {
+		t.Fatalf("SalvarAplicadaERevisao: %v", err)
+	}
+
+	snap, err := backup.Snapshot(db, "v-test")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if snap.Format != 2 {
+		t.Fatalf("Format = %d, want 2", snap.Format)
+	}
+	if snap.Firewall == nil {
+		t.Fatalf("Firewall is nil, want populated config")
+	}
+	if len(snap.Firewall.Aliases) != 1 || snap.Firewall.Aliases[0].Nome != "lan_hosts" {
+		t.Errorf("Firewall aliases = %+v, want lan_hosts", snap.Firewall.Aliases)
 	}
 }

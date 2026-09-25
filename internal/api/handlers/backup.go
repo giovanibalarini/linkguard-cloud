@@ -63,6 +63,7 @@ type restoreResult struct {
 	Settings             int      `json:"settings"`
 	Blocklist            int      `json:"blocklist"`
 	SecretsToReconfigure []string `json:"secrets_to_reconfigure"`
+	FirewallPendente     bool     `json:"firewall_pendente"`
 }
 
 // Restore applies an uploaded, encrypted backup.
@@ -135,8 +136,9 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := restoreResult{
-		Settings:  applied.Settings,
-		Blocklist: applied.Blocklist,
+		Settings:         applied.Settings,
+		Blocklist:        applied.Blocklist,
+		FirewallPendente: applied.FirewallPendente,
 	}
 
 	// Secrets are never in the backup file (they live in a separate table

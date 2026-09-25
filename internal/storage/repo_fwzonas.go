@@ -147,13 +147,20 @@ func (db *DB) CarregarConfigEmEdicao() (fwmodel.Config, error) {
 
 // SubstituirConfigEmEdicao substitui em transação todas as 5 partes da configuração em edição.
 func (db *DB) SubstituirConfigEmEdicao(c fwmodel.Config) error {
-	norm := fwmodel.Normalizar(c)
-
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return fmt.Errorf("iniciar transação SubstituirConfigEmEdicao: %w", err)
 	}
 	defer tx.Rollback()
+
+	if err := db.substituirConfigEmEdicaoTx(tx, c); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (db *DB) substituirConfigEmEdicaoTx(tx *sql.Tx, c fwmodel.Config) error {
+	norm := fwmodel.Normalizar(c)
 
 	if _, err := tx.Exec(`DELETE FROM fw_regras`); err != nil {
 		return fmt.Errorf("limpar fw_regras: %w", err)
@@ -265,7 +272,7 @@ func (db *DB) SubstituirConfigEmEdicao(c fwmodel.Config) error {
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 // CarregarConfigAplicada carrega a última configuração aplicada registrada em fw_aplicado.

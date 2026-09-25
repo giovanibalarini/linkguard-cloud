@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
 	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
@@ -25,6 +26,9 @@ type Result struct {
 	// SkippedLocal é quantas chaves de estado local da máquina foram
 	// ignoradas — ver machineLocalSettingKeys.
 	SkippedLocal int
+	// FirewallPendente indica se uma configuração de firewall foi restaurada
+	// no rascunho de edição e agora precisa ser aplicada pelo operador.
+	FirewallPendente bool
 }
 
 // ValidationError é a recusa de um backup mal formado ou hostil: nada foi
@@ -116,13 +120,17 @@ var knownSettingsValidators = map[string]func(raw string) error{
 //     tem a própria defesa — o instantâneo carrega um fingerprint da máquina
 //     e é descartado quando não bate (internal/platform) —, mas essa defesa
 //     só age no próximo boot, e platform.Load é lido sem detectar nada. A
-//     linha simplesmente não viaja.
+//   - fw_zonas_convertido / fw_conversao_relatorio: registram que a migração
+//     do firewall legado para zonas já rodou nesta máquina e o relatório da
+//     conversão local. Não devem viajar entre máquinas.
 var machineLocalSettingKeys = map[string]bool{
 	nftables.LiveSnapshotSettingKey:  true,
 	firewallrules.ImportedSettingKey: true,
 	firewallrules.ApplyStatusKey:     true,
 	netsvcApplyStatusKey:             true,
 	platform.SnapshotSettingKey:      true,
+	"fw_zonas_convertido":            true,
+	"fw_conversao_relatorio":         true,
 }
 
 // As três chaves abaixo espelham constantes não exportadas de
@@ -205,6 +213,27 @@ func Apply(db *storage.DB, data BackupData) (Result, error) {
 		normalizedBlocklist = append(normalizedBlocklist, nd)
 	}
 
+	if data.Firewall != nil {
+		var userIDs []string
+		if peers, err := db.ListWireGuardPeers(); err == nil {
+			for _, p := range peers {
+				userIDs = append(userIDs, p.UserID)
+			}
+		} else {
+			return Result{}, fmt.Errorf("listar peers wireguard para validação do firewall: %w", err)
+		}
+		problemas := fwmodel.Validar(*data.Firewall, userIDs)
+		if fwmodel.TemErro(problemas) {
+			var errMsgs []string
+			for _, p := range problemas {
+				if p.Severidade == "erro" {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s: %s", p.Onde, p.Chave))
+				}
+			}
+			return Result{}, invalid("backup contém configuração de firewall inválida — nada foi restaurado: %s", strings.Join(errMsgs, "; "))
+		}
+	}
+
 	// As chaves de estado local da máquina saem antes da escrita — são estado
 	// desta caixa, não configuração. Ver machineLocalSettingKeys para o que
 	// cada uma faria com este equipamento se fosse restaurada.
@@ -218,7 +247,7 @@ func Apply(db *storage.DB, data BackupData) (Result, error) {
 		toRestore[k] = v
 	}
 
-	// Uma transação para as três coleções. Antes eram três laços com o erro
+	// Uma transação para as coleções. Antes eram três laços com o erro
 	// engolido e HTTP 200 no fim: uma falha de banco no meio deixava metade da
 	// configuração restaurada e reportava sucesso, com um contador menor como
 	// única pista. A promessa de "nada foi restaurado", que a validação acima
@@ -226,15 +255,17 @@ func Apply(db *storage.DB, data BackupData) (Result, error) {
 	counts, err := db.ApplyRestore(storage.RestorePayload{
 		Settings:  toRestore,
 		Blocklist: normalizedBlocklist,
+		Firewall:  data.Firewall,
 	})
 	if err != nil {
 		return Result{}, err
 	}
 
 	res := Result{
-		Settings:     counts.Settings,
-		Blocklist:    counts.Blocklist,
-		SkippedLocal: skippedLocal,
+		Settings:         counts.Settings,
+		Blocklist:        counts.Blocklist,
+		SkippedLocal:     skippedLocal,
+		FirewallPendente: data.Firewall != nil,
 	}
 	if skippedLocal > 0 {
 		slog.Info("restore de backup: chaves de estado local da máquina ignoradas",
