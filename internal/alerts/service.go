@@ -483,27 +483,35 @@ func (s *Service) GhostIfaceOK() {
 	s.AutoResolve(TypeFirewallGhostIface, "")
 }
 
-// HostNovoNaRede avisa que um aparelho apareceu na rede pela primeira vez.
+// HostNovoNaRede avisa que uma máquina apareceu na rede pela primeira vez.
 //
-// Severidade INFORMATIVA de propósito: aparelho novo é quase sempre a visita
-// que chegou, e um aviso amarelo para cada celular que entra no escritório
-// treina o admin a ignorar a tela de alertas — que é o oposto do que a issue
-// pede. Ele conta na lista e não grita.
-func (s *Service) HostNovoNaRede(mac, nome string) error {
-	return s.Create(TypeHostNovoNaRede, SeverityInfo, "Aparelho novo na rede",
-		fmt.Sprintf("%s (%s) apareceu na rede agora, pela primeira vez.", nome, mac), mac)
+// Severidade INFORMATIVA de propósito: máquina nova quase sempre é a instância
+// que alguém da equipe acabou de criar ou a pessoa que entrou na VPN, e um aviso
+// amarelo para cada uma treina o admin a ignorar a tela de alertas. Ele conta
+// na lista e não grita — e é o registro de quando aquele IP começou a falar.
+func (s *Service) HostNovoNaRede(ip, nome string) error {
+	return s.Create(TypeHostNovoNaRede, SeverityInfo, "Máquina nova na rede",
+		fmt.Sprintf("%s apareceu na rede agora, pela primeira vez.", quemE(ip, nome)), ip)
 }
 
-// HostAcimaDoNormal avisa que um aparelho está consumindo muito acima do que
-// ELE MESMO costuma consumir naquela hora.
+// HostAcimaDoNormal avisa que uma máquina está consumindo muito acima do que
+// ELA MESMA costuma consumir naquela hora.
 //
 // A mensagem traz os dois números porque um deles sozinho não decide nada: "12
 // MB/s" é muito ou pouco dependendo de quem é, e é a comparação com o próprio
 // normal que transforma o aviso em ação.
-func (s *Service) HostAcimaDoNormal(mac, nome string, atual, normal float64) error {
+func (s *Service) HostAcimaDoNormal(ip, nome string, atual, normal float64) error {
 	return s.Create(TypeHostAcimaDoNormal, SeverityWarning, "Consumo muito acima do normal",
-		fmt.Sprintf("%s (%s) está consumindo %s, contra %s que é o normal dele neste horário.",
-			nome, mac, formatarTaxa(atual), formatarTaxa(normal)), mac)
+		fmt.Sprintf("%s está consumindo %s, contra %s que é o normal dela neste horário.",
+			quemE(ip, nome), formatarTaxa(atual), formatarTaxa(normal)), ip)
+}
+
+// quemE junta nome e IP sem repetir o IP quando a máquina não tem nome.
+func quemE(ip, nome string) string {
+	if nome == "" || nome == ip {
+		return ip
+	}
+	return fmt.Sprintf("%s (%s)", nome, ip)
 }
 
 // formatarTaxa é a mesma conversão que internal/comportamento usa, repetida

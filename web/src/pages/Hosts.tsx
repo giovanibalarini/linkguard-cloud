@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Pencil, Ban, ShieldCheck, Circle, TrendingUp, ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Pencil, Ban, ShieldCheck, Circle, TrendingUp, ArrowDown, ArrowUp, AlertTriangle, KeyRound, Server } from 'lucide-react';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n';
 import { blockEnforcement, KIND_BLOCKED_HOSTS } from '../lib/blockGroups';
-import type { NetHost, HostTraffic, FirewallGroup, FirewallGroupsData } from '../types';
+import type { NetHost, HostKind, HostTraffic, FirewallGroup, FirewallGroupsData } from '../types';
 import Panel from '../components/ui/Panel';
 import HostHistory from '../components/HostHistory';
 import HostFlows from '../components/HostFlows';
 import HostQuota from '../components/HostQuota';
 import Modal from '../components/ui/Modal';
+
+/** Como a máquina é chamada: apelido, nome da instância (ou usuário da VPN), IP. */
+function nomeDe(h: NetHost): string {
+  return h.alias || h.hostname || h.ip;
+}
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -25,9 +30,9 @@ export default function Hosts() {
   const { t } = useI18n();
   const canManage = can('hosts.block');
   const canReadFirewall = can('firewall.read');
-  // Ver COM QUEM um aparelho falou tem permissao propria (#115): ver o
-  // grafico de consumo e uma coisa, ler os destinos de cada aparelho da rede
-  // e outra. Ver auth.PermTrafficFlows.
+  // Ver COM QUEM uma máquina falou tem permissão própria (#115): ver o
+  // gráfico de consumo é uma coisa, ler os destinos de cada máquina é outra.
+  // Ver auth.PermTrafficFlows.
   const canReadFlows = can('traffic.flows');
   const [hosts, setHosts] = useState<NetHost[]>([]);
   // Os grupos do firewall, só para saber se o bloqueio de host está mesmo em
@@ -41,7 +46,7 @@ export default function Hosts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [filter, setFilter] = useState('');
-  // Histórico de consumo do aparelho (#113). Aberto pelo nome na lista, e
+  // Histórico de consumo da máquina (#113). Aberto pelo nome na lista, e
   // não pela coluna de ações: ver consumo é leitura, não gestão.
   const [historyFor, setHistoryFor] = useState<NetHost | null>(null);
   const [aliasFor, setAliasFor] = useState<NetHost | null>(null);
@@ -95,7 +100,7 @@ export default function Hosts() {
     const q = filter.trim().toLowerCase();
     if (!q) return hosts;
     return hosts.filter((h) =>
-      [h.ip, h.mac, h.alias, h.hostname, h.interface].some((v) => v?.toLowerCase().includes(q)),
+      [h.ip, h.alias, h.hostname, h.kind].some((v) => v?.toLowerCase().includes(q)),
     );
   }, [hosts, filter]);
 
@@ -129,7 +134,7 @@ export default function Hosts() {
     setSaving(true);
     setAliasError('');
     try {
-      await client.put('/api/hosts/alias', { mac: aliasFor.mac, alias: aliasValue.trim() });
+      await client.put('/api/hosts/alias', { ip: aliasFor.ip, alias: aliasValue.trim() });
       setAliasFor(null);
       await fetchHosts();
     } catch (err: any) {
@@ -151,7 +156,7 @@ export default function Hosts() {
     setConfirming(true);
     setConfirmError('');
     try {
-      await client.post('/api/hosts/block', { mac: h.mac, blocked: !h.blocked });
+      await client.post('/api/hosts/block', { ip: h.ip, blocked: !h.blocked });
       setConfirmFor(null);
       await fetchHosts();
     } catch (err: any) {
@@ -241,7 +246,7 @@ export default function Hosts() {
               const total = tk.rx_bytes + tk.tx_bytes;
               const max = (talkers[0].rx_bytes + talkers[0].tx_bytes) || 1;
               const host = hosts.find((h) => h.ip === tk.ip);
-              const name = host?.alias || host?.hostname || tk.ip;
+              const name = host ? nomeDe(host) : tk.ip;
               return (
                 <div key={tk.ip} className="flex items-center gap-3">
                   <div className="w-36 sm:w-44 shrink-0 min-w-0">
@@ -262,7 +267,7 @@ export default function Hosts() {
         </Panel>
       )}
 
-      {/* Cota por aparelho (#126). Depois do "quem mais consome agora" e antes
+      {/* Cota por máquina (#126). Depois do "quem mais consome agora" e antes
           da lista: a pergunta "quanto já foi neste ciclo" é a continuação
           natural, e é o lugar onde o admin decide onde declarar um teto. */}
       {can('hosts.read') && <HostQuota canEdit={canManage} />}
@@ -282,26 +287,19 @@ export default function Hosts() {
             <div className="sm:hidden space-y-2">
               {filtered.map((h) => (
                 <div
-                  key={h.mac || h.ip}
+                  key={h.ip}
                   className={`rounded-lg border bg-gray-950/40 p-3 ${h.blocked ? 'border-l-2 border-l-red-500 border-gray-800 opacity-75' : 'border-gray-800'}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      {h.mac ? (
-                        <button
-                          onClick={() => setHistoryFor(h)}
-                          className="text-white font-medium truncate hover:text-blue-400 transition-colors text-left"
-                          title={t('svc.hosts.history.open')}
-                        >
-                          {h.alias || h.hostname || '—'}
-                        </button>
-                      ) : (
-                        <div className="text-white font-medium truncate">{h.alias || h.hostname || '—'}</div>
-                      )}
-                      <span className={`inline-flex items-center gap-1.5 text-xs ${h.online ? 'text-green-400' : 'text-gray-600'}`}>
-                        <Circle className={`w-2 h-2 ${h.online ? 'fill-green-400' : 'fill-gray-600'}`} />
-                        {h.online ? h.state : 'offline'}
-                      </span>
+                      <button
+                        onClick={() => setHistoryFor(h)}
+                        className="text-white font-medium truncate hover:text-blue-400 transition-colors text-left"
+                        title={t('svc.hosts.history.open')}
+                      >
+                        {nomeDe(h)}
+                      </button>
+                      <EstadoMaquina h={h} />
                     </div>
                     {canManage && (
                       <div className="flex shrink-0 gap-3">
@@ -324,11 +322,9 @@ export default function Hosts() {
                   </div>
                   <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                     <dt className="text-gray-500">{t('svc.hosts.col.ip')}</dt>
-                    <dd className="text-gray-400 font-mono">{h.ip || '—'}</dd>
-                    <dt className="text-gray-500">{t('svc.hosts.col.mac')}</dt>
-                    <dd className="text-gray-500 font-mono">{h.mac}</dd>
-                    <dt className="text-gray-500">{t('svc.hosts.col.interface')}</dt>
-                    <dd className="text-gray-400 font-mono">{h.interface || '—'}</dd>
+                    <dd className="text-gray-400 font-mono">{h.ip}</dd>
+                    <dt className="text-gray-500">{t('svc.hosts.col.kind')}</dt>
+                    <dd><OrigemMaquina kind={h.kind} /></dd>
                   </dl>
                   {h.blocked && (
                     <span
@@ -349,26 +345,27 @@ export default function Hosts() {
                   <tr className="text-left text-gray-500 border-b border-gray-800">
                     <th className="pb-3 pr-4 font-medium">{t('svc.hosts.col.host')}</th>
                     <th className="pb-3 pr-4 font-medium">{t('svc.hosts.col.ip')}</th>
-                    <th className="pb-3 pr-4 font-medium">{t('svc.hosts.col.mac')}</th>
-                    <th className="pb-3 pr-4 font-medium">{t('svc.hosts.col.interface')}</th>
-                    <th className="pb-3 pr-4 font-medium">{t('svc.hosts.col.state')}</th>
+                    <th className="pb-3 pr-4 font-medium">{t('svc.hosts.col.kind')}</th>
+                    <th className="pb-3 pr-4 font-medium" title={t('svc.hosts.state.hint')}>{t('svc.hosts.col.state')}</th>
                     {canManage && <th className="pb-3 font-medium">{t('svc.hosts.col.actions')}</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((h) => (
-                    <tr key={h.mac || h.ip} className={`table-row ${h.blocked ? 'border-l-2 border-l-red-500 opacity-75' : ''}`}>
+                    <tr key={h.ip} className={`table-row ${h.blocked ? 'border-l-2 border-l-red-500 opacity-75' : ''}`}>
                       <td className="py-3 pr-4">
-                        {h.mac ? (
-                          <button
-                            onClick={() => setHistoryFor(h)}
-                            className="text-white font-medium hover:text-blue-400 transition-colors text-left"
-                            title={t('svc.hosts.history.open')}
-                          >
-                            {h.alias || h.hostname || '—'}
-                          </button>
-                        ) : (
-                          <div className="text-white font-medium">{h.alias || h.hostname || '—'}</div>
+                        <button
+                          onClick={() => setHistoryFor(h)}
+                          className="text-white font-medium hover:text-blue-400 transition-colors text-left"
+                          title={t('svc.hosts.history.open')}
+                        >
+                          {nomeDe(h)}
+                        </button>
+                        {/* Com apelido, o nome que a Oracle (ou a VPN) dá
+                            continua visível: é ele que o resto da equipe
+                            reconhece no console. */}
+                        {h.alias && h.hostname && h.alias !== h.hostname && (
+                          <div className="text-gray-500 text-xs">{h.hostname}</div>
                         )}
                         {h.blocked && (
                           <span
@@ -379,15 +376,9 @@ export default function Hosts() {
                           </span>
                         )}
                       </td>
-                      <td className="py-3 pr-4 text-gray-400 font-mono text-xs">{h.ip || '—'}</td>
-                      <td className="py-3 pr-4 text-gray-500 font-mono text-xs">{h.mac}</td>
-                      <td className="py-3 pr-4 text-gray-400 font-mono text-xs">{h.interface || '—'}</td>
-                      <td className="py-3 pr-4">
-                        <span className={`inline-flex items-center gap-1.5 text-xs ${h.online ? 'text-green-400' : 'text-gray-600'}`}>
-                          <Circle className={`w-2 h-2 ${h.online ? 'fill-green-400' : 'fill-gray-600'}`} />
-                          {h.online ? h.state : 'offline'}
-                        </span>
-                      </td>
+                      <td className="py-3 pr-4 text-gray-400 font-mono text-xs">{h.ip}</td>
+                      <td className="py-3 pr-4"><OrigemMaquina kind={h.kind} /></td>
+                      <td className="py-3 pr-4"><EstadoMaquina h={h} /></td>
                       {canManage && (
                         <td className="py-3">
                           <div className="flex gap-2">
@@ -422,22 +413,18 @@ export default function Hosts() {
       <Modal
         open={historyFor !== null}
         onClose={() => setHistoryFor(null)}
-        title={<div><span className="text-white font-semibold">{t('svc.hosts.history.title')}</span>{historyFor && <p className="text-gray-500 text-xs mt-1 font-mono font-normal">{historyFor.mac}</p>}</div>}
+        title={<div><span className="text-white font-semibold">{t('svc.hosts.history.title')}</span>{historyFor && <p className="text-gray-500 text-xs mt-1 font-mono font-normal">{historyFor.ip}</p>}</div>}
         size="lg"
       >
         {historyFor && (
-          <HostHistory
-            mac={historyFor.mac}
-            titulo={historyFor.alias || historyFor.hostname || historyFor.ip || historyFor.mac}
-          />
+          <HostHistory ip={historyFor.ip} titulo={nomeDe(historyFor)} />
         )}
 
-        {/* O registro de conversa (#115) entra no MESMO modal do historico: as
-            duas perguntas -- "quanto" e "com quem" -- sao sobre o mesmo
-            aparelho, e separa-las em duas telas obrigaria o admin a casar os
-            dois na cabeca. So aparece com a permissao propria e com IP: a
-            medicao desta fase e IPv4, e sem endereco nao ha o que consultar. */}
-        {historyFor && canReadFlows && historyFor.ip && (
+        {/* O registro de conversa (#115) entra no MESMO modal do histórico: as
+            duas perguntas — "quanto" e "com quem" — são sobre a mesma
+            máquina, e separá-las em duas telas obrigaria o admin a casar os
+            dois na cabeça. Só aparece com a permissão própria. */}
+        {historyFor && canReadFlows && (
           <div className="mt-6 pt-6 border-t border-gray-800">
             <HostFlows ip={historyFor.ip} />
           </div>
@@ -447,7 +434,7 @@ export default function Hosts() {
       <Modal
         open={aliasFor !== null}
         onClose={() => setAliasFor(null)}
-        title={<div><span className="text-white font-semibold">{t('svc.hosts.aliasModal.title')}</span>{aliasFor && <p className="text-gray-500 text-xs mt-1 font-mono font-normal">{aliasFor.mac}</p>}</div>}
+        title={<div><span className="text-white font-semibold">{t('svc.hosts.aliasModal.title')}</span>{aliasFor && <p className="text-gray-500 text-xs mt-1 font-mono font-normal">{aliasFor.ip}</p>}</div>}
         size="xs"
         className="bg-gray-900 border border-gray-800 rounded-xl"
       >
@@ -476,7 +463,7 @@ export default function Hosts() {
       <Modal
         open={confirmFor !== null}
         onClose={() => setConfirmFor(null)}
-        title={<div><span className="text-white font-semibold">{confirmFor ? (confirmFor.blocked ? t('svc.hosts.unblockModal.title') : t('svc.hosts.blockModal.title')) : ''}</span>{confirmFor && <p className="text-gray-500 text-xs mt-1 font-mono font-normal">{confirmFor.mac}</p>}</div>}
+        title={<div><span className="text-white font-semibold">{confirmFor ? (confirmFor.blocked ? t('svc.hosts.unblockModal.title') : t('svc.hosts.blockModal.title')) : ''}</span>{confirmFor && <p className="text-gray-500 text-xs mt-1 font-mono font-normal">{confirmFor.ip}</p>}</div>}
         size="xs"
         className="bg-gray-900 border border-gray-800 rounded-xl"
       >
@@ -484,12 +471,12 @@ export default function Hosts() {
         <div className="p-6 space-y-4">
               <p className="text-sm text-gray-300">
                 {confirmFor.blocked ? t('svc.hosts.confirm.unblock') : t('svc.hosts.confirm.block')}{' '}
-                <span className="text-white font-medium">{confirmFor.alias || confirmFor.ip || confirmFor.mac}</span>?
+                <span className="text-white font-medium">{nomeDe(confirmFor)}</span>?
               </p>
               {/* Bloquear com o grupo desligado, não aplicado ou embaixo de um
                   grupo que libera devolveria "sucesso" e não bloquearia nada.
-                  Dizer isso ANTES do clique é o ponto: depois, o host já
-                  aparece bloqueado na lista. */}
+                  Dizer isso ANTES do clique é o ponto: depois, a máquina já
+                  aparece bloqueada na lista. */}
               {!confirmFor.blocked && notEnforced && (
                 <div className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs">
                   <p className="text-orange-300 flex items-start gap-1.5">
@@ -522,5 +509,34 @@ export default function Hosts() {
         )}
       </Modal>
     </div>
+  );
+}
+
+/** De onde a máquina fala: da VCN (qualquer sub-rede) ou da VPN. */
+function OrigemMaquina({ kind }: { kind: HostKind }) {
+  const { t } = useI18n();
+  const vpn = kind === 'vpn';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs ${vpn ? 'text-purple-300' : 'text-sky-300'}`}
+      title={vpn ? t('svc.hosts.kind.vpnHint') : t('svc.hosts.kind.vcnHint')}
+    >
+      {vpn ? <KeyRound className="w-3 h-3" aria-hidden="true" /> : <Server className="w-3 h-3" aria-hidden="true" />}
+      {vpn ? t('svc.hosts.kind.vpn') : t('svc.hosts.kind.vcn')}
+    </span>
+  );
+}
+
+/** Ativa = trafegou pelo firewall nos últimos 10 minutos. */
+function EstadoMaquina({ h }: { h: NetHost }) {
+  const { t } = useI18n();
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs ${h.online ? 'text-green-400' : 'text-gray-600'}`}
+      title={t('svc.hosts.state.hint')}
+    >
+      <Circle className={`w-2 h-2 ${h.online ? 'fill-green-400' : 'fill-gray-600'}`} />
+      {h.online ? t('svc.hosts.state.active') : t('svc.hosts.state.idle')}
+    </span>
   );
 }

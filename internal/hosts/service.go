@@ -1,27 +1,56 @@
+// Package hosts é o inventário das máquinas que passam por esta caixa.
+//
+// ─── QUEM É UMA MÁQUINA ──────────────────────────────────────────────────────
+//
+// Um IP privado. A versão on-prem identificava pelo MAC da tabela de
+// vizinhança, e na VCN isso não enxerga quase nada: a máquina de outra
+// sub-rede chega pelo roteador virtual da Oracle e nunca aparece na
+// vizinhança desta caixa. O IP de uma VNIC não muda enquanto ela existe.
+//
+// ─── DE ONDE ELAS VÊM ────────────────────────────────────────────────────────
+//
+// Dos contadores de tráfego do nftables (internal/nftables/accounting.go), que
+// já são por endereço: toda máquina local que encaminhou um pacote por aqui
+// está lá. Mais o que o banco já conhece, para quem sumiu aparecer como
+// offline em vez de desaparecer.
+//
+// ─── E OS NOMES ──────────────────────────────────────────────────────────────
+//
+// Das máquinas da VCN, pelo DNS reverso do resolvedor da própria VCN (ver
+// Nomes). Das pessoas da VPN, pelo usuário dono do peer.
 package hosts
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/netip"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
-// Host is one LAN host in the inventory: live neighbour data merged with stored
-// metadata (alias, blocked flag, first/last seen).
+// Tipos de máquina.
+const (
+	KindVCN = "vcn"
+	KindVPN = "vpn"
+)
+
+// onlineJanela é quanto tempo depois do último tráfego visto a máquina ainda
+// conta como online.
+const onlineJanela = 10 * time.Minute
+
+// Host é uma linha do inventário.
 type Host struct {
-	IP        string     `json:"ip"`
-	MAC       string     `json:"mac"`
-	Interface string     `json:"interface"`
-	State     string     `json:"state"`
-	Online    bool       `json:"online"`
+	IP string `json:"ip"`
+	// Kind é "vcn" (máquina da conta) ou "vpn" (pessoa conectada pelo túnel).
+	Kind   string `json:"kind"`
+	Online bool   `json:"online"`
+	// Hostname é o nome da instância (DNS reverso da VCN) ou o usuário da VPN.
 	Hostname  string     `json:"hostname,omitempty"`
 	Alias     string     `json:"alias,omitempty"`
 	Blocked   bool       `json:"blocked"`
@@ -29,304 +58,212 @@ type Host struct {
 	LastSeen  *time.Time `json:"last_seen,omitempty"`
 }
 
-// reachableStates are NUD states that mean the host is currently present.
-var reachableStates = map[string]bool{
-	"REACHABLE": true, "STALE": true, "DELAY": true, "PROBE": true, "PERMANENT": true,
-}
-
-// Service builds the host inventory from the kernel neighbour table and the
-// stored host metadata.
+// Service monta o inventário.
 type Service struct {
-	exec firewall.Executor
-	db   *storage.DB
-	nft  *nftables.Service
+	db    *storage.DB
+	nft   *nftables.Service
+	nomes *Nomes
+	agora func() time.Time
 }
 
-// NewService creates a hosts Service.
-func NewService(exec firewall.Executor, db *storage.DB, nft *nftables.Service) *Service {
-	return &Service{exec: exec, db: db, nft: nft}
+// NewService cria o serviço. nomes pode ser nil (sem DNS reverso).
+func NewService(db *storage.DB, nft *nftables.Service, nomes *Nomes) *Service {
+	return &Service{db: db, nft: nft, nomes: nomes, agora: time.Now}
 }
 
-// List returns the current host inventory. It records a sighting for every host
-// with a MAC (so the inventory persists across reboots/STALE states) and merges
-// in stored metadata. Hosts known from storage but not currently in the
-// neighbour table are included as offline.
+// Registrar grava que estes IPs tiveram tráfego agora. Quem chama é o
+// amostrador de consumo (internal/hosttraffic), que já sabe quem trafegou a
+// cada rodada: assim a última vez vista fica certa mesmo sem ninguém abrir a
+// tela.
+func (s *Service) Registrar(ips []string) {
+	validos := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		if ehIPv4(ip) {
+			validos = append(validos, ip)
+		}
+	}
+	if err := s.db.UpsertHostSightings(validos); err != nil {
+		slog.Debug("inventário: não foi possível gravar os avistamentos", "err", err)
+	}
+	if s.nomes != nil {
+		s.nomes.Pedir(validos)
+	}
+}
+
+// List devolve o inventário: toda máquina que o contador de tráfego conhece,
+// mais as que o banco lembra.
+//
+// Erro ao ler os contadores NÃO vira lista vazia: o banco ainda sabe quem
+// passou por aqui, e a tela mostra isso.
 func (s *Service) List(ctx context.Context) ([]Host, error) {
-	out, err := s.exec.ExecuteRead(ctx, "ip", "neigh", "show")
+	infos, err := s.db.ListHostInfo()
 	if err != nil {
 		return nil, err
 	}
-	neighbors := parseNeighbors(out)
-
-	metaList, err := s.db.ListHostMetadata()
-	if err != nil {
-		return nil, err
-	}
-	meta := make(map[string]storage.HostMetadata, len(metaList))
-	for _, m := range metaList {
-		meta[m.MAC] = m
+	porIP := make(map[string]storage.HostInfo, len(infos))
+	for _, i := range infos {
+		porIP[i.IP] = i
 	}
 
-	// Collect sightings and persist them in one transaction at the end (one
-	// write per host on every List was extremely slow without WAL).
-	sightings := make(map[string]string)
-	seen := make(map[string]bool)
-	var hosts []Host
-	for _, n := range neighbors {
-		if n.MAC == "" {
-			continue // can't track a host without a stable identifier
-		}
-		// UM HOST É UM MAC, E NÃO UMA LINHA DE `ip neigh` (#119).
-		//
-		// O mesmo aparelho aparece na vizinhança uma vez por ENDEREÇO: o IPv4,
-		// o IPv6 global e o link-local — três linhas com o mesmo MAC. Antes
-		// desta guarda, as três viravam três "hosts" na tela, e o avistamento
-		// gravado no banco era o da ÚLTIMA linha lida, que costuma ser um
-		// endereço IPv6.
-		//
-		// O estrago não ficava na tela. O IP guardado alimenta o bloqueio
-		// (`blocked_hosts` é `ipv4_addr`) e o direcionamento por host
-		// (`host_wan` idem): com um endereço IPv6 gravado ali, o `nft add
-		// element` era RECUSADO e o erro descartado por um `_, _ =` — o host
-		// aparecia bloqueado na tela e não estava bloqueado em lugar nenhum.
-		//
-		// Isso não doía enquanto a LAN não tinha IPv6 (forwarding desligado,
-		// sem RA do produto). Doeu no primeiro cliente de teste com IPv6, que é
-		// como foi encontrado.
-		if !ehIPv4(n.IP) {
-			if _, jaVisto := seen[n.MAC]; jaVisto {
-				continue
-			}
-			// Host só-IPv6: entra na lista (existe, e a tela precisa mostrá-lo),
-			// mas NÃO vira avistamento — gravar um endereço que os sets IPv4
-			// não aceitam é pior que não gravar nada.
-			seen[n.MAC] = true
-			hosts = append(hosts, hostDeVizinho(n, meta))
-			continue
-		}
-		if _, jaVisto := seen[n.MAC]; jaVisto {
-			// Já entrou por um endereço não-IPv4; corrige a linha para o IPv4,
-			// que é a identidade que o resto do produto sabe usar.
-			for i := range hosts {
-				if hosts[i].MAC == n.MAC {
-					hosts[i].IP, hosts[i].State, hosts[i].Online = n.IP, n.State, reachableStates[n.State]
-					break
+	var novos []string
+	if s.nft != nil {
+		if contadores, err := s.nft.HostCounters(ctx); err != nil {
+			slog.Debug("inventário: contadores indisponíveis; só o que o banco conhece", "err", err)
+		} else {
+			for ip := range contadores {
+				if _, ok := porIP[ip]; !ok && ehIPv4(ip) {
+					novos = append(novos, ip)
 				}
 			}
-			sightings[n.MAC] = n.IP
-			continue
 		}
-		seen[n.MAC] = true
-		sightings[n.MAC] = n.IP
-
-		hosts = append(hosts, hostDeVizinho(n, meta))
+	}
+	if len(novos) > 0 {
+		s.Registrar(novos)
+		if infos, err = s.db.ListHostInfo(); err != nil {
+			return nil, err
+		}
 	}
 
-	// Persist all sightings at once; best-effort (don't fail listing on write error).
-	_ = s.db.UpsertHostSightings(sightings)
-
-	// Add known-but-currently-absent hosts as offline entries.
-	for _, m := range metaList {
-		if seen[m.MAC] {
-			continue
+	pessoas := s.pessoasDaVPN()
+	agora := s.agora()
+	hosts := make([]Host, 0, len(infos))
+	var semNome []string
+	for _, i := range infos {
+		i := i
+		h := Host{
+			IP: i.IP, Kind: KindVCN, Hostname: i.Hostname, Alias: i.Alias, Blocked: i.Blocked,
+			FirstSeen: &i.FirstSeen, LastSeen: &i.LastSeen,
+			Online: agora.Sub(i.LastSeen) < onlineJanela,
 		}
-		first, last := m.FirstSeen, m.LastSeen
-		hosts = append(hosts, Host{
-			IP:        m.IP,
-			MAC:       m.MAC,
-			State:     "OFFLINE",
-			Online:    false,
-			Hostname:  m.Hostname,
-			Alias:     m.Alias,
-			Blocked:   m.Blocked,
-			FirstSeen: &first,
-			LastSeen:  &last,
-		})
+		if pessoa, ok := pessoas[i.IP]; ok {
+			h.Kind, h.Hostname = KindVPN, pessoa
+		} else if h.Hostname == "" {
+			semNome = append(semNome, i.IP)
+		}
+		hosts = append(hosts, h)
+	}
+	if s.nomes != nil {
+		s.nomes.Pedir(semNome)
 	}
 
-	sort.Slice(hosts, func(i, j int) bool {
-		if hosts[i].Online != hosts[j].Online {
-			return hosts[i].Online // online first
+	sort.Slice(hosts, func(a, b int) bool {
+		if hosts[a].Online != hosts[b].Online {
+			return hosts[a].Online
 		}
-		return hosts[i].IP < hosts[j].IP
+		return ipMenor(hosts[a].IP, hosts[b].IP)
 	})
 	return hosts, nil
 }
 
-// MACByIP devolve o mapa IP → MAC da tabela de vizinhança do kernel.
-//
-// Existe para a série de consumo por host (#113) poder rotular a medição pela
-// identidade que o produto usa em todo o resto — alias, bloqueio e inventário
-// são indexados por MAC. Sem isto, o amostrador teria de duplicar o parser de
-// `ip neigh` que já mora aqui.
-//
-// Endereço sem MAC conhecido simplesmente não entra: no modelo deste produto,
-// host da LAN é host com MAC (ver List), e o que atravessa o firewall sem
-// aparecer na vizinhança é roteador de outra rede, não aparelho local.
-func (s *Service) MACByIP(ctx context.Context) (map[string]string, error) {
-	out, err := s.exec.ExecuteRead(ctx, "ip", "neigh", "show")
+// pessoasDaVPN mapeia o IP de cada peer ao nome do usuário dono dele.
+func (s *Service) pessoasDaVPN() map[string]string {
+	out := map[string]string{}
+	peers, err := s.db.ListWireGuardPeers()
 	if err != nil {
-		return nil, err
+		return out
 	}
-	res := map[string]string{}
-	for _, n := range parseNeighbors(out) {
-		if n.IP == "" || n.MAC == "" {
-			continue
+	for _, p := range peers {
+		ip := p.Address
+		if i := strings.IndexByte(ip, '/'); i >= 0 {
+			ip = ip[:i]
 		}
-		res[n.IP] = validate.NormalizeMAC(n.MAC)
+		if ehIPv4(ip) {
+			out[ip] = p.Username
+		}
 	}
-	return res, nil
+	return out
 }
 
-// SetAlias assigns a friendly name to a host.
-func (s *Service) SetAlias(mac, alias string) error {
-	return s.db.SetHostAlias(mac, alias)
+// ErrIPInvalido é devolvido quando o endereço pedido não é um IPv4.
+var ErrIPInvalido = errors.New("endereço IPv4 inválido")
+
+// SetAlias dá um apelido à máquina.
+func (s *Service) SetAlias(ip, alias string) error {
+	if ip = validate.IPv4Canonico(ip); ip == "" {
+		return ErrIPInvalido
+	}
+	return s.db.SetHostAlias(ip, alias)
 }
 
-// SetBlocked blocks/unblocks a host: it persists the flag AND enforces it on the
-// live firewall by adding/removing the host's current IP in the nft
-// `blocked_hosts` set (the FORWARD chain drops traffic to/from that set).
-func (s *Service) SetBlocked(ctx context.Context, mac string, blocked bool) error {
-	if err := s.db.SetHostBlocked(mac, blocked); err != nil {
+// SetBlocked bloqueia ou desbloqueia a máquina: grava a flag E aplica no
+// firewall vivo, pondo ou tirando o IP do set `blocked_hosts` (a chain forward
+// descarta o que vai para ele ou vem dele).
+//
+// O ERRO DO NFT NÃO É ENGOLIDO: a tela diria "bloqueado" sobre um elemento que
+// o kernel recusou. O ruído benigno é separado por operação — ver o fim deste
+// arquivo.
+func (s *Service) SetBlocked(ctx context.Context, ip string, blocked bool) error {
+	if ip = validate.IPv4Canonico(ip); ip == "" {
+		return ErrIPInvalido
+	}
+	if err := s.db.SetHostBlocked(ip, blocked); err != nil {
 		return err
 	}
-	// O ENDEREÇO FÍSICO VEM PRIMEIRO, E NÃO DEPENDE DE CONHECER O IP (#119).
-	//
-	// O bloqueio por IP só valia para IPv4, e só depois de o host ter sido
-	// visto na rede — até lá a flag ficava guardada sem efeito. O MAC é a
-	// identidade que o chamador JÁ tem em mãos: bloquear por ele vale para
-	// todas as famílias e vale imediatamente, sem esperar o host aparecer.
-	//
-	// Best-effort como o resto: elemento duplicado ou ausente não é falha dura,
-	// porque a flag no banco é a fonte da verdade.
-	// O ERRO AQUI NÃO PODE SER ENGOLIDO. Desde a fase 2 da #119 esta é a ÚNICA
-	// aplicação para um host sem IPv4 conhecido, e a única que vale em IPv6
-	// para todos os outros. Um `_, _ =` aqui é a tela dizendo "bloqueado" sobre
-	// um elemento que o nft recusou — que é exatamente o defeito que a fase 2
-	// existe para matar, cometido no caminho que a corrige.
-	var errMAC error
+	var errNft error
 	benigno := func(error) bool { return false }
 	if blocked {
-		_, errMAC = s.nft.BlockMAC(ctx, mac)
-		// Somar o que já está lá é no-op, não falha.
+		_, errNft = s.nft.BlockHost(ctx, ip)
 		benigno = func(e error) bool { return strings.Contains(strings.ToLower(e.Error()), "file exists") }
 	} else {
-		_, errMAC = s.nft.UnblockMAC(ctx, mac)
-		// Tirar o que já não está é no-op, não falha.
+		_, errNft = s.nft.UnblockHost(ctx, ip)
 		benigno = func(e error) bool { return strings.Contains(strings.ToLower(e.Error()), "no such file") }
 	}
-	if errMAC != nil && !benigno(errMAC) {
-		slog.Error("não foi possível aplicar o bloqueio por endereço físico no firewall; a tela vai mostrar um bloqueio que não está valendo em IPv6",
-			"mac", mac, "bloqueado", blocked, "err", errMAC)
+	if errNft != nil && !benigno(errNft) {
+		slog.Error("não foi possível aplicar o bloqueio no firewall; a tela vai mostrar um bloqueio que não está valendo",
+			"ip", ip, "bloqueado", blocked, "err", errNft)
 	}
-
-	ip := s.ipForMAC(mac)
-	if ip != "" && !ehIPv4(ip) {
-		// Endereço não-IPv4 gravado por uma versão anterior (ver a guarda em
-		// List). Mandá-lo para um set `ipv4_addr` seria um elemento recusado
-		// com o erro descartado — o host apareceria bloqueado e não estaria.
-		// O bloqueio por endereço físico acima já está valendo.
-		slog.Warn("host com endereço não-IPv4 gravado; só o bloqueio por endereço físico foi aplicado",
-			"mac", mac, "ip", ip)
-		ip = ""
-	}
-	if ip == "" {
-		// Sem IP conhecido não há o que pôr no set IPv4 — mas o bloqueio por
-		// MAC acima JÁ está valendo, que é a diferença desta mudança.
-		if rs, err := s.nft.PersistentRuleset(ctx); err == nil {
-			_ = s.db.SetSetting(nftables.LiveSnapshotSettingKey, rs)
-		}
-		return nil
-	}
-	if blocked {
-		_, _ = s.nft.BlockHost(ctx, ip)
-	} else {
-		_, _ = s.nft.UnblockHost(ctx, ip)
-	}
-	// Snapshot the live ruleset so a from-scratch reinstall restores this block
-	// too, not just the host_metadata flag (mirrors the handlers-package
-	// saveNftSnapshot; duplicated here rather than imported to avoid this
-	// package depending on internal/api/handlers).
+	// O snapshot do ruleset vivo leva o bloqueio junto, para uma reinstalação do
+	// zero restaurá-lo (espelha o saveNftSnapshot dos handlers; duplicado aqui
+	// para este pacote não depender de internal/api/handlers).
 	if rs, err := s.nft.PersistentRuleset(ctx); err == nil {
 		_ = s.db.SetSetting(nftables.LiveSnapshotSettingKey, rs)
 	}
 	return nil
 }
 
-func (s *Service) ipForMAC(mac string) string {
-	metas, err := s.db.ListHostMetadata()
+// SincronizaBloqueios põe no set `blocked_hosts` todo IP marcado como
+// bloqueado no banco. Roda a cada boot e é idempotente: é o que faz o bloqueio
+// sobreviver a uma tabela recriada, e o que traz para o set os bloqueios que a
+// migração 102 converteu de MAC para IP.
+func (s *Service) SincronizaBloqueios(ctx context.Context) {
+	infos, err := s.db.ListHostInfo()
 	if err != nil {
-		return ""
-	}
-	for _, m := range metas {
-		if m.MAC == mac {
-			return m.IP
-		}
-	}
-	return ""
-}
-
-// SincronizaBloqueiosPorMAC põe no firewall o endereço físico de todo host
-// marcado como bloqueado no banco.
-//
-// POR QUE ISTO EXISTE. O bloqueio por endereço físico chegou depois (#119,
-// fase 2), e o set nasce vazio. Numa caixa já instalada, os hosts bloqueados
-// estão no banco e no set de IPv4 — mas não no de MAC. Sem esta passada, o
-// bloqueio deles continuaria valendo só para IPv4 até alguém desbloquear e
-// bloquear de novo pela tela, o que ninguém faz porque a tela já diz
-// "bloqueado".
-//
-// Roda a cada boot, e é idempotente: elemento duplicado não é falha.
-func (s *Service) SincronizaBloqueiosPorMAC(ctx context.Context) {
-	metas, err := s.db.ListHostMetadata()
-	if err != nil {
-		slog.Warn("não foi possível ler os hosts para sincronizar o bloqueio por endereço físico", "err", err)
+		slog.Warn("não foi possível ler as máquinas para sincronizar os bloqueios", "err", err)
 		return
 	}
 	var n int
-	for _, m := range metas {
-		if !m.Blocked || m.MAC == "" {
+	for _, i := range infos {
+		if !i.Blocked || !ehIPv4(i.IP) {
 			continue
 		}
-		if _, err := s.nft.BlockMAC(ctx, m.MAC); err == nil {
+		if _, err := s.nft.BlockHost(ctx, i.IP); err == nil || strings.Contains(strings.ToLower(err.Error()), "file exists") {
 			n++
 		}
 	}
 	if n > 0 {
-		slog.Info("bloqueio por endereço físico sincronizado a partir do banco", "hosts", n)
+		slog.Info("bloqueios sincronizados a partir do banco", "maquinas", n)
 	}
 }
 
-// ehIPv4 diz se o endereço é IPv4. Existe porque os sets do nftables que o
-// produto usa para host (`blocked_hosts`, `host_wan`) são `ipv4_addr`: gravar
-// outra coisa não é uma limitação, é um elemento recusado com o erro
-// descartado.
+// ehIPv4 diz se o endereço é IPv4. Os sets de máquina do nftables são
+// `ipv4_addr`: gravar outra coisa não é uma limitação, é um elemento recusado.
 func ehIPv4(ip string) bool {
 	addr, err := netip.ParseAddr(ip)
 	return err == nil && addr.Is4()
 }
 
-// hostDeVizinho monta a linha da tela a partir de uma entrada de vizinhança,
-// juntando o que o banco já sabe sobre aquele MAC.
-func hostDeVizinho(n Neighbor, meta map[string]storage.HostMetadata) Host {
-	h := Host{
-		IP:        n.IP,
-		MAC:       n.MAC,
-		Interface: n.Interface,
-		State:     n.State,
-		Online:    reachableStates[n.State],
+// ipMenor ordena por endereço de verdade, e não como texto ("10.0.1.9" antes
+// de "10.0.1.10").
+func ipMenor(a, b string) bool {
+	x, errA := netip.ParseAddr(a)
+	y, errB := netip.ParseAddr(b)
+	if errA != nil || errB != nil {
+		return a < b
 	}
-	if m, ok := meta[n.MAC]; ok {
-		h.Hostname = m.Hostname
-		h.Alias = m.Alias
-		h.Blocked = m.Blocked
-		h.FirstSeen = &m.FirstSeen
-	}
-	return h
+	return x.Less(y)
 }
 
-// O RUÍDO BENIGNO É SEPARADO POR OPERAÇÃO, E NÃO PELA MENSAGEM, e a diferença
-// é o defeito de hoje.
+// O RUÍDO BENIGNO É SEPARADO POR OPERAÇÃO, E NÃO PELA MENSAGEM.
 //
 // O nft responde "No such file or directory" tanto para "esse elemento não está
 // no set" — no-op legítimo de um desbloqueio repetido — quanto para "esse SET

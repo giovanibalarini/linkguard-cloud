@@ -1,14 +1,16 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
-// HostsHandler handles the LAN host inventory.
+// HostsHandler expõe o inventário de máquinas (identificadas pelo IP).
 type HostsHandler struct {
 	svc *hosts.Service
 	db  *storage.DB
@@ -32,44 +34,43 @@ func (h *HostsHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, hs)
 }
 
-// SetAlias sets a friendly name for a host (by MAC).
+// SetAlias dá um apelido à máquina (pelo IP).
 func (h *HostsHandler) SetAlias(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		MAC   string `json:"mac"`
+		IP    string `json:"ip"`
 		Alias string `json:"alias"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	body.MAC = strings.TrimSpace(strings.ToLower(body.MAC))
-	if body.MAC == "" {
-		writeError(w, http.StatusBadRequest, "mac is required")
-		return
-	}
-	if err := h.svc.SetAlias(body.MAC, strings.TrimSpace(body.Alias)); err != nil {
+	if err := h.svc.SetAlias(body.IP, strings.TrimSpace(body.Alias)); err != nil {
+		if errors.Is(err, hosts.ErrIPInvalido) {
+			writeError(w, http.StatusBadRequest, "ip inválido")
+			return
+		}
 		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// SetBlocked blocks or unblocks a host (by MAC).
+// SetBlocked bloqueia ou desbloqueia a máquina (pelo IP).
 func (h *HostsHandler) SetBlocked(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		MAC     string `json:"mac"`
+		IP      string `json:"ip"`
 		Blocked bool   `json:"blocked"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	body.MAC = strings.TrimSpace(strings.ToLower(body.MAC))
-	if body.MAC == "" {
-		writeError(w, http.StatusBadRequest, "mac is required")
+	ip := validate.IPv4Canonico(body.IP)
+	if ip == "" {
+		writeError(w, http.StatusBadRequest, "ip inválido")
 		return
 	}
-	if err := h.svc.SetBlocked(r.Context(), body.MAC, body.Blocked); err != nil {
+	if err := h.svc.SetBlocked(r.Context(), ip, body.Blocked); err != nil {
 		writeInternalError(w, err)
 		return
 	}
@@ -77,6 +78,6 @@ func (h *HostsHandler) SetBlocked(w http.ResponseWriter, r *http.Request) {
 	if body.Blocked {
 		action = "host.block"
 	}
-	auditAction(h.db, r, action, "host:"+body.MAC, "")
+	auditAction(h.db, r, action, "host:"+ip, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -70,3 +70,56 @@ func TestMigrationRetiresMultiWANPermissionsAndKeepsRoutesRead(t *testing.T) {
 		}
 	}
 }
+
+// A caixa que vem do linkguard-fw tem o inventário por MAC, e cota e consumo
+// chaveados por MAC. A 102 passa tudo para IP pela correspondência que o
+// inventário antigo guardava; o que não tem IPv4 fica de fora.
+func TestMigrationHostsPorIPConverteInventarioCotaEConsumo(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	// O estado de uma caixa migrada: host_info vazio e as tabelas no formato
+	// antigo (a 102 já rodou no Open; refaz-se o antes à mão).
+	for _, q := range []string{
+		`DROP TABLE host_info`,
+		`DROP TABLE host_quota`,
+		`DROP TABLE host_usage`,
+		createHostQuotaTable,
+		createHostUsageTable,
+		`INSERT INTO host_metadata (mac, ip, hostname, alias, blocked) VALUES
+			('aa:00:00:00:00:01', '10.0.1.20', 'antigo', 'api', 1),
+			('aa:00:00:00:00:02', 'fe80::1', '', 'só v6', 0)`,
+		`INSERT INTO host_quota (mac, limit_gb) VALUES ('aa:00:00:00:00:01', 5), ('aa:00:00:00:00:02', 1)`,
+		`INSERT INTO host_usage (mac, period, cycle_start, rx_bytes, tx_bytes, updated_at) VALUES
+			('aa:00:00:00:00:01', 'monthly', 100, 10, 20, 1)`,
+	} {
+		if _, err := db.conn.Exec(q); err != nil {
+			t.Fatalf("montar o estado antigo: %v\n%s", err, q)
+		}
+	}
+	if err := db.runOneMigrationForTest(upHostsPorIP); err != nil {
+		t.Fatalf("migração: %v", err)
+	}
+
+	hosts, err := db.ListHostInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hosts) != 1 || hosts[0].IP != "10.0.1.20" || hosts[0].Alias != "api" || !hosts[0].Blocked {
+		t.Fatalf("inventário convertido errado (o só-IPv6 tinha de ficar de fora): %+v", hosts)
+	}
+	quotas, err := db.GetHostQuotas()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quotas) != 1 || quotas["10.0.1.20"].LimitGB != 5 {
+		t.Fatalf("cota convertida errado: %+v", quotas)
+	}
+	u, err := db.GetHostUsage("10.0.1.20", HostPeriodMonthly, 100)
+	if err != nil || u.RxBytes != 10 || u.TxBytes != 20 {
+		t.Fatalf("consumo convertido errado: %+v %v", u, err)
+	}
+}

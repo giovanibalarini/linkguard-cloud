@@ -39,7 +39,7 @@ func TestAparelhoNovoAvisaUmaVezSo(t *testing.T) {
 	// A issue é explícita: alerta de comportamento que dispara demais é pior
 	// que nenhum — vira ruído e some no meio dos outros.
 	s, db := novoServico(t)
-	if err := db.UpsertHostSighting("aa:bb:cc:dd:ee:01", "192.168.3.50"); err != nil {
+	if err := db.UpsertHostSightings([]string{"192.168.3.50"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +57,7 @@ func TestAparelhoNovoAvisaUmaVezSo(t *testing.T) {
 
 func TestAparelhoVelhoNaoEhNovo(t *testing.T) {
 	s, db := novoServico(t)
-	if err := db.UpsertHostSighting("aa:bb:cc:dd:ee:02", "192.168.3.51"); err != nil {
+	if err := db.UpsertHostSightings([]string{"192.168.3.51"}); err != nil {
 		t.Fatal(err)
 	}
 	// Uma hora depois, ele já não é novidade.
@@ -73,13 +73,13 @@ func TestSemHistoricoNaoInventaNormal(t *testing.T) {
 	// inventar um baseline — e o alerta que nasce de um baseline inventado é
 	// exatamente o que ensina o admin a ignorar a tela.
 	s, db := novoServico(t)
-	if err := db.UpsertHostSighting("aa:bb:cc:dd:ee:03", "192.168.3.52"); err != nil {
+	if err := db.UpsertHostSightings([]string{"192.168.3.52"}); err != nil {
 		t.Fatal(err)
 	}
 	agora := time.Now()
 	for i := 0; i < 3; i++ {
 		_ = db.UpsertMetricSample(storage.MetricSample{
-			Series: SerieConsumo, Label: "aa:bb:cc:dd:ee:03", StepSeconds: PassoBaseline,
+			Series: SerieConsumo, Label: "192.168.3.52", StepSeconds: PassoBaseline,
 			TsUnix: agora.Add(-time.Duration(i) * 5 * time.Minute).Unix(),
 			VAvg:   500 * 1024 * 1024,
 		})
@@ -97,22 +97,22 @@ func TestPisoAbsolutoImpedeRuidoDeAparelhoQuieto(t *testing.T) {
 	// aconteceu nada. É a divisão por um normal pequeno que faz detector de
 	// desvio virar gerador de ruído.
 	s, db := novoServico(t)
-	mac := "aa:bb:cc:dd:ee:04"
-	if err := db.UpsertHostSighting(mac, "192.168.3.53"); err != nil {
+	ip := "192.168.3.53"
+	if err := db.UpsertHostSightings([]string{ip}); err != nil {
 		t.Fatal(err)
 	}
 	agora := time.Now()
 	// Histórico farto na mesma hora, com valores minúsculos.
 	for i := 1; i <= 40; i++ {
 		_ = db.UpsertMetricSample(storage.MetricSample{
-			Series: SerieConsumo, Label: mac, StepSeconds: PassoBaseline,
+			Series: SerieConsumo, Label: ip, StepSeconds: PassoBaseline,
 			TsUnix: agora.Add(-time.Duration(i) * 24 * time.Hour).Unix(),
 			VAvg:   1024,
 		})
 	}
 	// E agora "dez vezes mais": 10 KB/s. Dez vezes o normal, e irrelevante.
 	_ = db.UpsertMetricSample(storage.MetricSample{
-		Series: SerieConsumo, Label: mac, StepSeconds: PassoBaseline,
+		Series: SerieConsumo, Label: ip, StepSeconds: PassoBaseline,
 		TsUnix: agora.Unix(), VAvg: 10 * 1024,
 	})
 	s.agora = func() time.Time { return agora }

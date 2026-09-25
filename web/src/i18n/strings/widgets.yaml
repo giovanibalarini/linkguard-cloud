@@ -46,19 +46,19 @@ wid.sys.except:
 
 # ─── Hosts na rede ───────────────────────────────────────────────────────────
 wid.hosts.title:
-  pt: "Hosts na rede"
-  en: "Network hosts"
+  pt: "Máquinas"
+  en: "Machines"
 wid.hosts.error:
-  pt: "Não foi possível ler os hosts agora."
-  en: "Could not read the hosts right now."
+  pt: "Não foi possível ler as máquinas agora."
+  en: "Could not read the machines right now."
 wid.hosts.empty:
-  pt: "Nenhum host visto na rede ainda."
-  en: "No hosts seen on the network yet."
+  pt: "Nenhuma máquina trafegou pelo firewall ainda."
+  en: "No machine has passed traffic through the firewall yet."
 wid.hosts.count:
-  pt: "{online} online de {total} conhecidos"
-  en: "{online} of {total} known hosts online"
+  pt: "{online} ativas de {total} conhecidas"
+  en: "{online} of {total} known machines active"
 wid.hosts.blocked:
-  pt: "bloqueado"
+  pt: "bloqueada"
   en: "blocked"
 
 # ─── Quem está consumindo ────────────────────────────────────────────────────

@@ -23,10 +23,10 @@ import (
 // que já tem rollup (10s → 1min → 15min → 1h) e retenção por perfil. Nenhuma
 // tabela nova: a mesma máquina que guarda o histórico das interfaces.
 //
-// O RÓTULO É O MAC, e não o IP. É a identidade que o produto usa em todo o
-// resto (alias, bloqueio, inventário são indexados por MAC), e é o que faz o
-// histórico de um aparelho sobreviver a uma troca de lease do DHCP — a
-// fragilidade que a Fase 3 do FEATURES.md aponta.
+// O RÓTULO É O IP privado da máquina, a mesma identidade do inventário
+// (internal/hosts). A versão on-prem rotulava pelo MAC da vizinhança, que na
+// VCN não existe para quem está em outra sub-rede: o nó do k3s ficava sem
+// série nenhuma.
 
 const (
 	// sampleInterval é a cadência da amostragem, e tem de casar com o passo
@@ -54,41 +54,26 @@ type Recorder interface {
 	Gauge(series, label string, v float64)
 }
 
-// MACSource resolve IP → MAC (a tabela de vizinhança do kernel).
-type MACSource interface {
-	MACByIP(ctx context.Context) (map[string]string, error)
+// Avistamentos recebe os IPs que tiveram tráfego nesta amostra: é como o
+// inventário sabe a última vez que cada máquina foi vista, sem depender de
+// alguém abrir a tela.
+type Avistamentos interface {
+	Registrar(ips []string)
 }
 
 // leitura é a última amostra de um endereço.
-//
-// mac guarda QUEM era o dono daquele endereço na amostra anterior, e existe por
-// dois motivos que só aparecem em rede de verdade:
-//
-//  1. MEMÓRIA. Quando "ip neigh" falha ou estoura o timeout, macs vem
-//     vazio e TODO delta desta amostra ficaria sem dono — dez segundos de cota
-//     de toda a rede evaporando num slog.Debug que ninguém lê. Com a memória, o
-//     último MAC conhecido do endereço continua valendo.
-//
-//  2. HANDOVER. Quando o DHCP entrega .50 para outro aparelho, o elemento do
-//     set acct continua vivo (timeout 1d) e a entrada de vizinhança pode levar
-//     dezenas de segundos para trocar. Nessa janela o delta é do aparelho novo
-//     e o MAC lido ainda é o do antigo: a cota de quem saiu da rede subiria
-//     sozinha. Quando o MAC muda entre duas amostras, o delta é DESCARTADO e o
-//     endereço é re-semeado. Perde-se uma amostra; não se inventa consumo.
 type leitura struct {
 	rx, tx uint64
 	ts     int64
-	mac    string
 }
 
 // Sampler transforma o acumulado dos contadores em taxa, e a taxa em série.
 type Sampler struct {
 	counters CounterSource
-	macs     MACSource
+	vistos   Avistamentos
 	rec      Recorder
 
-	// anterior guarda a última leitura POR IP (que é a chave do contador), e
-	// não por MAC: o contador do kernel é indexado por endereço, e é entre
+	// anterior guarda a última leitura POR IP, a chave do contador: é entre
 	// duas leituras do mesmo endereço que a diferença faz sentido.
 	anterior map[string]leitura
 
@@ -109,7 +94,7 @@ type Sampler struct {
 // RegistroPorHost é o que o amostrador precisa do registro de métricas por
 // aparelho.
 type RegistroPorHost interface {
-	Registrar(mac, rotulo string, rx, tx float64)
+	Registrar(ip, rotulo string, rx, tx float64)
 	Limpar(vivos map[string]bool)
 }
 
@@ -135,16 +120,16 @@ func (s *Sampler) SetPorHost(r RegistroPorHost) { s.porHost = r }
 // por mês no ciclo mensal, um minuto por DIA no diário. Ver internal/hostquota,
 // seção O TEMPO.
 type UsageSink interface {
-	AddHostBytes(mac string, ts int64, rx, tx uint64)
+	AddHostBytes(ip string, ts int64, rx, tx uint64)
 }
 
 // SetUsageSink liga o acumulador de consumo por aparelho (#126). Nil mantém o
 // comportamento de hoje, byte por byte — mesma promessa do UsageSink do tsdb.
 func (s *Sampler) SetUsageSink(u UsageSink) { s.usage = u }
 
-// NewSampler cria o amostrador.
-func NewSampler(counters CounterSource, macs MACSource, rec Recorder) *Sampler {
-	return &Sampler{counters: counters, macs: macs, rec: rec, anterior: map[string]leitura{}}
+// NewSampler cria o amostrador. vistos pode ser nil.
+func NewSampler(counters CounterSource, vistos Avistamentos, rec Recorder) *Sampler {
+	return &Sampler{counters: counters, vistos: vistos, rec: rec, anterior: map[string]leitura{}}
 }
 
 // Run amostra até o contexto acabar.
@@ -172,42 +157,21 @@ func (s *Sampler) SampleOnce(ctx context.Context, now int64) {
 		slog.Debug("amostragem por host: contadores indisponíveis", "err", err)
 		return
 	}
-	macs, err := s.macs.MACByIP(ctx)
-	if err != nil {
-		slog.Debug("amostragem por host: tabela de vizinhança indisponível", "err", err)
-		macs = map[string]string{}
-	}
-
 	type taxa struct {
-		mac    string
+		ip     string
 		rx, tx float64
 	}
 	var taxas []taxa
+	var ativos []string
 
 	for ip, c := range contadores {
 		ant, tinha := s.anterior[ip]
-
-		// Quem é o dono deste endereço agora. Vazio quer dizer que a tabela de
-		// vizinhança não respondeu, ou que a entrada está em FAILED/INCOMPLETE
-		// e não tem lladdr — não quer dizer que o aparelho sumiu. Nesse caso
-		// vale o último dono conhecido: ver o comentário de leitura.mac.
-		macLido := macs[ip]
-		mac := macLido
-		if mac == "" {
-			mac = ant.mac
-		}
-		s.anterior[ip] = leitura{rx: c.RxBytes, tx: c.TxBytes, ts: now, mac: mac}
+		s.anterior[ip] = leitura{rx: c.RxBytes, tx: c.TxBytes, ts: now}
 
 		if !tinha {
 			// Primeira leitura só semeia: o acumulado até aqui não pertence a
 			// esta janela de tempo, e gravá-lo como taxa daria um pico que
 			// nunca existiu.
-			continue
-		}
-		if macLido != "" && ant.mac != "" && macLido != ant.mac {
-			// O endereço trocou de dono entre duas amostras. O delta é do
-			// aparelho novo e não há como reparti-lo; creditá-lo a qualquer um
-			// dos dois inventaria consumo. Re-semeia e segue.
 			continue
 		}
 
@@ -224,92 +188,57 @@ func (s *Sampler) SampleOnce(ctx context.Context, now int64) {
 		if brx == 0 && btx == 0 {
 			continue
 		}
+		ativos = append(ativos, ip)
 
 		// A COTA RECEBE OS BYTES AQUI, no mesmo ponto em que o delta existe, e
-		// NÃO depois do corte de maxHosts logo abaixo.
+		// NÃO depois do corte de maxHosts logo abaixo: o corte é do RANKING do
+		// gráfico, e a máquina com cota declarada não pode ficar muda
+		// exatamente na hora em que outras cinquenta estão consumindo.
 		//
-		// O corte é do RANKING da amostra: os aparelhos além do quinquagésimo
-		// viram o rótulo "outros" para o histórico não multiplicar séries.
-		// Se a cota lesse dali, o aparelho com cota declarada ficaria mudo
-		// exatamente na hora em que outros cinquenta estão consumindo — que é
-		// a hora em que a cota importa.
-		//
-		// E ANTES DA GUARDA DE dt, logo abaixo. dt<=0 é preocupação de TAXA
-		// (dividir por zero, ou por um número negativo depois de um passo de
-		// NTP para trás — corriqueiro numa caixa sem RTC logo depois do boot).
-		// A contabilidade de BYTES não precisa de dt para nada, e descartar o
-		// intervalo inteiro por causa dele apagaria a cota de todos os
-		// endereços de uma vez.
-		//
-		// Sem MAC não vai nada: "outros" é um rótulo de gráfico, não um
-		// aparelho, e acumular cota nele criaria uma linha no banco que nenhum
-		// aparelho pode reivindicar nem remover.
-		if mac != "" && s.usage != nil {
-			s.usage.AddHostBytes(mac, now, brx, btx)
+		// E ANTES DA GUARDA DE dt: dt<=0 é preocupação de TAXA (um passo de
+		// relógio para trás logo depois do boot). A contabilidade de BYTES não
+		// precisa de dt para nada.
+		if s.usage != nil {
+			s.usage.AddHostBytes(ip, now, brx, btx)
 		}
 
 		dt := float64(now - ant.ts)
 		if dt <= 0 {
 			continue
 		}
-		drx, dtx := float64(brx), float64(btx)
-		if mac == "" {
-			// Sem MAC não é host da LAN no modelo do produto (ver
-			// hosts.Service.List). Vai para "outros" em vez de sumir.
-			mac = OtherLabel
-		}
-		taxas = append(taxas, taxa{mac: mac, rx: drx / dt, tx: dtx / dt})
+		taxas = append(taxas, taxa{ip: ip, rx: float64(brx) / dt, tx: float64(btx) / dt})
+	}
+	if s.vistos != nil && len(ativos) > 0 {
+		s.vistos.Registrar(ativos)
 	}
 
 	s.podarAusentes(contadores)
 
-	// Junta o que caiu no mesmo MAC (um aparelho pode ter mais de um IP).
-	juntos := map[string]*taxa{}
-	for i := range taxas {
-		t := taxas[i]
-		j, ok := juntos[t.mac]
-		if !ok {
-			cp := t
-			juntos[t.mac] = &cp
-			continue
-		}
-		j.rx += t.rx
-		j.tx += t.tx
-	}
-
-	lista := make([]taxa, 0, len(juntos))
+	lista := taxas
 	vivos := map[string]bool{}
-	for _, t := range juntos {
-		lista = append(lista, *t)
-	}
 	// Maiores primeiro, desempate por rótulo para o corte ser determinístico.
 	sort.Slice(lista, func(i, j int) bool {
 		if lista[i].rx+lista[i].tx != lista[j].rx+lista[j].tx {
 			return lista[i].rx+lista[i].tx > lista[j].rx+lista[j].tx
 		}
-		return lista[i].mac < lista[j].mac
+		return lista[i].ip < lista[j].ip
 	})
 
 	var sobraRx, sobraTx float64
 	for i, t := range lista {
-		if i >= maxHosts && t.mac != OtherLabel {
+		if i >= maxHosts {
 			sobraRx += t.rx
 			sobraTx += t.tx
 			continue
 		}
-		if t.mac == OtherLabel {
-			sobraRx += t.rx
-			sobraTx += t.tx
-			continue
-		}
-		s.rec.Gauge("host.rx_bps", t.mac, t.rx)
-		s.rec.Gauge("host.tx_bps", t.mac, t.tx)
+		s.rec.Gauge("host.rx_bps", t.ip, t.rx)
+		s.rec.Gauge("host.tx_bps", t.ip, t.tx)
 		// Segundo consumidor da MESMA medição (#118), e não uma medição nova:
 		// duplicar a coleta daria dois números para a mesma pergunta, que é como
 		// dois painéis passam a discordar sobre a mesma rede.
 		if s.porHost != nil {
-			s.porHost.Registrar(t.mac, t.mac, t.rx, t.tx)
-			vivos[t.mac] = true
+			s.porHost.Registrar(t.ip, t.ip, t.rx, t.tx)
+			vivos[t.ip] = true
 		}
 	}
 	if s.porHost != nil {

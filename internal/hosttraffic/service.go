@@ -21,7 +21,6 @@ import (
 	"net"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
@@ -99,7 +98,7 @@ type CounterSource interface {
 // que não sabe — ver o comentário lá.
 func (s *Service) SetCounterSource(src CounterSource) { s.counters = src }
 
-// TopTalkers devolve os hosts da LAN ordenados por consumo no ciclo dos
+// TopTalkers devolve as máquinas ordenadas por consumo no ciclo dos
 // contadores (decrescente).
 //
 // MUDOU EM #112, E A MUDANÇA É O PONTO. Antes isto lia
@@ -112,7 +111,7 @@ func (s *Service) SetCounterSource(src CounterSource) { s.counters = src }
 // SEM FONTE, RESPONDE ERRO — de propósito. Devolver lista vazia seria
 // indistinguível de "ninguém trafegou", e mostrar número que não corresponde
 // ao que aconteceu é exatamente o defeito que a #112 existe para consertar.
-func (s *Service) TopTalkers(ctx context.Context, subnetCIDR string) ([]HostTraffic, error) {
+func (s *Service) TopTalkers(ctx context.Context) ([]HostTraffic, error) {
 	if s.counters == nil {
 		return nil, fmt.Errorf("contabilidade por host indisponível: a chain de contabilidade do nftables não está ligada")
 	}
@@ -120,24 +119,20 @@ func (s *Service) TopTalkers(ctx context.Context, subnetCIDR string) ([]HostTraf
 	if err != nil {
 		return nil, err
 	}
-	return rankHosts(contadores, subnetCIDR), nil
+	return rankHosts(contadores), nil
 }
 
-// rankHosts filtra pela faixa da LAN e ordena por consumo total.
+// rankHosts ordena por consumo total.
 //
-// O filtro por faixa continua existindo mesmo com as regras já escopadas por
-// interface: a chain conta o que atravessa o firewall, e numa caixa com mais
-// de uma rede interna nem todo endereço contado pertence à LAN que o painel
-// está mostrando.
-func rankHosts(contadores map[string]nftables.HostCounter, subnetCIDR string) []HostTraffic {
-	_, ipnet, err := net.ParseCIDR(strings.TrimSpace(subnetCIDR))
-	if err != nil {
-		return []HostTraffic{}
-	}
+// Não filtra por faixa: a chain de contabilidade só conta o lado LOCAL de cada
+// pacote (é a zona que decide quem é local), então todo endereço contado é uma
+// máquina desta rede — da VCN, de qualquer sub-rede, ou da VPN. O filtro por
+// uma faixa fixa, herdado do on-prem, escondia justamente as máquinas das
+// outras sub-redes.
+func rankHosts(contadores map[string]nftables.HostCounter) []HostTraffic {
 	out := make([]HostTraffic, 0, len(contadores))
 	for host, c := range contadores {
-		ip := net.ParseIP(host)
-		if ip == nil || !ipnet.Contains(ip) {
+		if net.ParseIP(host).To4() == nil {
 			continue
 		}
 		out = append(out, HostTraffic{IP: host, RxBytes: c.RxBytes, TxBytes: c.TxBytes})

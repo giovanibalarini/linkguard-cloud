@@ -173,6 +173,7 @@ var schemaMigrations = []migration{
 	// O salto para 100 tira a colisão do caminho.
 	{100, "papéis: saem as permissões de DHCP, NTP e edição de placa", upRetirePermissionsCloud},
 	{101, "papéis: saem as permissões de links, de escrita de rotas e de direcionar host", upRetireMultiWANPermissions},
+	{102, "máquinas por IP: host_info, e cota e consumo chaveados por IP", upHostsPorIP},
 }
 
 // upRetirePermissionsCloud tira dos papéis as permissões que a versão cloud
@@ -193,6 +194,67 @@ func upRetirePermissionsCloud(tx *sql.Tx) error {
 		DELETE FROM role_permissions
 		WHERE permission IN ('dhcp.read', 'dhcp.write', 'ntp.read', 'ntp.write', 'interfaces.write')`); err != nil {
 		return fmt.Errorf("tirar dos papéis as permissões aposentadas: %w", err)
+	}
+	return nil
+}
+
+// upHostsPorIP troca a identidade das máquinas de MAC para IP.
+//
+// A versão on-prem identificava cada aparelho pelo MAC da tabela de
+// vizinhança. Na VCN a vizinhança desta caixa só tem o roteador virtual e a
+// própria sub-rede: uma máquina de outra sub-rede (os nós do k3s, por exemplo)
+// nunca aparece lá, e o inventário, a série por máquina e a cota a perdiam
+// inteira. O IP privado de uma VNIC não muda enquanto ela existe.
+//
+// O inventário ganha tabela nova (host_info, chave IP) e o antigo
+// host_metadata fica onde está, sem leitor. Cota e consumo são reescritos por
+// IP, pela correspondência MAC → IP que o inventário antigo guardava; o que não
+// tem IPv4 conhecido fica de fora (sem IP, não há como medir de novo). Dois
+// MACs com o mesmo IP: a cota fica com o primeiro e o consumo é somado.
+func upHostsPorIP(tx *sql.Tx) error {
+	passos := []string{
+		createHostInfoTable,
+		`INSERT OR REPLACE INTO host_info (ip, hostname, alias, blocked, first_seen, last_seen)
+		 SELECT ip, hostname, alias, blocked, first_seen, last_seen FROM host_metadata
+		 WHERE ip GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*' ORDER BY last_seen`,
+
+		`CREATE TABLE host_quota_ip (
+		    ip            TEXT PRIMARY KEY,
+		    limit_gb      REAL NOT NULL,
+		    period        TEXT NOT NULL DEFAULT 'monthly',
+		    cycle_day     INTEGER NOT NULL DEFAULT 1,
+		    alert_pct     INTEGER NOT NULL DEFAULT 80,
+		    alert_enabled INTEGER NOT NULL DEFAULT 1
+		)`,
+		`INSERT OR IGNORE INTO host_quota_ip (ip, limit_gb, period, cycle_day, alert_pct, alert_enabled)
+		 SELECT m.ip, q.limit_gb, q.period, q.cycle_day, q.alert_pct, q.alert_enabled
+		   FROM host_quota q JOIN host_metadata m ON m.mac = q.mac
+		  WHERE m.ip GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'`,
+		`DROP TABLE host_quota`,
+		`ALTER TABLE host_quota_ip RENAME TO host_quota`,
+
+		`CREATE TABLE host_usage_ip (
+		    ip          TEXT NOT NULL,
+		    period      TEXT NOT NULL DEFAULT 'monthly',
+		    cycle_start INTEGER NOT NULL,
+		    rx_bytes    INTEGER NOT NULL DEFAULT 0,
+		    tx_bytes    INTEGER NOT NULL DEFAULT 0,
+		    updated_at  INTEGER NOT NULL,
+		    PRIMARY KEY (ip, period, cycle_start)
+		)`,
+		`INSERT INTO host_usage_ip (ip, period, cycle_start, rx_bytes, tx_bytes, updated_at)
+		 SELECT m.ip, u.period, u.cycle_start, SUM(u.rx_bytes), SUM(u.tx_bytes), MAX(u.updated_at)
+		   FROM host_usage u JOIN host_metadata m ON m.mac = u.mac
+		  WHERE m.ip GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+		  GROUP BY m.ip, u.period, u.cycle_start`,
+		`DROP TABLE host_usage`,
+		`ALTER TABLE host_usage_ip RENAME TO host_usage`,
+		createHostUsageCycleIndex,
+	}
+	for _, q := range passos {
+		if _, err := tx.Exec(q); err != nil {
+			return fmt.Errorf("trocar a identidade das máquinas para IP: %w", err)
+		}
 	}
 	return nil
 }
@@ -1077,10 +1139,25 @@ CREATE TABLE IF NOT EXISTS user_roles (
     PRIMARY KEY (user_id, role_id)
 );`
 
+// host_metadata é o inventário antigo, chaveado por MAC (herança do
+// linkguard-fw). A migração 102 copia o que ele tinha para host_info, e desde
+// então ninguém lê nem grava nele; continua sendo criado só para o schema das
+// caixas migradas e o das novas não divergirem.
 const createHostMetadataTable = `
 CREATE TABLE IF NOT EXISTS host_metadata (
     mac        TEXT PRIMARY KEY,
     ip         TEXT NOT NULL DEFAULT '',
+    hostname   TEXT NOT NULL DEFAULT '',
+    alias      TEXT NOT NULL DEFAULT '',
+    blocked    INTEGER NOT NULL DEFAULT 0,
+    first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+// host_info é o inventário por IP (migração 102). Ver HostInfo.
+const createHostInfoTable = `
+CREATE TABLE IF NOT EXISTS host_info (
+    ip         TEXT PRIMARY KEY,
     hostname   TEXT NOT NULL DEFAULT '',
     alias      TEXT NOT NULL DEFAULT '',
     blocked    INTEGER NOT NULL DEFAULT 0,

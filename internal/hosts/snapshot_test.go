@@ -12,202 +12,122 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
-type fakeExec struct{ ruleset string }
+// fakeExec responde o ruleset da tabela e os sets de contagem; guarda o que
+// foi escrito.
+type fakeExec struct {
+	ruleset  string
+	acctUp   string
+	comandos []string
+}
 
-func (f *fakeExec) Execute(context.Context, string, ...string) (string, error) { return "", nil }
+func (f *fakeExec) Execute(_ context.Context, cmd string, args ...string) (string, error) {
+	f.comandos = append(f.comandos, cmd+" "+strings.Join(args, " "))
+	return "", nil
+}
 func (f *fakeExec) ExecuteRead(_ context.Context, cmd string, args ...string) (string, error) {
-	// ESCOPADO: Ruleset() passou a ler `nft list table inet linkguard`, e não o
-	// ruleset inteiro do kernel — ver o doc-comment de Service.Ruleset e
-	// TestRulesetNaoPublicaOSetDeConversas. Este dublê acompanha a mudança;
-	// deixá-lo casando "list ruleset" faria os testes de snapshot passarem a
-	// gravar string vazia sem dizer por quê.
 	if cmd == "nft" && len(args) >= 4 && args[0] == "list" && args[1] == "table" {
 		return f.ruleset, nil
+	}
+	if cmd == "nft" && len(args) >= 5 && args[0] == "list" && args[1] == "set" && args[4] == nftables.AcctUpSet {
+		return f.acctUp, nil
 	}
 	return "", nil
 }
 func (f *fakeExec) IsDryRun() bool                              { return false }
 func (_ *fakeExec) WriteFile(string, []byte, os.FileMode) error { return nil }
 
-// TestSetBlockedPersistsLiveSnapshot is the regression test for host blocking
-// via the Hosts screen: blocking must save a fresh nftables snapshot (not
-// just the host_metadata.blocked flag) so a from-scratch install restores
-// the block too — see nftables.EnsureTable + LiveSnapshotSettingKey.
-func TestSetBlockedPersistsLiveSnapshot(t *testing.T) {
-	origConfPath := nftables.ConfPath
-	nftables.ConfPath = filepath.Join(t.TempDir(), "nftables.conf")
-	t.Cleanup(func() { nftables.ConfPath = origConfPath })
-
-	dir := t.TempDir()
-	db, err := storage.Open(filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	if err := db.UpsertHostSighting("aa:bb:cc:dd:ee:ff", "192.168.3.50"); err != nil {
-		t.Fatalf("UpsertHostSighting: %v", err)
-	}
-
-	const wantRuleset = "table inet linkguard {\n\tset blocked_hosts {\n\t\telements = { 192.168.3.50 }\n\t}\n}\n"
-	nftSvc := nftables.NewService(&fakeExec{ruleset: wantRuleset})
-	svc := hosts.NewService(&fakeExec{ruleset: wantRuleset}, db, nftSvc)
-
-	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", true); err != nil {
-		t.Fatalf("SetBlocked: %v", err)
-	}
-
-	got, err := db.GetSetting(nftables.LiveSnapshotSettingKey)
-	if err != nil {
-		t.Fatalf("GetSetting: %v", err)
-	}
-	if got != wantRuleset {
-		t.Errorf("snapshot not persisted correctly:\ngot:  %q\nwant: %q", got, wantRuleset)
-	}
-}
-
-func TestSetBlockedDoesNotPersistTransientDomainCache(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	if err := db.UpsertHostSighting("aa:bb:cc:dd:ee:ff", "192.168.3.50"); err != nil {
-		t.Fatalf("UpsertHostSighting: %v", err)
-	}
-
-	const liveRuleset = "table inet linkguard {\n\tset blocked_hosts {\n\t\telements = { 192.168.3.50 }\n\t}\n\tset dom_blocked {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t\telements = { 9.9.9.9 timeout 1h }\n\t}\n}\n"
-	exec := &fakeExec{ruleset: liveRuleset}
-	svc := hosts.NewService(exec, db, nftables.NewService(exec))
-
-	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", true); err != nil {
-		t.Fatalf("SetBlocked: %v", err)
-	}
-
-	got, err := db.GetSetting(nftables.LiveSnapshotSettingKey)
-	if err != nil {
-		t.Fatalf("GetSetting: %v", err)
-	}
-	if strings.Contains(got, "9.9.9.9") {
-		t.Fatalf("snapshot de host persistiu cache DNS transitório:\n%s", got)
-	}
-	if !strings.Contains(got, "192.168.3.50") || !strings.Contains(got, "set dom_blocked {") {
-		t.Fatalf("snapshot perdeu estado durável ao retirar o cache DNS:\n%s", got)
-	}
-}
-
-// execGravador guarda os comandos, para o teste abaixo poder afirmar o que foi
-// escrito no firewall — e não só que nada explodiu.
-type execGravador struct {
-	fakeExec
-	comandos [][]string
-}
-
-func (e *execGravador) Execute(_ context.Context, cmd string, args ...string) (string, error) {
-	e.comandos = append(e.comandos, append([]string{cmd}, args...))
-	return "", nil
-}
-
-func (e *execGravador) contem(sub string) bool {
-	for _, c := range e.comandos {
-		if strings.Contains(strings.Join(c, " "), sub) {
+func (f *fakeExec) escreveu(sub string) bool {
+	for _, c := range f.comandos {
+		if strings.Contains(c, sub) {
 			return true
 		}
 	}
 	return false
 }
 
-// TestBloquearHostValeAntesDeConhecerOIP é a asserção que a fase 2 da #119
-// existe para garantir.
-//
-// Antes dela, bloquear um host que ainda não tinha sido visto na rede não
-// escrevia NADA no firewall: a flag ficava guardada e o produto esperava o host
-// aparecer para traduzir o MAC em IP. E, mesmo depois de aparecer, o bloqueio
-// só valia para IPv4 — o mesmo host falando IPv6 atravessava a chain forward
-// sem casar com regra nenhuma, com a tela dizendo "bloqueado".
-//
-// O endereço físico não tem família e não depende de o host ter sido visto.
-func TestBloquearHostValeAntesDeConhecerOIP(t *testing.T) {
+func abrir(t *testing.T) *storage.DB {
+	t.Helper()
 	origConfPath := nftables.ConfPath
 	nftables.ConfPath = filepath.Join(t.TempDir(), "nftables.conf")
 	t.Cleanup(func() { nftables.ConfPath = origConfPath })
-
-	db, err := storage.Open(filepath.Join(t.TempDir(), "t.db"))
+	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	return db
+}
 
-	// De propósito SEM UpsertHostSighting: este host nunca foi visto, então não
-	// há IP para traduzir.
-	e := &execGravador{}
-	svc := hosts.NewService(e, db, nftables.NewService(e))
+// Bloquear grava a flag, põe o IP no set e salva o snapshot do ruleset, para
+// uma reinstalação do zero restaurar o bloqueio junto.
+func TestSetBlockedAplicaNoSetEPersisteOSnapshot(t *testing.T) {
+	db := abrir(t)
+	const ruleset = "table inet linkguard {\n\tset blocked_hosts {\n\t\telements = { 10.0.1.20 }\n\t}\n}\n"
+	e := &fakeExec{ruleset: ruleset}
+	svc := hosts.NewService(db, nftables.NewService(e), nil)
 
-	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", true); err != nil {
+	if err := svc.SetBlocked(context.Background(), "10.0.1.20", true); err != nil {
 		t.Fatalf("SetBlocked: %v", err)
 	}
-	if !e.contem("add element inet linkguard blocked_macs { aa:bb:cc:dd:ee:ff }") {
-		t.Errorf("o endereço físico não foi bloqueado; comandos: %v", e.comandos)
+	if !e.escreveu("add element inet linkguard blocked_hosts { 10.0.1.20 }") {
+		t.Errorf("o IP não foi para o set: %v", e.comandos)
 	}
-
-	e.comandos = nil
-	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", false); err != nil {
-		t.Fatalf("SetBlocked(false): %v", err)
+	got, _ := db.GetSetting(nftables.LiveSnapshotSettingKey)
+	if got != ruleset {
+		t.Errorf("snapshot não gravado:\n%q", got)
 	}
-	if !e.contem("delete element inet linkguard blocked_macs { aa:bb:cc:dd:ee:ff }") {
-		t.Errorf("o desbloqueio não tirou o endereço físico; comandos: %v", e.comandos)
+	infos, _ := db.ListHostInfo()
+	if len(infos) != 1 || !infos[0].Blocked {
+		t.Errorf("flag não gravada: %+v", infos)
 	}
 }
 
-// TestUmHostEhUmMACENaoUmaLinhaDeVizinhanca é o teste do defeito que a bateria
-// O encontrou por acidente.
-//
-// O mesmo aparelho aparece em `ip neigh` uma vez por ENDEREÇO — IPv4, IPv6
-// global e link-local. Antes da guarda, as três viravam três "hosts" na tela, e
-// o avistamento gravado era o da ÚLTIMA linha, quase sempre um endereço IPv6.
-// Como `blocked_hosts` e `host_wan` são sets `ipv4_addr`, esse endereço era
-// recusado pelo nft e o erro descartado: o host aparecia bloqueado sem estar.
-func TestUmHostEhUmMACENaoUmaLinhaDeVizinhanca(t *testing.T) {
-	const vizinhanca = `192.168.3.50 dev br10 lladdr aa:bb:cc:dd:ee:ff REACHABLE
-fd00::50 dev br10 lladdr aa:bb:cc:dd:ee:ff STALE
-fe80::a8bb:ccff:fedd:eeff dev br10 lladdr aa:bb:cc:dd:ee:ff STALE
-`
-	db, err := storage.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
+func TestSetBlockedNaoPersisteOCacheDeDominios(t *testing.T) {
+	db := abrir(t)
+	const live = "table inet linkguard {\n\tset blocked_hosts {\n\t\telements = { 10.0.1.20 }\n\t}\n\tset dom_blocked {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t\telements = { 9.9.9.9 timeout 1h }\n\t}\n}\n"
+	e := &fakeExec{ruleset: live}
+	svc := hosts.NewService(db, nftables.NewService(e), nil)
+	if err := svc.SetBlocked(context.Background(), "10.0.1.20", true); err != nil {
+		t.Fatalf("SetBlocked: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	got, _ := db.GetSetting(nftables.LiveSnapshotSettingKey)
+	if strings.Contains(got, "9.9.9.9") {
+		t.Fatalf("snapshot persistiu cache DNS transitório:\n%s", got)
+	}
+}
 
-	svc := hosts.NewService(&execVizinhanca{saida: vizinhanca}, db, nil)
+// A máquina de outra sub-rede — o nó do k3s que chega pelo roteador da VCN —
+// não está na vizinhança desta caixa, mas está no contador de tráfego. É por
+// ele que ela entra no inventário.
+func TestAMaquinaDeOutraSubRedeEntraPeloContador(t *testing.T) {
+	db := abrir(t)
+	e := &fakeExec{acctUp: "table inet linkguard {\n\tset acct_up {\n\t\telements = { 10.0.1.20 counter packets 10 bytes 1000, 10.7.0.5 counter packets 2 bytes 100 }\n\t}\n}\n"}
+	u := &storage.User{ID: "u-diego", Username: "diego"}
+	if err := db.CreateUser(u, "x", nil); err != nil {
+		t.Fatalf("usuário: %v", err)
+	}
+	if _, err := db.UpsertWireGuardPeer(
+		&storage.WireGuardPeer{UserID: "u-diego", PublicKey: "chave", Address: "10.7.0.5/32", SecretName: "wg-diego"},
+		&storage.FirewallGroup{Name: "VPN: diego", Kind: "wireguard_peer", Enabled: true},
+	); err != nil {
+		t.Fatalf("peer: %v", err)
+	}
+	svc := hosts.NewService(db, nftables.NewService(e), nil)
+
 	lista, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(lista) != 1 {
-		t.Fatalf("o mesmo aparelho virou %d hosts na tela: %+v", len(lista), lista)
+	porIP := map[string]hosts.Host{}
+	for _, h := range lista {
+		porIP[h.IP] = h
 	}
-	if lista[0].IP != "192.168.3.50" {
-		t.Errorf("a linha do host ficou com %q; o IPv4 é a identidade que o resto do produto sabe usar", lista[0].IP)
+	k3s, ok := porIP["10.0.1.20"]
+	if !ok || k3s.Kind != hosts.KindVCN {
+		t.Fatalf("o nó do k3s não entrou como máquina da VCN: %+v", lista)
 	}
-
-	// E o avistamento gravado tem de ser o IPv4, não o último endereço lido.
-	metas, err := db.ListHostMetadata()
-	if err != nil {
-		t.Fatal(err)
+	diego, ok := porIP["10.7.0.5"]
+	if !ok || diego.Kind != hosts.KindVPN || diego.Hostname != "diego" {
+		t.Fatalf("o peer da VPN tinha de aparecer com o nome do usuário: %+v", lista)
 	}
-	if len(metas) != 1 || metas[0].IP != "192.168.3.50" {
-		t.Errorf("avistamento gravado errado: %+v", metas)
-	}
-}
-
-// execVizinhanca devolve uma tabela de vizinhança fixa.
-type execVizinhanca struct {
-	fakeExec
-	saida string
-}
-
-func (e *execVizinhanca) ExecuteRead(_ context.Context, cmd string, args ...string) (string, error) {
-	if cmd == "ip" && len(args) >= 1 && args[0] == "neigh" {
-		return e.saida, nil
-	}
-	return "", nil
 }

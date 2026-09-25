@@ -115,7 +115,7 @@ func NovoServico(db *storage.DB, alertSvc *alerts.Service) *Servico {
 
 // Verificar roda os detectores uma vez.
 func (s *Servico) Verificar() {
-	metas, err := s.db.ListHostMetadata()
+	metas, err := s.db.ListHostInfo()
 	if err != nil {
 		slog.Warn("comportamento: não consegui ler o inventário de aparelhos", "err", err)
 		return
@@ -129,32 +129,32 @@ func (s *Servico) Verificar() {
 // É o detector mais barato da issue e o único que não precisa de histórico
 // nenhum: o inventário já grava quando cada aparelho foi visto pela primeira
 // vez.
-func (s *Servico) aparelhosNovos(metas []storage.HostMetadata) {
+func (s *Servico) aparelhosNovos(metas []storage.HostInfo) {
 	agora := s.agora()
 	for _, m := range metas {
-		if m.MAC == "" || m.FirstSeen.IsZero() {
+		if m.IP == "" || m.FirstSeen.IsZero() {
 			continue
 		}
 		if agora.Sub(m.FirstSeen) > IdadeDeHostNovo {
 			continue
 		}
-		if !s.podeAlertar(m.MAC, agora) {
+		if !s.podeAlertar(m.IP, agora) {
 			continue
 		}
-		_ = s.alertSvc.HostNovoNaRede(m.MAC, nomeDe(m))
-		s.ultimo[m.MAC] = agora
+		_ = s.alertSvc.HostNovoNaRede(m.IP, nomeDe(m))
+		s.ultimo[m.IP] = agora
 	}
 }
 
 // acimaDoNormal compara o consumo de agora com o normal DAQUELE APARELHO
 // naquela hora do dia.
-func (s *Servico) acimaDoNormal(metas []storage.HostMetadata) {
+func (s *Servico) acimaDoNormal(metas []storage.HostInfo) {
 	agora := s.agora()
 	for _, m := range metas {
-		if m.MAC == "" || m.Blocked {
+		if m.IP == "" || m.Blocked {
 			continue
 		}
-		atual, normal, ok := s.consumo(m.MAC, agora)
+		atual, normal, ok := s.consumo(m.IP, agora)
 		if !ok {
 			continue
 		}
@@ -164,11 +164,11 @@ func (s *Servico) acimaDoNormal(metas []storage.HostMetadata) {
 		if atual < normal*MargemSobreNormal {
 			continue
 		}
-		if !s.podeAlertar(m.MAC, agora) {
+		if !s.podeAlertar(m.IP, agora) {
 			continue
 		}
-		_ = s.alertSvc.HostAcimaDoNormal(m.MAC, nomeDe(m), atual, normal)
-		s.ultimo[m.MAC] = agora
+		_ = s.alertSvc.HostAcimaDoNormal(m.IP, nomeDe(m), atual, normal)
+		s.ultimo[m.IP] = agora
 	}
 }
 
@@ -178,10 +178,10 @@ func (s *Servico) acimaDoNormal(metas []storage.HostMetadata) {
 // Mediana, e não média: um único dia de backup gigante puxaria a média para
 // cima e faria o detector emudecer justamente para o aparelho que já teve um
 // pico.
-func (s *Servico) consumo(mac string, agora time.Time) (atual, normal float64, ok bool) {
+func (s *Servico) consumo(ip string, agora time.Time) (atual, normal float64, ok bool) {
 	de := agora.Add(-JanelaBaseline).Unix()
 	ate := agora.Unix()
-	amostras, err := s.db.GetMetricSamples(SerieConsumo, mac, PassoBaseline, de, ate)
+	amostras, err := s.db.GetMetricSamples(SerieConsumo, ip, PassoBaseline, de, ate)
 	if err != nil || len(amostras) < 12 {
 		// Doze amostras de quinze minutos são três horas de histórico. Menos do
 		// que isso não define normal nenhum, e alertar aqui seria inventar um
@@ -206,23 +206,23 @@ func (s *Servico) consumo(mac string, agora time.Time) (atual, normal float64, o
 }
 
 // podeAlertar aplica a histerese: um aparelho não gera dois alertas seguidos.
-func (s *Servico) podeAlertar(mac string, agora time.Time) bool {
-	if t, ok := s.ultimo[mac]; ok && agora.Sub(t) < IntervaloEntreAlertas {
+func (s *Servico) podeAlertar(ip string, agora time.Time) bool {
+	if t, ok := s.ultimo[ip]; ok && agora.Sub(t) < IntervaloEntreAlertas {
 		return false
 	}
 	return true
 }
 
 // nomeDe devolve como o aparelho deve ser chamado na mensagem: o apelido que o
-// admin deu, o nome que ele anunciou, ou o endereço físico.
-func nomeDe(m storage.HostMetadata) string {
+// admin deu, o nome da instância no DNS da VCN, ou o IP.
+func nomeDe(m storage.HostInfo) string {
 	switch {
 	case m.Alias != "":
 		return m.Alias
 	case m.Hostname != "":
 		return m.Hostname
 	default:
-		return m.MAC
+		return m.IP
 	}
 }
 

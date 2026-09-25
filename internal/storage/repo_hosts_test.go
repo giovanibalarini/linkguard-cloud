@@ -4,81 +4,63 @@ import (
 	"testing"
 )
 
-// Rede de segurança para o recorte da issue #26: SetHostAlias é o único jeito de
-// o operador dar nome a um host do inventário e não tinha teste nenhum.
+// SetHostAlias é o único jeito de o operador dar nome a uma máquina do
+// inventário.
 
 func TestSetHostAliasCreatesTheRowWhenTheHostIsUnknown(t *testing.T) {
 	db := newTestDB(t)
 
-	if err := db.SetHostAlias("aa:bb:cc:dd:ee:10", "notebook da recepção"); err != nil {
+	if err := db.SetHostAlias("10.0.1.20", "api do k3s"); err != nil {
 		t.Fatalf("SetHostAlias: %v", err)
 	}
-
-	got, err := db.ListHostMetadata()
+	got, err := db.ListHostInfo()
 	if err != nil {
-		t.Fatalf("ListHostMetadata: %v", err)
+		t.Fatalf("ListHostInfo: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("esperava 1 host, veio %d", len(got))
-	}
-	if got[0].MAC != "aa:bb:cc:dd:ee:10" || got[0].Alias != "notebook da recepção" {
-		t.Errorf("host gravado errado: %+v", got[0])
+	if len(got) != 1 || got[0].IP != "10.0.1.20" || got[0].Alias != "api do k3s" {
+		t.Fatalf("máquina gravada errado: %+v", got)
 	}
 }
 
-func TestSetHostAliasKeepsIPAndBlockedOfAKnownHost(t *testing.T) {
+func TestSightingPreservesAliasBlockAndName(t *testing.T) {
 	db := newTestDB(t)
-
-	if err := db.UpsertHostSighting("aa:bb:cc:dd:ee:11", "192.168.3.77"); err != nil {
-		t.Fatalf("UpsertHostSighting: %v", err)
+	if err := db.SetHostAlias("10.0.1.20", "api"); err != nil {
+		t.Fatal(err)
 	}
-	if err := db.SetHostBlocked("aa:bb:cc:dd:ee:11", true); err != nil {
-		t.Fatalf("SetHostBlocked: %v", err)
+	if err := db.SetHostBlocked("10.0.1.20", true); err != nil {
+		t.Fatal(err)
 	}
-
-	if err := db.SetHostAlias("aa:bb:cc:dd:ee:11", "tablet"); err != nil {
-		t.Fatalf("SetHostAlias: %v", err)
+	if err := db.SetHostnames(map[string]string{"10.0.1.20": "k3s-server-1"}); err != nil {
+		t.Fatal(err)
 	}
-
-	got, err := db.ListHostMetadata()
+	if err := db.UpsertHostSightings([]string{"10.0.1.20", "10.0.1.21"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.ListHostInfo()
 	if err != nil {
-		t.Fatalf("ListHostMetadata: %v", err)
+		t.Fatal(err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("esperava 1 host, veio %d", len(got))
+	porIP := map[string]bool{}
+	for _, h := range got {
+		porIP[h.IP] = true
+		if h.IP == "10.0.1.20" && (h.Alias != "api" || !h.Blocked || h.Hostname != "k3s-server-1") {
+			t.Errorf("o avistamento apagou o que já se sabia: %+v", h)
+		}
 	}
-	h := got[0]
-	if h.Alias != "tablet" {
-		t.Errorf("esperava o alias novo, veio %q", h.Alias)
-	}
-	// O ON CONFLICT só toca o alias: renomear um host não pode desfazer o
-	// bloqueio dele nem apagar o IP visto.
-	if h.IP != "192.168.3.77" {
-		t.Errorf("esperava o IP preservado, veio %q", h.IP)
-	}
-	if !h.Blocked {
-		t.Error("esperava o host continuar bloqueado depois de renomear")
+	if !porIP["10.0.1.21"] {
+		t.Error("máquina nova vista não entrou")
 	}
 }
 
-func TestSetHostAliasOverwritesThePreviousAlias(t *testing.T) {
+// Nome resolvido para um IP que ninguém viu não cria linha: nome sem máquina
+// não é informação.
+func TestSetHostnamesOnlyUpdatesKnownHosts(t *testing.T) {
 	db := newTestDB(t)
-
-	if err := db.SetHostAlias("aa:bb:cc:dd:ee:12", "nome antigo"); err != nil {
-		t.Fatalf("SetHostAlias: %v", err)
+	if err := db.SetHostnames(map[string]string{"10.9.9.9": "fantasma"}); err != nil {
+		t.Fatal(err)
 	}
-	if err := db.SetHostAlias("aa:bb:cc:dd:ee:12", "nome novo"); err != nil {
-		t.Fatalf("SetHostAlias: %v", err)
-	}
-
-	got, err := db.ListHostMetadata()
-	if err != nil {
-		t.Fatalf("ListHostMetadata: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("esperava 1 host (upsert, não duplicata), veio %d", len(got))
-	}
-	if got[0].Alias != "nome novo" {
-		t.Errorf("esperava o alias novo, veio %q", got[0].Alias)
+	got, _ := db.ListHostInfo()
+	if len(got) != 0 {
+		t.Fatalf("nome criou máquina: %+v", got)
 	}
 }

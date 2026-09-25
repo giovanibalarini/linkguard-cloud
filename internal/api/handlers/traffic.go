@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosttraffic"
@@ -24,16 +23,15 @@ func NewTrafficHandler(svc *hosttraffic.Service, db *storage.DB, rrd *tsdb.Servi
 
 // HostHistory devolve o histórico de consumo de um host (issue #113).
 //
-// O host é identificado pelo MAC, que é a identidade do inventário — a mesma
-// que bloqueio e alias usam. O IP não serve: ele muda com o lease e partiria o
-// histórico do aparelho em dois.
+// A máquina é identificada pelo IP, que é a identidade do inventário — a mesma
+// que bloqueio, apelido e cota usam, e o rótulo com que a série é gravada.
 func (h *TrafficHandler) HostHistory(w http.ResponseWriter, r *http.Request) {
-	mac := validate.NormalizeMAC(r.URL.Query().Get("mac"))
-	if mac == "" {
-		writeError(w, http.StatusBadRequest, "mac inválido")
+	ip := validate.IPv4Canonico(r.URL.Query().Get("ip"))
+	if ip == "" {
+		writeError(w, http.StatusBadRequest, "ip inválido")
 		return
 	}
-	resp, err := h.rrd.GetHostHistory(mac, r.URL.Query().Get("range"))
+	resp, err := h.rrd.GetHostHistory(ip, r.URL.Query().Get("range"))
 	if err != nil {
 		writeInternalError(w, err)
 		return
@@ -41,18 +39,9 @@ func (h *TrafficHandler) HostHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// TopTalkers returns the LAN hosts consuming the most bandwidth right now.
+// TopTalkers devolve as máquinas que mais consumiram no ciclo dos contadores.
 func (h *TrafficHandler) TopTalkers(w http.ResponseWriter, r *http.Request) {
-	subnet := "192.168.3.0/24"
-	if raw, _ := h.db.GetSetting("netsvc_config"); raw != "" {
-		var c struct {
-			SubnetCIDR string `json:"subnet_cidr"`
-		}
-		if json.Unmarshal([]byte(raw), &c) == nil && c.SubnetCIDR != "" {
-			subnet = c.SubnetCIDR
-		}
-	}
-	talkers, err := h.svc.TopTalkers(r.Context(), subnet)
+	talkers, err := h.svc.TopTalkers(r.Context())
 	if err != nil {
 		writeInternalError(w, err)
 		return

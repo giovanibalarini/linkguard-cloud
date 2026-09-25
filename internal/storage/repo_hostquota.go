@@ -19,18 +19,16 @@ const (
 	HostPeriodDaily = "daily"
 )
 
-// HostQuota é a cota declarada de um aparelho da LAN.
+// HostQuota é a cota declarada de uma máquina.
 //
-// A CHAVE É O MAC, e não o IP, pelo mesmo motivo do resto do inventário
-// (host_metadata, bloqueio, direcionamento por host): o IP muda a cada lease do
-// DHCP, e uma cota que se perde numa renovação de lease não é uma cota. O
-// contador do kernel é por endereço (internal/nftables/accounting.go); quem faz
-// a ponte de endereço para MAC é o amostrador — ver internal/hosttraffic.
+// A CHAVE É O IP privado, como o resto do inventário (ver HostInfo): na VCN o
+// IP de uma VNIC não muda enquanto ela existe, e é por ele que o contador do
+// kernel mede (internal/nftables/accounting.go).
 //
 // LimitGB é em gigabytes DECIMAIS (10^9), pela mesma razão de LinkQuota: é a
 // unidade em que o admin pensa a franquia que está repartindo.
 type HostQuota struct {
-	MAC      string  `json:"mac"`
+	IP       string  `json:"ip"`
 	LimitGB  float64 `json:"limit_gb"`
 	Period   string  `json:"period"`
 	CycleDay int     `json:"cycle_day"`
@@ -60,7 +58,7 @@ type HostQuota struct {
 // somaria o consumo do dia com o do mês na mesma linha, e o histórico listaria
 // dias ao lado de meses com o mesmo rótulo.
 type HostUsage struct {
-	MAC        string `json:"mac"`
+	IP         string `json:"ip"`
 	Period     string `json:"period"`
 	CycleStart int64  `json:"cycle_start"`
 	RxBytes    uint64 `json:"rx_bytes"`
@@ -68,9 +66,9 @@ type HostUsage struct {
 	UpdatedAt  int64  `json:"updated_at"`
 }
 
-// GetHostQuotas devolve todas as cotas declaradas, indexadas por MAC.
+// GetHostQuotas devolve todas as cotas declaradas, indexadas por IP.
 func (db *DB) GetHostQuotas() (map[string]HostQuota, error) {
-	rows, err := db.conn.Query(`SELECT mac, limit_gb, period, cycle_day, alert_pct, alert_enabled FROM host_quota`)
+	rows, err := db.conn.Query(`SELECT ip, limit_gb, period, cycle_day, alert_pct, alert_enabled FROM host_quota`)
 	if err != nil {
 		return nil, fmt.Errorf("ler cotas por aparelho: %w", err)
 	}
@@ -79,10 +77,10 @@ func (db *DB) GetHostQuotas() (map[string]HostQuota, error) {
 	out := map[string]HostQuota{}
 	for rows.Next() {
 		var q HostQuota
-		if err := rows.Scan(&q.MAC, &q.LimitGB, &q.Period, &q.CycleDay, &q.AlertPct, &q.AlertEnabled); err != nil {
+		if err := rows.Scan(&q.IP, &q.LimitGB, &q.Period, &q.CycleDay, &q.AlertPct, &q.AlertEnabled); err != nil {
 			return nil, fmt.Errorf("ler cota por aparelho: %w", err)
 		}
-		out[q.MAC] = q
+		out[q.IP] = q
 	}
 	return out, rows.Err()
 }
@@ -90,15 +88,15 @@ func (db *DB) GetHostQuotas() (map[string]HostQuota, error) {
 // SaveHostQuota grava (ou substitui) a cota de um aparelho.
 func (db *DB) SaveHostQuota(q HostQuota) error {
 	_, err := db.conn.Exec(`
-		INSERT INTO host_quota (mac, limit_gb, period, cycle_day, alert_pct, alert_enabled)
+		INSERT INTO host_quota (ip, limit_gb, period, cycle_day, alert_pct, alert_enabled)
 		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(mac) DO UPDATE SET
+		ON CONFLICT(ip) DO UPDATE SET
 			limit_gb = excluded.limit_gb,
 			period = excluded.period,
 			cycle_day = excluded.cycle_day,
 			alert_pct = excluded.alert_pct,
 			alert_enabled = excluded.alert_enabled`,
-		q.MAC, q.LimitGB, q.Period, q.CycleDay, q.AlertPct, q.AlertEnabled)
+		q.IP, q.LimitGB, q.Period, q.CycleDay, q.AlertPct, q.AlertEnabled)
 	if err != nil {
 		return fmt.Errorf("gravar cota por aparelho: %w", err)
 	}
@@ -112,18 +110,18 @@ func (db *DB) SaveHostQuota(q HostQuota) error {
 // flushes concorrentes somando sobre um valor lido antes perderiam uma das
 // somas. Aqui isso pesa mais, porque são dezenas de aparelhos por flush, e não
 // dois ou três links.
-func (db *DB) AddHostUsage(mac, period string, cycleStart int64, rx, tx uint64) error {
+func (db *DB) AddHostUsage(ip, period string, cycleStart int64, rx, tx uint64) error {
 	if period == "" {
 		period = HostPeriodMonthly
 	}
 	_, err := db.conn.Exec(`
-		INSERT INTO host_usage (mac, period, cycle_start, rx_bytes, tx_bytes, updated_at)
+		INSERT INTO host_usage (ip, period, cycle_start, rx_bytes, tx_bytes, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(mac, period, cycle_start) DO UPDATE SET
+		ON CONFLICT(ip, period, cycle_start) DO UPDATE SET
 			rx_bytes = rx_bytes + excluded.rx_bytes,
 			tx_bytes = tx_bytes + excluded.tx_bytes,
 			updated_at = excluded.updated_at`,
-		mac, period, cycleStart, rx, tx, time.Now().Unix())
+		ip, period, cycleStart, rx, tx, time.Now().Unix())
 	if err != nil {
 		return fmt.Errorf("acumular consumo do aparelho: %w", err)
 	}
@@ -132,14 +130,14 @@ func (db *DB) AddHostUsage(mac, period string, cycleStart int64, rx, tx uint64) 
 
 // GetHostUsage devolve o consumo de um aparelho num ciclo. Ausência não é
 // erro — é ciclo sem tráfego medido ainda.
-func (db *DB) GetHostUsage(mac, period string, cycleStart int64) (HostUsage, error) {
+func (db *DB) GetHostUsage(ip, period string, cycleStart int64) (HostUsage, error) {
 	if period == "" {
 		period = HostPeriodMonthly
 	}
-	u := HostUsage{MAC: mac, Period: period, CycleStart: cycleStart}
+	u := HostUsage{IP: ip, Period: period, CycleStart: cycleStart}
 	err := db.conn.QueryRow(`
 		SELECT rx_bytes, tx_bytes, updated_at FROM host_usage
-		WHERE mac = ? AND period = ? AND cycle_start = ?`, mac, period, cycleStart).
+		WHERE ip = ? AND period = ? AND cycle_start = ?`, ip, period, cycleStart).
 		Scan(&u.RxBytes, &u.TxBytes, &u.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return u, nil
@@ -155,10 +153,10 @@ func (db *DB) GetHostUsage(mac, period string, cycleStart int64) (HostUsage, err
 //
 // Existe para a tela E O FLUSH não fazerem uma consulta por aparelho: com
 // oitenta aparelhos no inventário isso seriam oitenta idas ao banco por minuto,
-// no mesmo SQLite que guarda metric_samples. O mapa é indexado por MAC.
+// no mesmo SQLite que guarda metric_samples. O mapa é indexado por IP.
 //
 // O índice idx_host_usage_cycle é o que faz esta consulta ser uma BUSCA e não
-// uma varredura da tabela inteira: a chave primária começa por mac, então
+// uma varredura da tabela inteira: a chave primária começa por ip, então
 // filtrar por (period, cycle_start) sem ele lê linha a linha — e com ciclo
 // diário a tabela cresce uma linha por aparelho por dia.
 func (db *DB) GetHostUsageAll(period string, cycleStart int64) (map[string]HostUsage, error) {
@@ -166,7 +164,7 @@ func (db *DB) GetHostUsageAll(period string, cycleStart int64) (map[string]HostU
 		period = HostPeriodMonthly
 	}
 	rows, err := db.conn.Query(`
-		SELECT mac, period, cycle_start, rx_bytes, tx_bytes, updated_at FROM host_usage
+		SELECT ip, period, cycle_start, rx_bytes, tx_bytes, updated_at FROM host_usage
 		WHERE period = ? AND cycle_start = ?`, period, cycleStart)
 	if err != nil {
 		return nil, fmt.Errorf("ler consumo dos aparelhos: %w", err)
@@ -176,10 +174,10 @@ func (db *DB) GetHostUsageAll(period string, cycleStart int64) (map[string]HostU
 	out := map[string]HostUsage{}
 	for rows.Next() {
 		var u HostUsage
-		if err := rows.Scan(&u.MAC, &u.Period, &u.CycleStart, &u.RxBytes, &u.TxBytes, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.IP, &u.Period, &u.CycleStart, &u.RxBytes, &u.TxBytes, &u.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ler consumo dos aparelhos: %w", err)
 		}
-		out[u.MAC] = u
+		out[u.IP] = u
 	}
 	return out, rows.Err()
 }
@@ -188,13 +186,13 @@ func (db *DB) GetHostUsageAll(period string, cycleStart int64) (map[string]HostU
 // mais antigo, limitado a limit linhas. Period vem junto para a tela poder
 // rotular: depois de uma troca de período a lista tem linhas de dia e linhas de
 // mês, e sem a marca as duas se parecem.
-func (db *DB) GetHostUsageHistory(mac string, limit int) ([]HostUsage, error) {
+func (db *DB) GetHostUsageHistory(ip string, limit int) ([]HostUsage, error) {
 	if limit <= 0 || limit > 60 {
 		limit = 12
 	}
 	rows, err := db.conn.Query(`
-		SELECT mac, period, cycle_start, rx_bytes, tx_bytes, updated_at FROM host_usage
-		WHERE mac = ? ORDER BY cycle_start DESC LIMIT ?`, mac, limit)
+		SELECT ip, period, cycle_start, rx_bytes, tx_bytes, updated_at FROM host_usage
+		WHERE ip = ? ORDER BY cycle_start DESC LIMIT ?`, ip, limit)
 	if err != nil {
 		return nil, fmt.Errorf("ler histórico de consumo do aparelho: %w", err)
 	}
@@ -203,7 +201,7 @@ func (db *DB) GetHostUsageHistory(mac string, limit int) ([]HostUsage, error) {
 	var out []HostUsage
 	for rows.Next() {
 		var u HostUsage
-		if err := rows.Scan(&u.MAC, &u.Period, &u.CycleStart, &u.RxBytes, &u.TxBytes, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.IP, &u.Period, &u.CycleStart, &u.RxBytes, &u.TxBytes, &u.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ler histórico de consumo do aparelho: %w", err)
 		}
 		out = append(out, u)
@@ -215,7 +213,7 @@ func (db *DB) GetHostUsageHistory(mac string, limit int) ([]HostUsage, error) {
 // numa transação.
 //
 // POR QUE ISTO EXISTE. Trocar o período ou o dia de fechamento de um aparelho
-// MOVE a chave (mac, period, cycle_start) do ciclo vigente. Sem esta função o
+// MOVE a chave (ip, period, cycle_start) do ciclo vigente. Sem esta função o
 // consumo medido continua no banco sob a chave antiga e a tela passa a ler a
 // nova: a barra volta para 0% e o admin conclui que o ciclo recomeçou. É o
 // mesmo defeito que Delete foi escrito para não cometer (ver o comentário lá),
@@ -223,7 +221,7 @@ func (db *DB) GetHostUsageHistory(mac string, limit int) ([]HostUsage, error) {
 //
 // A soma acontece no SQL e o DELETE vai na MESMA transação: um crash no meio
 // não pode deixar o consumo contado duas vezes nem em lugar nenhum.
-func (db *DB) MoveHostUsage(mac, fromPeriod string, fromCycle int64, toPeriod string, toCycle int64) error {
+func (db *DB) MoveHostUsage(ip, fromPeriod string, fromCycle int64, toPeriod string, toCycle int64) error {
 	if fromPeriod == "" {
 		fromPeriod = HostPeriodMonthly
 	}
@@ -240,8 +238,8 @@ func (db *DB) MoveHostUsage(mac, fromPeriod string, fromCycle int64, toPeriod st
 	defer tx.Rollback() //nolint:errcheck // no-op depois de um Commit bem-sucedido
 
 	var rx, txb uint64
-	err = tx.QueryRow(`SELECT rx_bytes, tx_bytes FROM host_usage WHERE mac = ? AND period = ? AND cycle_start = ?`,
-		mac, fromPeriod, fromCycle).Scan(&rx, &txb)
+	err = tx.QueryRow(`SELECT rx_bytes, tx_bytes FROM host_usage WHERE ip = ? AND period = ? AND cycle_start = ?`,
+		ip, fromPeriod, fromCycle).Scan(&rx, &txb)
 	if err == sql.ErrNoRows {
 		return tx.Commit() // nada medido no ciclo antigo: nada a mover
 	}
@@ -249,17 +247,17 @@ func (db *DB) MoveHostUsage(mac, fromPeriod string, fromCycle int64, toPeriod st
 		return fmt.Errorf("mover consumo do aparelho: %w", err)
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO host_usage (mac, period, cycle_start, rx_bytes, tx_bytes, updated_at)
+		INSERT INTO host_usage (ip, period, cycle_start, rx_bytes, tx_bytes, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(mac, period, cycle_start) DO UPDATE SET
+		ON CONFLICT(ip, period, cycle_start) DO UPDATE SET
 			rx_bytes = rx_bytes + excluded.rx_bytes,
 			tx_bytes = tx_bytes + excluded.tx_bytes,
 			updated_at = excluded.updated_at`,
-		mac, toPeriod, toCycle, rx, txb, time.Now().Unix()); err != nil {
+		ip, toPeriod, toCycle, rx, txb, time.Now().Unix()); err != nil {
 		return fmt.Errorf("mover consumo do aparelho: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM host_usage WHERE mac = ? AND period = ? AND cycle_start = ?`,
-		mac, fromPeriod, fromCycle); err != nil {
+	if _, err := tx.Exec(`DELETE FROM host_usage WHERE ip = ? AND period = ? AND cycle_start = ?`,
+		ip, fromPeriod, fromCycle); err != nil {
 		return fmt.Errorf("mover consumo do aparelho: %w", err)
 	}
 	return tx.Commit()
@@ -267,12 +265,10 @@ func (db *DB) MoveHostUsage(mac, fromPeriod string, fromCycle int64, toPeriod st
 
 // PurgeHostUsage apaga ciclos antigos de aparelhos que NÃO têm cota declarada.
 //
-// POR QUE ISTO EXISTE. Uma linha de host_usage cujo MAC não está no inventário
-// nem em host_quota é invisível na tela e imortal no banco: nada a lê e nada a
-// apaga. Com telefone moderno rotacionando MAC a cada associação e ciclo
-// diário, cada MAC transitório deixa uma linha por dia, para sempre — o
-// denominador aqui é "todo MAC que já passou", e não "quantos links
-// existem", que é o que mantinha link_usage inofensivo.
+// POR QUE ISTO EXISTE. Uma linha de host_usage de máquina sem cota é
+// invisível na tela e imortal no banco: nada a lê e nada a apaga. Com ciclo
+// diário, cada máquina que já passou (uma VM efêmera, um nó que foi recriado)
+// deixa uma linha por dia, para sempre.
 //
 // Quem TEM cota declarada fica: aquele histórico é o que o admin abre para
 // decidir se o teto está certo.
@@ -280,7 +276,7 @@ func (db *DB) PurgeHostUsage(before int64) (int64, error) {
 	res, err := db.conn.Exec(`
 		DELETE FROM host_usage
 		WHERE cycle_start < ?
-		  AND mac NOT IN (SELECT mac FROM host_quota WHERE limit_gb > 0)`, before)
+		  AND ip NOT IN (SELECT ip FROM host_quota WHERE limit_gb > 0)`, before)
 	if err != nil {
 		return 0, fmt.Errorf("podar consumo antigo de aparelho: %w", err)
 	}

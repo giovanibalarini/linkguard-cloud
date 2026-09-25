@@ -29,12 +29,10 @@ func (g *gravadorFalso) valor(series, label string) (float64, bool) {
 	return 0, false
 }
 
-type macsFalso struct {
-	mapa map[string]string
-	err  error
-}
+// vistosFalso guarda os IPs que o amostrador registrou como vistos.
+type vistosFalso struct{ ips []string }
 
-func (m *macsFalso) MACByIP(context.Context) (map[string]string, error) { return m.mapa, m.err }
+func (v *vistosFalso) Registrar(ips []string) { v.ips = append(v.ips, ips...) }
 
 type contadoresFalso struct {
 	dados map[string]nftables.HostCounter
@@ -45,10 +43,10 @@ func (c *contadoresFalso) HostCounters(context.Context) (map[string]nftables.Hos
 	return c.dados, c.err
 }
 
-func novoSampler(dados map[string]nftables.HostCounter, macs map[string]string) (*Sampler, *contadoresFalso, *gravadorFalso) {
+func novoSampler(dados map[string]nftables.HostCounter) (*Sampler, *contadoresFalso, *gravadorFalso) {
 	c := &contadoresFalso{dados: dados}
 	g := &gravadorFalso{}
-	return NewSampler(c, &macsFalso{mapa: macs}, g), c, g
+	return NewSampler(c, &vistosFalso{}, g), c, g
 }
 
 func TestPrimeiraAmostraApenasSemeia(t *testing.T) {
@@ -57,7 +55,6 @@ func TestPrimeiraAmostraApenasSemeia(t *testing.T) {
 	// rollup, contaminando a média da hora.
 	s, _, g := novoSampler(
 		map[string]nftables.HostCounter{"192.168.3.50": {RxBytes: 1_000_000, TxBytes: 500_000}},
-		map[string]string{"192.168.3.50": "aa:bb:cc:dd:ee:ff"},
 	)
 	s.SampleOnce(context.Background(), 100)
 	if len(g.gravou) != 0 {
@@ -70,17 +67,17 @@ func TestTaxaEhADiferencaDivididaPeloTempo(t *testing.T) {
 		"192.168.3.50": {RxBytes: 1000, TxBytes: 500},
 	}}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: map[string]string{"192.168.3.50": "aa:bb:cc:dd:ee:ff"}}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 
 	s.SampleOnce(context.Background(), 100)
 	c.dados = map[string]nftables.HostCounter{"192.168.3.50": {RxBytes: 11000, TxBytes: 1500}}
 	s.SampleOnce(context.Background(), 110) // 10s depois
 
-	rx, ok := g.valor("host.rx_bps", "aa:bb:cc:dd:ee:ff")
+	rx, ok := g.valor("host.rx_bps", "192.168.3.50")
 	if !ok || rx != 1000 {
 		t.Errorf("rx = %v (ok=%v), queria 1000 B/s (10000 bytes em 10s)", rx, ok)
 	}
-	tx, _ := g.valor("host.tx_bps", "aa:bb:cc:dd:ee:ff")
+	tx, _ := g.valor("host.tx_bps", "192.168.3.50")
 	if tx != 100 {
 		t.Errorf("tx = %v, queria 100 B/s", tx)
 	}
@@ -94,56 +91,14 @@ func TestResetDoContadorNaoViraPico(t *testing.T) {
 		"192.168.3.50": {RxBytes: 9_000_000, TxBytes: 9_000_000},
 	}}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: map[string]string{"192.168.3.50": "aa:bb:cc:dd:ee:ff"}}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 
 	s.SampleOnce(context.Background(), 100)
 	c.dados = map[string]nftables.HostCounter{"192.168.3.50": {RxBytes: 10, TxBytes: 10}}
 	s.SampleOnce(context.Background(), 110)
 
-	if rx, ok := g.valor("host.rx_bps", "aa:bb:cc:dd:ee:ff"); ok && rx > 100 {
+	if rx, ok := g.valor("host.rx_bps", "192.168.3.50"); ok && rx > 100 {
 		t.Errorf("reset virou taxa de %v B/s", rx)
-	}
-}
-
-func TestVariosIPsDoMesmoAparelhoSomamNumaSerieSo(t *testing.T) {
-	c := &contadoresFalso{dados: map[string]nftables.HostCounter{
-		"192.168.3.50": {RxBytes: 0},
-		"192.168.3.60": {RxBytes: 0},
-	}}
-	g := &gravadorFalso{}
-	macs := map[string]string{
-		"192.168.3.50": "aa:bb:cc:dd:ee:ff",
-		"192.168.3.60": "aa:bb:cc:dd:ee:ff", // mesmo aparelho, dois endereços
-	}
-	s := NewSampler(c, &macsFalso{mapa: macs}, g)
-
-	s.SampleOnce(context.Background(), 100)
-	c.dados = map[string]nftables.HostCounter{
-		"192.168.3.50": {RxBytes: 1000},
-		"192.168.3.60": {RxBytes: 2000},
-	}
-	s.SampleOnce(context.Background(), 110)
-
-	rx, _ := g.valor("host.rx_bps", "aa:bb:cc:dd:ee:ff")
-	if rx != 300 {
-		t.Errorf("rx = %v, queria 300 B/s (1000+2000 em 10s)", rx)
-	}
-}
-
-func TestEnderecoSemMACVaiParaOutros(t *testing.T) {
-	// Host da LAN, no modelo do produto, é host com MAC. O que atravessa sem
-	// aparecer na vizinhança não some: entra em "outros", para o total
-	// continuar verdadeiro.
-	c := &contadoresFalso{dados: map[string]nftables.HostCounter{"10.9.9.9": {RxBytes: 0}}}
-	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: map[string]string{}}, g)
-
-	s.SampleOnce(context.Background(), 100)
-	c.dados = map[string]nftables.HostCounter{"10.9.9.9": {RxBytes: 5000}}
-	s.SampleOnce(context.Background(), 110)
-
-	if v, ok := g.valor("host.rx_bps", OtherLabel); !ok || v != 500 {
-		t.Errorf("outros = %v (ok=%v), queria 500 B/s", v, ok)
 	}
 }
 
@@ -152,15 +107,13 @@ func TestTetoDeHostsSomaOResto(t *testing.T) {
 	// escrita do banco. Mas o que fica de fora tem de continuar somando em
 	// algum lugar, ou o total mente.
 	dados := map[string]nftables.HostCounter{}
-	macs := map[string]string{}
 	for i := 0; i < maxHosts+20; i++ {
 		ip := "192.168.3." + strconv.Itoa(i+1)
 		dados[ip] = nftables.HostCounter{}
-		macs[ip] = "aa:bb:cc:00:00:" + strconv.FormatInt(int64(i), 16)
 	}
 	c := &contadoresFalso{dados: dados}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: macs}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 	s.SampleOnce(context.Background(), 100)
 
 	// Todo mundo consome, mas em quantidades diferentes: os 20 menores caem
@@ -192,7 +145,7 @@ func TestEnderecoQueSumiuEhEsquecido(t *testing.T) {
 	// velha e produziria um pico falso.
 	c := &contadoresFalso{dados: map[string]nftables.HostCounter{"192.168.3.50": {RxBytes: 1000}}}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: map[string]string{"192.168.3.50": "aa:bb:cc:dd:ee:ff"}}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 	s.SampleOnce(context.Background(), 100)
 
 	c.dados = map[string]nftables.HostCounter{} // sumiu do set (timeout)
@@ -207,7 +160,7 @@ func TestSemContadoresNaoGravaNada(t *testing.T) {
 	// Buraco na série é honesto; zero seria inventar silêncio que não houve.
 	c := &contadoresFalso{err: errors.New("nft fora do ar")}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 	s.SampleOnce(context.Background(), 100)
 	if len(g.gravou) != 0 {
 		t.Errorf("gravou sem contadores: %+v", g.gravou)
@@ -225,10 +178,10 @@ func novoSink() *sinkFalso {
 	return &sinkFalso{bytes: map[string][2]uint64{}, instantes: map[string][]int64{}}
 }
 
-func (s *sinkFalso) AddHostBytes(mac string, ts int64, rx, tx uint64) {
-	v := s.bytes[mac]
-	s.bytes[mac] = [2]uint64{v[0] + rx, v[1] + tx}
-	s.instantes[mac] = append(s.instantes[mac], ts)
+func (s *sinkFalso) AddHostBytes(ip string, ts int64, rx, tx uint64) {
+	v := s.bytes[ip]
+	s.bytes[ip] = [2]uint64{v[0] + rx, v[1] + tx}
+	s.instantes[ip] = append(s.instantes[ip], ts)
 }
 
 func TestSinkRecebeBytesENaoTaxa(t *testing.T) {
@@ -236,7 +189,7 @@ func TestSinkRecebeBytesENaoTaxa(t *testing.T) {
 		"192.168.3.50": {RxBytes: 1000, TxBytes: 500},
 	}}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: map[string]string{"192.168.3.50": "aa:bb:cc:dd:ee:ff"}}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 	sink := novoSink()
 	s.SetUsageSink(sink)
 
@@ -244,14 +197,14 @@ func TestSinkRecebeBytesENaoTaxa(t *testing.T) {
 	c.dados = map[string]nftables.HostCounter{"192.168.3.50": {RxBytes: 11000, TxBytes: 1500}}
 	s.SampleOnce(context.Background(), 110) // 10 s depois
 
-	got := sink.bytes["aa:bb:cc:dd:ee:ff"]
+	got := sink.bytes["192.168.3.50"]
 	// 10.000 bytes em 10 s. A série grava 1000 bps; a cota tem de receber os
 	// 10.000 bytes. Se aqui chegasse a taxa, a cota erraria por um fator igual
 	// ao intervalo de amostragem.
 	if got[0] != 10000 || got[1] != 1000 {
 		t.Errorf("sink recebeu rx=%d tx=%d, queria 10000/1000", got[0], got[1])
 	}
-	if rx, _ := g.valor("host.rx_bps", "aa:bb:cc:dd:ee:ff"); rx != 1000 {
+	if rx, _ := g.valor("host.rx_bps", "192.168.3.50"); rx != 1000 {
 		t.Errorf("a série mudou de valor: %v", rx)
 	}
 }
@@ -262,7 +215,6 @@ func TestAPrimeiraAmostraNaoAlimentaOSink(t *testing.T) {
 	// aparelho estouraria a cota no boot, sem ter transmitido nada.
 	s, _, _ := novoSampler(
 		map[string]nftables.HostCounter{"192.168.3.50": {RxBytes: 5_000_000_000}},
-		map[string]string{"192.168.3.50": "aa:bb:cc:dd:ee:ff"},
 	)
 	sink := novoSink()
 	s.SetUsageSink(sink)
@@ -281,16 +233,14 @@ func TestSinkRecebeAntesDoCorteDeMaxHosts(t *testing.T) {
 	// hora em que outros cinquenta estão consumindo, que é a hora em que alguém
 	// declarou cota para ele.
 	dados := map[string]nftables.HostCounter{}
-	macs := map[string]string{}
 	const n = maxHosts + 10
 	for i := 0; i < n; i++ {
 		ip := "10.0.0." + strconv.Itoa(i)
 		dados[ip] = nftables.HostCounter{}
-		macs[ip] = "aa:bb:cc:00:00:" + strconv.FormatInt(int64(i), 16)
 	}
 	c := &contadoresFalso{dados: dados}
 	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: macs}, g)
+	s := NewSampler(c, &vistosFalso{}, g)
 	sink := novoSink()
 	s.SetUsageSink(sink)
 	s.SampleOnce(context.Background(), 100) // semeadura
@@ -304,7 +254,7 @@ func TestSinkRecebeAntesDoCorteDeMaxHosts(t *testing.T) {
 	c.dados = novos
 	s.SampleOnce(context.Background(), 110)
 
-	menor := macs["10.0.0.0"]
+	menor := "10.0.0.0"
 	if got := sink.bytes[menor]; got[0] != 1000 {
 		t.Errorf("o aparelho fora do top-%d não chegou à cota: %v", maxHosts, got)
 	}
@@ -318,23 +268,20 @@ func TestSinkRecebeAntesDoCorteDeMaxHosts(t *testing.T) {
 	}
 }
 
-func TestSinkNaoRecebeQuemNaoTemMAC(t *testing.T) {
-	// Sem MAC o consumo vai para o rótulo "outros" da série. Mandá-lo à cota
-	// criaria uma linha de consumo que nenhum aparelho pode reivindicar — e que
-	// apareceria na tela como uma cota que ninguém consegue remover.
-	c := &contadoresFalso{dados: map[string]nftables.HostCounter{"192.168.3.99": {}}}
-	g := &gravadorFalso{}
-	s := NewSampler(c, &macsFalso{mapa: map[string]string{}}, g)
-	sink := novoSink()
-	s.SetUsageSink(sink)
+// Quem teve tráfego nesta amostra vai para o inventário como visto agora: é o
+// que mantém a "última vez vista" certa sem ninguém abrir a tela.
+func TestQuemTrafegouERegistradoComoVisto(t *testing.T) {
+	c := &contadoresFalso{dados: map[string]nftables.HostCounter{
+		"10.0.1.20": {RxBytes: 100}, "10.0.1.21": {RxBytes: 100},
+	}}
+	v := &vistosFalso{}
+	s := NewSampler(c, v, &gravadorFalso{})
 	s.SampleOnce(context.Background(), 100)
-	c.dados = map[string]nftables.HostCounter{"192.168.3.99": {RxBytes: 5000}}
-	s.SampleOnce(context.Background(), 110)
-
-	if len(sink.bytes) != 0 {
-		t.Errorf("a cota recebeu tráfego sem dono: %v", sink.bytes)
+	c.dados = map[string]nftables.HostCounter{
+		"10.0.1.20": {RxBytes: 900}, "10.0.1.21": {RxBytes: 100}, // só o .20 trafegou
 	}
-	if v, ok := g.valor("host.rx_bps", OtherLabel); !ok || v != 500 {
-		t.Errorf("o tráfego sem dono sumiu da série: %v %v", v, ok)
+	s.SampleOnce(context.Background(), 110)
+	if len(v.ips) != 1 || v.ips[0] != "10.0.1.20" {
+		t.Errorf("registrou %v como vistos, queria só [10.0.1.20]", v.ips)
 	}
 }

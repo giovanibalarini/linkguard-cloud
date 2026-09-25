@@ -37,13 +37,13 @@ const configuracoes = ler('../i18n/strings/configuracoes.yaml');
 
 // A ajuda tem de admitir também o que a conta SOBRA, e não só o que ela perde.
 // A contabilidade casa iifname != WAN e oifname != WAN em regras separadas, de
-// modo que um pacote roteado entre duas redes internas conta como upload da
-// origem E download do destino. Uma restauração de backup para um NAS local
-// estoura a cota de dois aparelhos sem tocar um byte da franquia da operadora.
+// modo que um pacote roteado entre duas sub-redes conta como upload da origem
+// E download do destino. Um backup de uma sub-rede para outra estoura a cota de
+// duas máquinas sem tocar um byte do tráfego de saída da conta.
 {
   const ajuda = servicos.slice(servicos.indexOf('svc.hosts.quota.help2:'), servicos.indexOf('svc.hosts.quota.warnNoEnforcement:'));
-  check(/rede interna|internal network/i.test(ajuda),
-    'a ajuda precisa dizer que tráfego entre redes internas TAMBÉM entra na conta');
+  check(/sub-rede|subnet/i.test(ajuda),
+    'a ajuda precisa dizer que tráfego entre sub-redes TAMBÉM entra na conta');
   check(/IPv6/.test(ajuda), 'a ajuda precisa continuar dizendo que IPv6 não entra');
 }
 

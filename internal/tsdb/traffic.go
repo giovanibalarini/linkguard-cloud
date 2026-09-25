@@ -149,8 +149,8 @@ func (s *Service) GetHistory(iface, rangeID string) (*HistoryResponse, error) {
 // (internal/hosts). Indexar a série pelo IP faria o histórico de um aparelho
 // se partir em dois toda vez que o lease do DHCP mudasse, que é exatamente a
 // fragilidade que a Fase 3 do FEATURES.md aponta.
-func (s *Service) GetHostHistory(mac, rangeID string) (*HistoryResponse, error) {
-	return s.historyStep("host.rx_bps", "host.tx_bps", mac, rangeID, hostStepFor)
+func (s *Service) GetHostHistory(ip, rangeID string) (*HistoryResponse, error) {
+	return s.historyStep("host.rx_bps", "host.tx_bps", ip, rangeID, hostStepFor)
 }
 
 // hostStepFor corrige o passo pedido para o que a série por host REALMENTE

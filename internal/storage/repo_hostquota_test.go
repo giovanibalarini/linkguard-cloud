@@ -11,7 +11,7 @@ import (
 
 func TestAddHostUsageSomaNoSQLENaoEmGo(t *testing.T) {
 	db := newTestDB(t)
-	const mac = "aa:bb:cc:dd:ee:ff"
+	const ip = "10.0.238.5"
 	const ciclo = int64(1_750_000_000)
 
 	// Cem somas concorrentes. Com read-modify-write em Go, parte delas se
@@ -22,14 +22,14 @@ func TestAddHostUsageSomaNoSQLENaoEmGo(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := db.AddHostUsage(mac, storage.HostPeriodMonthly, ciclo, 1000, 500); err != nil {
+			if err := db.AddHostUsage(ip, storage.HostPeriodMonthly, ciclo, 1000, 500); err != nil {
 				t.Errorf("AddHostUsage: %v", err)
 			}
 		}()
 	}
 	wg.Wait()
 
-	u, err := db.GetHostUsage(mac, storage.HostPeriodMonthly, ciclo)
+	u, err := db.GetHostUsage(ip, storage.HostPeriodMonthly, ciclo)
 	if err != nil {
 		t.Fatalf("GetHostUsage: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestGetHostUsageDeCicloSemTrafegoNaoEhErro(t *testing.T) {
 	// Ciclo novo, ainda sem tráfego medido: zero é a resposta certa, e não erro.
 	// Se fosse erro, o Flush pararia de avaliar a cota no primeiro minuto de
 	// cada ciclo.
-	u, err := db.GetHostUsage("aa:bb:cc:dd:ee:ff", storage.HostPeriodMonthly, 1)
+	u, err := db.GetHostUsage("10.0.238.5", storage.HostPeriodMonthly, 1)
 	if err != nil {
 		t.Fatalf("GetHostUsage: %v", err)
 	}
@@ -54,8 +54,8 @@ func TestGetHostUsageDeCicloSemTrafegoNaoEhErro(t *testing.T) {
 
 func TestGetHostUsageAllTrazSoOCicloPedido(t *testing.T) {
 	db := newTestDB(t)
-	const a = "aa:bb:cc:dd:ee:ff"
-	const b = "11:22:33:44:55:66"
+	const a = "10.0.238.5"
+	const b = "10.0.85.102"
 	if err := db.AddHostUsage(a, storage.HostPeriodMonthly, 100, 10, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,8 @@ func TestGetHostUsageAllTrazSoOCicloPedido(t *testing.T) {
 
 func TestSaveHostQuotaSubstituiSemDuplicar(t *testing.T) {
 	db := newTestDB(t)
-	const mac = "aa:bb:cc:dd:ee:ff"
-	q := storage.HostQuota{MAC: mac, LimitGB: 5, Period: storage.HostPeriodMonthly, CycleDay: 10, AlertPct: 80, AlertEnabled: true}
+	const ip = "10.0.238.5"
+	q := storage.HostQuota{IP: ip, LimitGB: 5, Period: storage.HostPeriodMonthly, CycleDay: 10, AlertPct: 80, AlertEnabled: true}
 	if err := db.SaveHostQuota(q); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestSaveHostQuotaSubstituiSemDuplicar(t *testing.T) {
 	}
 	// O dia de fechamento SOBREVIVE à remoção da cota: é ele que decide qual
 	// ciclo a tela lê, e perdê-lo esconderia o consumo já medido.
-	if quotas[mac].CycleDay != 10 {
-		t.Errorf("cycle_day = %d depois de zerar a cota, queria 10", quotas[mac].CycleDay)
+	if quotas[ip].CycleDay != 10 {
+		t.Errorf("cycle_day = %d depois de zerar a cota, queria 10", quotas[ip].CycleDay)
 	}
 }

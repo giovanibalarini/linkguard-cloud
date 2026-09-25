@@ -66,16 +66,16 @@ export default function SystemGroupMembers({
     if (!confirm(`Desbloquear o destino ${cidr}?`)) return;
     run(() => client.delete('/api/nftables/blocklist', { data: { cidr } }), t('fw.toast.blocklist.removed'));
   };
-  // Host bloqueado é identificado pelo MAC (o inventário é a fonte de
-  // verdade; o IP é o que vai para o set) — daí a ida ao endpoint de hosts em
-  // vez de mexer no set direto, que deixaria o inventário mentindo.
+  // A máquina é o IP dela, e o inventário é a fonte de verdade do bloqueio —
+  // daí a ida ao endpoint de máquinas em vez de mexer no set direto, que
+  // deixaria o inventário mentindo e o bloqueio sumindo no próximo boot.
   const blockHost = (h: NetHost) => {
-    run(() => client.post('/api/hosts/block', { mac: h.mac, blocked: true }), t('fw.toast.host.blocked'))
+    run(() => client.post('/api/hosts/block', { ip: h.ip, blocked: true }), t('fw.toast.host.blocked'))
       .then((ok) => { if (ok) setHostPicker({ open: false, filter: '' }); });
   };
-  const unblockHost = (h: NetHost) => {
-    if (!confirm(`Desbloquear o host ${h.alias || h.hostname || h.ip}?`)) return;
-    run(() => client.post('/api/hosts/block', { mac: h.mac, blocked: false }), t('fw.toast.host.unblocked'));
+  const unblockHost = (ip: string, nome: string) => {
+    if (!confirm(t('fw.sysmembers.unblockConfirm', { nome }))) return;
+    run(() => client.post('/api/hosts/block', { ip, blocked: false }), t('fw.toast.host.unblocked'));
   };
 
   return (
@@ -180,10 +180,7 @@ export default function SystemGroupMembers({
                   {group.kind === KIND_BLOCKED_HOSTS && (
                     <span className="text-xs text-gray-500 truncate min-w-0 flex-1">
                       {h ? (
-                        <>
-                          {(h.alias || h.hostname) && <span className="text-gray-400">{h.alias || h.hostname} </span>}
-                          <span className="font-mono text-gray-600">{h.mac}</span>
-                        </>
+                        (h.alias || h.hostname) ? <span className="text-gray-400">{h.alias || h.hostname}</span> : null
                       ) : hosts === null ? '' : (
                         <span className="text-gray-600">{t('fw.sysmembers.noHostMatch')}</span>
                       )}
@@ -194,13 +191,14 @@ export default function SystemGroupMembers({
                     <IconButton icon={X} onClick={() => delCidr(m)} disabled={busy} label="Desbloquear destino" variant="danger" className="min-w-[32px] min-h-[32px]" />
                   )}
                   {group.kind === KIND_BLOCKED_HOSTS && canBlockHosts && (
-                    h ? (
-                      <IconButton icon={X} onClick={() => unblockHost(h)} disabled={busy} label="Desbloquear host" variant="danger" className="min-w-[32px] min-h-[32px]" />
-                    ) : (
-                      <span className="text-[10px] text-gray-600 text-right" title={t('fw.sysmembers.macBlockTitle')}>
-                        só pela página Hosts
-                      </span>
-                    )
+                    <IconButton
+                      icon={X}
+                      onClick={() => unblockHost(m, h?.alias || h?.hostname || m)}
+                      disabled={busy}
+                      label={t('fw.sysmembers.unblockHost')}
+                      variant="danger"
+                      className="min-w-[32px] min-h-[32px]"
+                    />
                   )}
                 </li>
               );
@@ -226,20 +224,19 @@ export default function SystemGroupMembers({
         {group.kind === KIND_BLOCKED_HOSTS && (
           canBlockHosts && hosts !== null ? (
             <button onClick={() => setHostPicker({ open: true, filter: '' })} disabled={busy} className="btn-secondary flex items-center gap-2 text-sm mt-3 disabled:opacity-50">
-              <Plus className="w-4 h-4" /> Bloquear host
+              <Plus className="w-4 h-4" /> {t('fw.sysmembers.blockHost')}
             </button>
           ) : (
             <p className="text-[11px] text-gray-600 mt-3">
-              O bloqueio de host é feito pelo MAC, na página <span className="text-gray-400">{t('fw.sysmembers.hosts')}</span> — é lá que a máquina é reconhecida pelo nome.
+              {t('fw.sysmembers.blockWhere')} <span className="text-gray-400">{t('fw.sysmembers.hosts')}</span>.
             </p>
           )
         )}
       </div>
 
-      {/* ─── Escolher host para bloquear ────────────────────────────────── */}
-      {/* O bloqueio é por MAC, e quem sabe o MAC é o inventário — por isso a
-          escolha é uma lista de hosts conhecidos, e não um campo de IP livre
-          que gravaria um bloqueio que o inventário não reconheceria. */}
+      {/* ─── Escolher máquina para bloquear ─────────────────────────────── */}
+      {/* A escolha é a lista do inventário, com nome: bloquear pelo nome que
+          a equipe reconhece é o que evita trancar a máquina errada. */}
       <Modal
         open={hostPicker.open}
         onClose={() => setHostPicker({ open: false, filter: '' })}
@@ -258,22 +255,22 @@ export default function SystemGroupMembers({
             const q = hostPicker.filter.trim().toLowerCase();
             const list = (hosts ?? [])
               .filter((h) => !h.blocked)
-              .filter((h) => !q || [h.ip, h.mac, h.alias, h.hostname].some((v) => v?.toLowerCase().includes(q)));
+              .filter((h) => !q || [h.ip, h.alias, h.hostname].some((v) => v?.toLowerCase().includes(q)));
             if (list.length === 0) {
-              return <p className="text-gray-600 text-sm py-4 text-center">Nenhum host disponível{q ? ' para este filtro' : ''}.</p>;
+              return <p className="text-gray-600 text-sm py-4 text-center">{q ? t('fw.sysmembers.noHostForFilter') : t('fw.sysmembers.noHostAvailable')}</p>;
             }
             return (
               <ul className="rounded-lg border border-gray-800 divide-y divide-gray-800/70 max-h-72 overflow-y-auto">
                 {list.map((h) => (
-                  <li key={h.mac || h.ip}>
+                  <li key={h.ip}>
                     <button
                       onClick={() => blockHost(h)}
                       disabled={busy}
                       className="w-full text-left px-3 py-2 hover:bg-gray-800/60 disabled:opacity-50 flex items-center gap-3"
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm text-gray-200 truncate">{h.alias || h.hostname || h.ip || h.mac}</span>
-                        <span className="block text-[11px] text-gray-600 font-mono truncate">{h.ip || 'sem IP'} · {h.mac}</span>
+                        <span className="block text-sm text-gray-200 truncate">{h.alias || h.hostname || h.ip}</span>
+                        <span className="block text-[11px] text-gray-600 font-mono truncate">{h.ip}</span>
                       </span>
                       <Ban className="w-4 h-4 text-gray-500 shrink-0" aria-hidden="true" />
                     </button>
@@ -282,9 +279,7 @@ export default function SystemGroupMembers({
               </ul>
             );
           })()}
-          <p className="text-[11px] text-gray-600">
-            O host entra no set <span className="font-mono">@blocked_hosts</span> e fica marcado como bloqueado no inventário. Um host sem IP conhecido só passa a ser descartado quando aparecer na rede.
-          </p>
+          <p className="text-[11px] text-gray-600">{t('fw.sysmembers.pickerNote')}</p>
         </div>
         <div className="px-6 py-4 border-t border-gray-800">
           <button onClick={() => setHostPicker({ open: false, filter: '' })} className="btn-secondary w-full">{t('common.close')}</button>

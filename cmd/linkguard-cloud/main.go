@@ -355,6 +355,7 @@ type services struct {
 	trafficSvc   *hosttraffic.Service
 	fluxosSvc    *hostflows.Servico
 	hostSvc      *hosts.Service
+	nomesSvc     *hosts.Nomes
 	sysCollector *system.Collector
 	rrdSvc       *tsdb.Service
 	hostSampler  *hosttraffic.Sampler
@@ -514,7 +515,16 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// nasce e morre no boot deixa o painel vermelho até o próximo reboot.
 	var netSvc netsvc.Provider = unboundSvc
 	trafficSvc := hosttraffic.NewService(exec)
-	hostSvc := hosts.NewService(exec, db, nftSvc)
+	// O nome de cada máquina da VCN vem do DNS reverso do resolvedor da
+	// própria VCN, perguntado direto: o resolv.conf desta caixa aponta para o
+	// unbound da VPN, que não conhece a zona interna da Oracle. Fora da OCI
+	// não há esse resolvedor, e a pergunta vai ao resolvedor do sistema.
+	servidorDeNomes := ""
+	if plat.Facts.Kind == platform.KindOCI {
+		servidorDeNomes = hosts.ResolvedorOCI
+	}
+	nomesSvc := hosts.NovosNomes(servidorDeNomes, db.SetHostnames)
+	hostSvc := hosts.NewService(db, nftSvc, nomesSvc)
 	netifSvc := netif.NewService(exec, db, func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) })
 	// Regra que cita uma interface inexistente carrega no nft SEM ERRO e nunca
 	// casa — o painel mostra a regra ativa e ela não protege nada. Aconteceu em
@@ -798,6 +808,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		trafficSvc:       trafficSvc,
 		fluxosSvc:        fluxosSvc,
 		hostSvc:          hostSvc,
+		nomesSvc:         nomesSvc,
 		sysCollector:     sysCollector,
 		rrdSvc:           rrdSvc,
 		hostSampler:      hostSampler,
@@ -1061,20 +1072,11 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			slog.Warn("não foi possível reconciliar o ajuste de MSS no boot", "err", err)
 		}
 
-		// Bloqueio por endereço físico (#119, fase 2). O set nasce vazio,
-		// então numa caixa já instalada os hosts bloqueados precisam ser
-		// recolocados nele — senão o bloqueio deles continuaria valendo só
-		// para IPv4, com a tela dizendo "bloqueado".
-		// A set precisa existir ANTES da sincronização: quem a cria no
-		// caminho normal é reconcileGroups, que só roda mais adiante neste
-		// mesmo boot. Sem esta linha, no primeiro boot depois do upgrade
-		// TODOS os elementos são recusados pelo nft e o erro é engolido —
-		// a set fica vazia e o bloqueio volta a valer só para IPv4, sem uma
-		// linha no journal dizendo por quê.
-		if err := s.nftSvc.EnsureBlockedMACSet(ctx); err != nil {
-			slog.Warn("não foi possível garantir a set de endereços físicos bloqueados no boot", "err", err)
-		}
-		s.hostSvc.SincronizaBloqueiosPorMAC(ctx)
+		// Bloqueio de máquina: o set blocked_hosts nasce vazio a cada tabela
+		// recriada, e o banco é quem lembra quem está bloqueado. É também o
+		// que leva para o set os bloqueios que a migração 102 converteu de
+		// endereço físico para IP.
+		s.hostSvc.SincronizaBloqueios(ctx)
 
 		// Estruturas de alvo por domínio (#123): garantidas E ESVAZIADAS
 		// no boot.
@@ -1320,6 +1322,8 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 
 	spawnWriter("metrics", func() { metricsCollector.Run(ctx, interval) })
 	go s.sondaSaida.Run(ctx)
+	// Escritor: grava no banco os nomes que o DNS reverso da VCN devolve.
+	spawnWriter("nomes", func() { s.nomesSvc.Run(ctx) })
 	spawnWriter("tsdb", func() { rrdSvc.Run(ctx) })
 	// Escritor: o Run grava o acumulado do minuto na saída, e perder isso a
 	// cada reinício abriria um buraco na contagem que a cota existe para fazer.

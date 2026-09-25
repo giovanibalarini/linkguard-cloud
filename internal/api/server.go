@@ -594,9 +594,9 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		// rotas de aparelho acima são todas literais.
 		hostQuotaH := handlers.NewHostQuotaHandler(s.hostQuotaSvc, s.db)
 		r.With(require(auth.PermHostsRead)).Get("/api/hosts/quotas", hostQuotaH.List)
-		r.With(require(auth.PermHostsRead)).Get("/api/hosts/quotas/{mac}/history", hostQuotaH.History)
-		r.With(require(auth.PermHostsQuota)).Put("/api/hosts/quotas/{mac}", hostQuotaH.Save)
-		r.With(require(auth.PermHostsQuota)).Delete("/api/hosts/quotas/{mac}", hostQuotaH.Delete)
+		r.With(require(auth.PermHostsRead)).Get("/api/hosts/quotas/{ip}/history", hostQuotaH.History)
+		r.With(require(auth.PermHostsQuota)).Put("/api/hosts/quotas/{ip}", hostQuotaH.Save)
+		r.With(require(auth.PermHostsQuota)).Delete("/api/hosts/quotas/{ip}", hostQuotaH.Delete)
 
 		// Captura de pacotes sob demanda (só cabeçalho, janela limitada).
 		// Permissão própria: ver gráfico de tráfego é uma coisa, observar a

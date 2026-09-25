@@ -3,7 +3,7 @@ import WidgetCard, { WidgetNote, usePolled } from './WidgetCard';
 import { useI18n } from '../../i18n';
 import type { NetHost } from '../../types';
 
-/** Quem está na LAN agora, e quem já esteve. */
+/** Quais máquinas trafegam agora, e quais já trafegaram. */
 export default function LanHostsWidget() {
   const { t } = useI18n();
   const { data: hosts, state } = usePolled<NetHost[]>('/api/hosts', 30000);
@@ -36,7 +36,7 @@ export default function LanHostsWidget() {
           </p>
           <div className="space-y-1.5">
             {ordenados.slice(0, 12).map((h) => (
-              <div key={h.mac || h.ip} className="flex items-center gap-2">
+              <div key={h.ip} className="flex items-center gap-2">
                 <span
                   className={`h-1.5 w-1.5 shrink-0 rounded-full ${h.online ? 'bg-ok' : 'bg-gray-700'}`}
                   title={h.online ? t('wid.status.online') : t('wid.status.offline')}

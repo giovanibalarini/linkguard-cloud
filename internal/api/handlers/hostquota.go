@@ -9,14 +9,13 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
-// HostQuotaHandler expõe a cota de dados por aparelho da LAN — issue #126,
-// metade "por host".
+// HostQuotaHandler expõe a cota de dados por máquina — issue #126, metade
+// "por host". A máquina é o IP dela.
 //
-// As rotas ficam sob /api/hosts/quotas, e não sob /api/quotas, porque o
-// assunto é aparelho: quem administra o inventário tem de conseguir declarar
-// cota sem ganhar permissão de mexer nos links. E a MUTAÇÃO é gateada por
-// hosts.quota, e não por hosts.block: declarar um teto que não corta nada não
-// pode exigir o poder de trancar o aparelho. Ver o registro em server.go.
+// As rotas ficam sob /api/hosts/quotas porque o assunto é a máquina: quem
+// administra o inventário tem de conseguir declarar cota. E a MUTAÇÃO é gateada
+// por hosts.quota, e não por hosts.block: declarar um teto que não corta nada
+// não pode exigir o poder de trancar a máquina. Ver o registro em server.go.
 type HostQuotaHandler struct {
 	svc *hostquota.Service
 	db  *storage.DB
@@ -53,31 +52,31 @@ func (h *HostQuotaHandler) Save(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "corpo inválido")
 		return
 	}
-	// O aparelho vem da URL, não do corpo: com os dois, um corpo divergente
-	// gravaria a cota no aparelho errado sem ninguém perceber.
-	q.MAC = chi.URLParam(r, "mac")
+	// A máquina vem da URL, não do corpo: com os dois, um corpo divergente
+	// gravaria a cota na máquina errada sem ninguém perceber.
+	q.IP = chi.URLParam(r, "ip")
 	if err := h.svc.Save(q); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	auditAction(h.db, r, "update", "host_quota", q.MAC)
+	auditAction(h.db, r, "update", "host_quota", q.IP)
 	writeJSON(w, http.StatusOK, q)
 }
 
 // Delete remove a cota de um aparelho (o consumo medido continua).
 func (h *HostQuotaHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	mac := chi.URLParam(r, "mac")
-	if err := h.svc.Delete(mac); err != nil {
+	ip := chi.URLParam(r, "ip")
+	if err := h.svc.Delete(ip); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	auditAction(h.db, r, "delete", "host_quota", mac)
+	auditAction(h.db, r, "delete", "host_quota", ip)
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // History devolve os ciclos anteriores de um aparelho.
 func (h *HostQuotaHandler) History(w http.ResponseWriter, r *http.Request) {
-	hist, err := h.svc.History(chi.URLParam(r, "mac"), 12)
+	hist, err := h.svc.History(chi.URLParam(r, "ip"), 12)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

@@ -1,10 +1,10 @@
 // Os alvos de rede: o que o LinkGuard JÁ sabe, oferecido pronto no lugar de um
 // campo de texto onde se digita CIDR.
 //
-// POR QUE ISTO EXISTE. Para bloquear o notebook de alguém, o admin precisava
-// descobrir o IP por fora (na tela de Hosts, ou no roteador), copiar, voltar e
-// digitar. O produto já conhece esse aparelho pelo nome — ele aparece na tela
-// de Hosts, tem apelido —, e mesmo assim pedia o endereço.
+// POR QUE ISTO EXISTE. Para bloquear uma máquina, o admin precisava
+// descobrir o IP por fora (na tela de Máquinas, ou no console da Oracle),
+// copiar, voltar e digitar. O produto já conhece essa máquina pelo nome — ela
+// aparece na tela de Máquinas, tem apelido —, e mesmo assim pedia o endereço.
 //
 // Este módulo é só a TRADUÇÃO: recebe o que a tela de Hosts
 // devolve e produz uma lista única, agrupada, com o endereço que a regra vai
@@ -19,7 +19,7 @@ export interface Target {
   kind: TargetKind;
   /** O que a pessoa lê: "notebook-maria". */
   label: string;
-  /** A informação de apoio: o endereço, o MAC, a interface. */
+  /** A informação de apoio: o endereço. */
   hint: string;
   /** O que vai para a regra — IP, CIDR, ou '' para "qualquer". */
   value: string;
@@ -28,21 +28,20 @@ export interface Target {
 }
 
 export interface HostLike {
-  mac: string; ip: string; hostname: string; alias: string;
+  ip: string; hostname?: string; alias?: string;
   blocked?: boolean; last_seen?: string;
 }
 
 /**
- * hostName escolhe como chamar um aparelho.
+ * hostName escolhe como chamar uma máquina.
  *
- * A ordem é apelido → hostname → MAC, e ela é a diferença entre uma lista que
- * ajuda e uma lista de endereços MAC. O apelido vem primeiro porque foi o
- * ADMIN quem o escreveu, justamente para reconhecer o aparelho; o hostname é o
- * que o aparelho diz de si (às vezes "android-9f2c", que não ajuda ninguém); o
- * MAC é o último recurso, e ainda assim melhor do que uma linha em branco.
+ * A ordem é apelido → nome da instância → IP. O apelido vem primeiro porque
+ * foi o ADMIN quem o escreveu, justamente para reconhecer a máquina; o nome é o
+ * que a Oracle (ou a VPN) dá a ela; o IP é o último recurso, e ainda assim
+ * melhor do que uma linha em branco.
  */
 export function hostName(h: HostLike): string {
-  return (h.alias || '').trim() || (h.hostname || '').trim() || h.mac;
+  return (h.alias || '').trim() || (h.hostname || '').trim() || h.ip;
 }
 
 /** onlineRecently: visto nos últimos 10 minutos conta como "na rede agora". */
@@ -73,7 +72,7 @@ export function buildTargets(
     const ip = (h.ip || '').trim();
     if (!ip) continue;
     out.push({
-      id: `host:${h.mac || ip}`,
+      id: `host:${ip}`,
       kind: 'host',
       label: hostName(h),
       hint: ip,
@@ -97,7 +96,7 @@ export function buildTargets(
 
 /** Rótulo do grupo na lista, na ordem em que os grupos aparecem. */
 export const KIND_LABEL: Record<TargetKind, string> = {
-  host: 'Aparelhos na rede',
+  host: 'Máquinas',
   rede: 'Redes',
   manual: 'Endereço digitado',
 };

@@ -21,7 +21,7 @@ func newTestDB(t *testing.T) *storage.DB {
 
 // alerterFalso registra o que teria sido alertado.
 type alerterFalso struct {
-	criados    []string // "tipo|mac"
+	criados    []string // "tipo|ip"
 	resolvidos []string
 	mensagens  []string // corpo do alerta, para conferir o texto que o admin lê
 	titulos    []string
@@ -50,15 +50,15 @@ func contem(xs []string, s string) bool {
 	return false
 }
 
-const macA = "aa:bb:cc:dd:ee:ff"
+const ipA = "192.168.3.50"
 
-func aparelho(t *testing.T, db *storage.DB, mac, ip, alias string) {
+func aparelho(t *testing.T, db *storage.DB, ip, alias string) {
 	t.Helper()
-	if err := db.UpsertHostSighting(mac, ip); err != nil {
-		t.Fatalf("UpsertHostSighting: %v", err)
+	if err := db.UpsertHostSightings([]string{ip}); err != nil {
+		t.Fatalf("UpsertHostSightings: %v", err)
 	}
 	if alias != "" {
-		if err := db.SetHostAlias(mac, alias); err != nil {
+		if err := db.SetHostAlias(ip, alias); err != nil {
 			t.Fatalf("SetHostAlias: %v", err)
 		}
 	}
@@ -113,17 +113,17 @@ func TestSaveRecusaOQueNaoExiste(t *testing.T) {
 		nome string
 		q    storage.HostQuota
 	}{
-		{"MAC vazio", storage.HostQuota{MAC: "", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
-		{"MAC malformado", storage.HostQuota{MAC: "não-é-mac", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
-		// Grafia do Windows: net.ParseMAC aceita, o nft e o kea recusam (#161).
-		// Recusar aqui devolve 400 na hora, em vez de gravar uma cota que nunca
-		// vai casar com o consumo medido.
-		{"MAC com traço", storage.HostQuota{MAC: "aa-bb-cc-dd-ee-ff", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
-		{"dia 31 não existe em fevereiro", storage.HostQuota{MAC: macA, LimitGB: 1, Period: "monthly", CycleDay: 31, AlertPct: 80}},
-		{"aviso em 150%", storage.HostQuota{MAC: macA, LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 150}},
-		{"aviso em 0%", storage.HostQuota{MAC: macA, LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 0}},
-		{"período inventado", storage.HostQuota{MAC: macA, LimitGB: 1, Period: "semanal", CycleDay: 1, AlertPct: 80}},
-		{"cota negativa", storage.HostQuota{MAC: macA, LimitGB: -1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
+		{"IP vazio", storage.HostQuota{IP: "", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
+		{"IP malformado", storage.HostQuota{IP: "não-é-ip", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
+		// O contador do nft é por IPv4: uma cota num IPv6 ou numa faixa nunca
+		// casaria com o consumo medido. Recusar aqui devolve 400 na hora.
+		{"IPv6", storage.HostQuota{IP: "fd00::50", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
+		{"faixa em vez de máquina", storage.HostQuota{IP: "192.168.3.0/24", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
+		{"dia 31 não existe em fevereiro", storage.HostQuota{IP: ipA, LimitGB: 1, Period: "monthly", CycleDay: 31, AlertPct: 80}},
+		{"aviso em 150%", storage.HostQuota{IP: ipA, LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 150}},
+		{"aviso em 0%", storage.HostQuota{IP: ipA, LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 0}},
+		{"período inventado", storage.HostQuota{IP: ipA, LimitGB: 1, Period: "semanal", CycleDay: 1, AlertPct: 80}},
+		{"cota negativa", storage.HostQuota{IP: ipA, LimitGB: -1, Period: "monthly", CycleDay: 1, AlertPct: 80}},
 	}
 	for _, c := range casos {
 		t.Run(c.nome, func(t *testing.T) {
@@ -134,20 +134,20 @@ func TestSaveRecusaOQueNaoExiste(t *testing.T) {
 	}
 }
 
-func TestSaveNormalizaOEnderecoFisico(t *testing.T) {
+func TestSaveNormalizaOEndereco(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewService(db, nil)
-	// Maiúsculas viram minúsculas: é a única grafia que o nft e o kea aceitam,
-	// e é a que o resto do inventário grava. Sem isso, a cota nasceria numa
-	// chave e o consumo medido noutra — a barra da tela nunca encheria.
-	if err := svc.Save(storage.HostQuota{MAC: "AA:BB:CC:DD:EE:FF", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}); err != nil {
+	// A grafia IPv4-mapeada e os espaços viram o IPv4 puro, que é a grafia que o
+	// contador do nft entrega e o inventário grava. Sem isso, a cota nasceria
+	// numa chave e o consumo medido noutra — a barra da tela nunca encheria.
+	if err := svc.Save(storage.HostQuota{IP: " ::ffff:192.168.3.50 ", LimitGB: 1, Period: "monthly", CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	quotas, err := db.GetHostQuotas()
 	if err != nil {
 		t.Fatalf("GetHostQuotas: %v", err)
 	}
-	if _, ok := quotas[macA]; !ok {
+	if _, ok := quotas[ipA]; !ok {
 		t.Fatalf("a cota não foi gravada na grafia canônica: %+v", quotas)
 	}
 }
@@ -155,11 +155,11 @@ func TestSaveNormalizaOEnderecoFisico(t *testing.T) {
 func TestSaveDiarioZeraODiaDeFechamento(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewService(db, nil)
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 1, Period: storage.HostPeriodDaily, CycleDay: 17, AlertPct: 80}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 1, Period: storage.HostPeriodDaily, CycleDay: 17, AlertPct: 80}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	quotas, _ := db.GetHostQuotas()
-	if got := quotas[macA].CycleDay; got != 1 {
+	if got := quotas[ipA].CycleDay; got != 1 {
 		t.Errorf("cycle_day gravado = %d, queria 1 no período diário", got)
 	}
 }
@@ -170,9 +170,9 @@ func TestFlushAcumulaEMedeQuemNaoDeclarouCota(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "tablet da sala")
+	aparelho(t, db, ipA, "tablet da sala")
 
-	medir(svc, macA, 3_000_000, 1_000_000)
+	medir(svc, ipA, 3_000_000, 1_000_000)
 	svc.Flush()
 
 	st, err := svc.Snapshot()
@@ -203,7 +203,7 @@ func TestOSinkIgnoraORotuloDeOutros(t *testing.T) {
 	svc.Flush()
 	st, _ := svc.Snapshot()
 	if len(st) != 0 {
-		t.Errorf("Snapshot criou linha para MAC vazio: %+v", st)
+		t.Errorf("Snapshot criou linha para IP vazio: %+v", st)
 	}
 }
 
@@ -211,16 +211,16 @@ func TestAlertaDeAvisoEDeEstouroComUnidadeLegivel(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "tablet da sala")
+	aparelho(t, db, ipA, "tablet da sala")
 	// 1 MB de cota: é o tamanho que se declara para uma câmera, e é onde a
 	// formatação em "%.1f GB" produzia "0.0 GB de 0 GB".
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	medir(svc, macA, 900_000, 0) // 90%
+	medir(svc, ipA, 900_000, 0) // 90%
 	svc.Flush()
-	if !al.temCriado(TypeQuotaWarning + "|" + macA) {
+	if !al.temCriado(TypeQuotaWarning + "|" + ipA) {
 		t.Fatalf("não avisou em 90%%: %v", al.criados)
 	}
 	aviso := al.mensagens[0]
@@ -230,18 +230,18 @@ func TestAlertaDeAvisoEDeEstouroComUnidadeLegivel(t *testing.T) {
 	if !strings.Contains(aviso, "tablet da sala") {
 		t.Errorf("o aviso não nomeia o aparelho pelo apelido: %q", aviso)
 	}
-	if strings.Contains(aviso, macA) {
-		t.Errorf("o aviso usou o endereço físico cru tendo apelido: %q", aviso)
+	if strings.Contains(aviso, ipA) {
+		t.Errorf("o aviso usou o IP cru tendo apelido: %q", aviso)
 	}
 
-	medir(svc, macA, 200_000, 0) // passa de 100%
+	medir(svc, ipA, 200_000, 0) // passa de 100%
 	svc.Flush()
-	if !al.temCriado(TypeQuotaExceeded + "|" + macA) {
+	if !al.temCriado(TypeQuotaExceeded + "|" + ipA) {
 		t.Fatalf("não alertou o estouro: %v", al.criados)
 	}
 	// O aviso de "chegando lá" tem de FECHAR quando o crítico abre, senão a
 	// tela mostra dois alertas do mesmo aparelho dizendo coisas diferentes.
-	if !al.temResolvido(TypeQuotaWarning + "|" + macA) {
+	if !al.temResolvido(TypeQuotaWarning + "|" + ipA) {
 		t.Errorf("o aviso de 80%% ficou aberto ao lado do crítico: %v", al.resolvidos)
 	}
 	critico := al.mensagens[len(al.mensagens)-1]
@@ -254,17 +254,17 @@ func TestViradaDeCicloDiarioResolveOsAlertasDeOntem(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "notebook")
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 0.001, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	aparelho(t, db, ipA, "notebook")
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 0.001, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
 	loc := time.UTC
 	hoje := time.Date(2026, 8, 25, 20, 0, 0, 0, loc)
 	svc.nowFn = func() time.Time { return hoje }
-	medir(svc, macA, 2_000_000, 0)
+	medir(svc, ipA, 2_000_000, 0)
 	svc.Flush()
-	if !al.temCriado(TypeQuotaExceeded + "|" + macA) {
+	if !al.temCriado(TypeQuotaExceeded + "|" + ipA) {
 		t.Fatalf("não estourou hoje: %v", al.criados)
 	}
 
@@ -275,10 +275,10 @@ func TestViradaDeCicloDiarioResolveOsAlertasDeOntem(t *testing.T) {
 	svc.nowFn = func() time.Time { return amanha }
 	al.resolvidos = nil
 	svc.Flush()
-	if !al.temResolvido(TypeQuotaExceeded + "|" + macA) {
+	if !al.temResolvido(TypeQuotaExceeded + "|" + ipA) {
 		t.Errorf("a virada do dia não resolveu o estouro de ontem: %v", al.resolvidos)
 	}
-	if !al.temResolvido(TypeQuotaWarning + "|" + macA) {
+	if !al.temResolvido(TypeQuotaWarning + "|" + ipA) {
 		t.Errorf("a virada do dia não resolveu o aviso de ontem: %v", al.resolvidos)
 	}
 
@@ -291,7 +291,7 @@ func TestViradaDeCicloDiarioResolveOsAlertasDeOntem(t *testing.T) {
 	if st[0].UsedBytes != 0 {
 		t.Errorf("o ciclo de hoje nasceu com %d bytes", st[0].UsedBytes)
 	}
-	hist, err := svc.History(macA, 12)
+	hist, err := svc.History(ipA, 12)
 	if err != nil {
 		t.Fatalf("History: %v", err)
 	}
@@ -304,14 +304,14 @@ func TestRemoverACotaNaoEscondeOConsumoJaMedido(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "câmera")
+	aparelho(t, db, ipA, "câmera")
 	// Fechamento no dia 28: é o caso em que apagar a linha mudaria o ciclo lido
 	// e o consumo sumiria da tela — o defeito medido em 2026-08-20 na metade de
 	// link.
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 10, Period: storage.HostPeriodMonthly, CycleDay: 28, AlertPct: 80, AlertEnabled: true}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 10, Period: storage.HostPeriodMonthly, CycleDay: 28, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	medir(svc, macA, 2_600_000, 0)
+	medir(svc, ipA, 2_600_000, 0)
 	svc.Flush()
 
 	antes, _ := svc.Snapshot()
@@ -319,7 +319,7 @@ func TestRemoverACotaNaoEscondeOConsumoJaMedido(t *testing.T) {
 		t.Fatal("nada foi medido antes da remoção")
 	}
 
-	if err := svc.Delete(macA); err != nil {
+	if err := svc.Delete(ipA); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	depois, _ := svc.Snapshot()
@@ -332,7 +332,7 @@ func TestRemoverACotaNaoEscondeOConsumoJaMedido(t *testing.T) {
 	if depois[0].CycleStart != antes[0].CycleStart {
 		t.Errorf("o ciclo mudou ao remover a cota: %d para %d", antes[0].CycleStart, depois[0].CycleStart)
 	}
-	if !al.temResolvido(TypeQuotaExceeded + "|" + macA) {
+	if !al.temResolvido(TypeQuotaExceeded + "|" + ipA) {
 		t.Errorf("remover a cota deixou alerta aberto: %v", al.resolvidos)
 	}
 }
@@ -341,9 +341,9 @@ func TestCotaDeAparelhoQueSumiuContinuaVisivelEMuda(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	// Aparelho que trocou de MAC (telefone com endereço aleatório) ou saiu da
-	// rede: nunca foi avistado, então não está em host_metadata.
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 1, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	// Máquina destruída, ou cota gravada antes de a máquina subir: nunca foi
+	// avistada, então não está em host_info.
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 1, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	svc.Flush()
@@ -358,8 +358,8 @@ func TestCotaDeAparelhoQueSumiuContinuaVisivelEMuda(t *testing.T) {
 	if st[0].Present {
 		t.Error("a cota órfã se apresentou como aparelho presente")
 	}
-	if st[0].Name != macA {
-		t.Errorf("nome do aparelho ausente = %q, queria o endereço físico", st[0].Name)
+	if st[0].Name != ipA {
+		t.Errorf("nome da máquina ausente = %q, queria o IP", st[0].Name)
 	}
 	// Sem consumo, ela é muda: cota fantasma não pode gerar alerta.
 	if len(al.criados) != 0 {
@@ -368,40 +368,40 @@ func TestCotaDeAparelhoQueSumiuContinuaVisivelEMuda(t *testing.T) {
 }
 
 func TestCadaAparelhoTemOSeuAlerta(t *testing.T) {
-	const macB = "11:22:33:44:55:66"
+	const ipB = "192.168.3.51"
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "tablet")
-	aparelho(t, db, macB, "192.168.3.51", "tv")
-	for _, m := range []string{macA, macB} {
-		if err := svc.Save(storage.HostQuota{MAC: m, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	aparelho(t, db, ipA, "tablet")
+	aparelho(t, db, ipB, "tv")
+	for _, m := range []string{ipA, ipB} {
+		if err := svc.Save(storage.HostQuota{IP: m, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 			t.Fatalf("Save: %v", err)
 		}
 	}
-	medir(svc, macA, 2_000_000, 0)
-	medir(svc, macB, 2_000_000, 0)
+	medir(svc, ipA, 2_000_000, 0)
+	medir(svc, ipB, 2_000_000, 0)
 	svc.Flush()
 
 	// A chave do alerta é o aparelho. Se fosse "" ou compartilhada, o segundo
 	// estouro seria engolido pelo dedupe do alerts.Service e resolver um
 	// fecharia o do outro.
-	if !al.temCriado(TypeQuotaExceeded+"|"+macA) || !al.temCriado(TypeQuotaExceeded+"|"+macB) {
+	if !al.temCriado(TypeQuotaExceeded+"|"+ipA) || !al.temCriado(TypeQuotaExceeded+"|"+ipB) {
 		t.Errorf("os dois aparelhos não ganharam alerta próprio: %v", al.criados)
 	}
 }
 
 func TestSnapshotOrdenaPorConsumo(t *testing.T) {
-	const macB = "11:22:33:44:55:66"
+	const ipB = "192.168.3.51"
 	db := newTestDB(t)
 	svc := NewService(db, nil)
-	aparelho(t, db, macA, "192.168.3.50", "pouco")
-	aparelho(t, db, macB, "192.168.3.51", "muito")
-	medir(svc, macA, 1_000, 0)
-	medir(svc, macB, 9_000_000, 0)
+	aparelho(t, db, ipA, "pouco")
+	aparelho(t, db, ipB, "muito")
+	medir(svc, ipA, 1_000, 0)
+	medir(svc, ipB, 9_000_000, 0)
 	svc.Flush()
 	st, _ := svc.Snapshot()
-	if len(st) != 2 || st[0].MAC != macB {
+	if len(st) != 2 || st[0].IP != ipB {
 		t.Errorf("a tela não começa por quem mais gastou: %+v", st)
 	}
 }
@@ -411,6 +411,6 @@ func TestSnapshotOrdenaPorConsumo(t *testing.T) {
 // que mexem o relógio (svc.nowFn) ganham de graça o comportamento certo: o byte
 // medido às 23h59 pertence ao ciclo de hoje, mesmo que o flush só aconteça
 // depois da meia-noite.
-func medir(s *Service, mac string, rx, tx uint64) {
-	s.AddHostBytes(mac, s.nowFn().Unix(), rx, tx)
+func medir(s *Service, ip string, rx, tx uint64) {
+	s.AddHostBytes(ip, s.nowFn().Unix(), rx, tx)
 }

@@ -21,15 +21,15 @@ func TestOQueFoiMedidoAntesDaViradaFicaNoCicloQueAcabou(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "notebook")
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 1, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80}); err != nil {
+	aparelho(t, db, ipA, "notebook")
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 1, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
 	loc := time.UTC
 	ontem := time.Date(2026, 8, 25, 23, 59, 55, 0, loc)
 	svc.nowFn = func() time.Time { return ontem }
-	medir(svc, macA, 2_000_000_000, 0) // 2 GB às 23:59:55
+	medir(svc, ipA, 2_000_000_000, 0) // 2 GB às 23:59:55
 
 	// O flush só acontece depois da meia-noite.
 	hoje := time.Date(2026, 8, 26, 0, 0, 20, 0, loc)
@@ -39,11 +39,11 @@ func TestOQueFoiMedidoAntesDaViradaFicaNoCicloQueAcabou(t *testing.T) {
 	inicioDeOntem := CycleStart(ontem, storage.HostPeriodDaily, 1).Unix()
 	inicioDeHoje := CycleStart(hoje, storage.HostPeriodDaily, 1).Unix()
 
-	uOntem, err := db.GetHostUsage(macA, storage.HostPeriodDaily, inicioDeOntem)
+	uOntem, err := db.GetHostUsage(ipA, storage.HostPeriodDaily, inicioDeOntem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	uHoje, err := db.GetHostUsage(macA, storage.HostPeriodDaily, inicioDeHoje)
+	uHoje, err := db.GetHostUsage(ipA, storage.HostPeriodDaily, inicioDeHoje)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestOQueFoiMedidoAntesDaViradaFicaNoCicloQueAcabou(t *testing.T) {
 	if uHoje.RxBytes != 0 {
 		t.Errorf("o dia 26 nasceu com %d bytes que o aparelho não gastou nele", uHoje.RxBytes)
 	}
-	if al.temCriado(TypeQuotaExceeded + "|" + macA) {
+	if al.temCriado(TypeQuotaExceeded + "|" + ipA) {
 		t.Errorf("o ciclo novo nasceu estourado: %v", al.criados)
 	}
 }
@@ -68,7 +68,7 @@ func TestOQueFoiMedidoAntesDaViradaFicaNoCicloQueAcabou(t *testing.T) {
 // silêncio, com a suíte verde.
 func TestReinicioDepoisDaViradaResolveOAlertaDoCicloAnterior(t *testing.T) {
 	db := newTestDB(t)
-	aparelho(t, db, macA, "192.168.3.50", "notebook")
+	aparelho(t, db, ipA, "notebook")
 
 	loc := time.UTC
 	ontem := time.Date(2026, 8, 25, 20, 0, 0, 0, loc)
@@ -77,12 +77,12 @@ func TestReinicioDepoisDaViradaResolveOAlertaDoCicloAnterior(t *testing.T) {
 	al1 := &alerterFalso{}
 	svc1 := NewService(db, al1)
 	svc1.nowFn = func() time.Time { return ontem }
-	if err := svc1.Save(storage.HostQuota{MAC: macA, LimitGB: 0.001, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	if err := svc1.Save(storage.HostQuota{IP: ipA, LimitGB: 0.001, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	medir(svc1, macA, 2_000_000, 0)
+	medir(svc1, ipA, 2_000_000, 0)
 	svc1.Flush()
-	if !al1.temCriado(TypeQuotaExceeded + "|" + macA) {
+	if !al1.temCriado(TypeQuotaExceeded + "|" + ipA) {
 		t.Fatalf("não estourou no dia 25: %v", al1.criados)
 	}
 
@@ -94,10 +94,10 @@ func TestReinicioDepoisDaViradaResolveOAlertaDoCicloAnterior(t *testing.T) {
 	svc2.nowFn = func() time.Time { return hoje }
 	svc2.Flush()
 
-	if !al2.temResolvido(TypeQuotaExceeded + "|" + macA) {
+	if !al2.temResolvido(TypeQuotaExceeded + "|" + ipA) {
 		t.Errorf("o estouro do dia 25 ficou preso depois do reinício: %v", al2.resolvidos)
 	}
-	if !al2.temResolvido(TypeQuotaWarning + "|" + macA) {
+	if !al2.temResolvido(TypeQuotaWarning + "|" + ipA) {
 		t.Errorf("o aviso do dia 25 ficou preso depois do reinício: %v", al2.resolvidos)
 	}
 }
@@ -112,16 +112,16 @@ func TestTrocarODiaDeFechamentoNaoZeraOConsumoNemDeixaOAlertaAberto(t *testing.T
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "notebook")
+	aparelho(t, db, ipA, "notebook")
 
 	loc := time.UTC
 	agora := time.Date(2026, 8, 10, 12, 0, 0, 0, loc)
 	svc.nowFn = func() time.Time { return agora }
 
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	medir(svc, macA, 950_000, 0) // 95%
+	medir(svc, ipA, 950_000, 0) // 95%
 	svc.Flush()
 	antes, err := svc.Snapshot()
 	if err != nil {
@@ -130,13 +130,13 @@ func TestTrocarODiaDeFechamentoNaoZeraOConsumoNemDeixaOAlertaAberto(t *testing.T
 	if antes[0].UsedBytes == 0 {
 		t.Fatal("nada foi medido antes da troca")
 	}
-	if !al.temCriado(TypeQuotaWarning + "|" + macA) {
+	if !al.temCriado(TypeQuotaWarning + "|" + ipA) {
 		t.Fatalf("não avisou em 95%%: %v", al.criados)
 	}
 
 	// O admin muda o fechamento para o dia 28. A chave do ciclo vigente muda.
 	al.resolvidos = nil
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 28, AlertPct: 80, AlertEnabled: true}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 28, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	depois, err := svc.Snapshot()
@@ -150,7 +150,7 @@ func TestTrocarODiaDeFechamentoNaoZeraOConsumoNemDeixaOAlertaAberto(t *testing.T
 		t.Errorf("o consumo caiu de %d para %d ao trocar o dia de fechamento",
 			antes[0].UsedBytes, depois[0].UsedBytes)
 	}
-	if !al.temResolvido(TypeQuotaWarning + "|" + macA) {
+	if !al.temResolvido(TypeQuotaWarning + "|" + ipA) {
 		t.Errorf("o ciclo foi redefinido e o aviso antigo continuou aberto: %v", al.resolvidos)
 	}
 }
@@ -160,17 +160,17 @@ func TestTrocarODiaDeFechamentoNaoZeraOConsumoNemDeixaOAlertaAberto(t *testing.T
 func TestTrocarMensalParaDiarioLevaOConsumoJunto(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewService(db, &alerterFalso{})
-	aparelho(t, db, macA, "192.168.3.50", "tv")
+	aparelho(t, db, ipA, "tv")
 
 	agora := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	svc.nowFn = func() time.Time { return agora }
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 5, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 5, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatal(err)
 	}
-	medir(svc, macA, 3_000_000, 0)
+	medir(svc, ipA, 3_000_000, 0)
 	svc.Flush()
 
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 5, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 5, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := svc.Snapshot()
@@ -195,23 +195,23 @@ func TestCotaSalvaSemOCampoDoAvisoAindaAvisa(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "câmera")
+	aparelho(t, db, ipA, "câmera")
 
 	// Exatamente o que chega de um PUT que não mandou o campo.
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 0.001, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	quotas, err := db.GetHostQuotas()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !quotas[macA].AlertEnabled {
+	if !quotas[ipA].AlertEnabled {
 		t.Fatal("a cota foi gravada com o aviso desligado por zero-value do JSON")
 	}
 
-	medir(svc, macA, 2_000_000, 0)
+	medir(svc, ipA, 2_000_000, 0)
 	svc.Flush()
-	if !al.temCriado(TypeQuotaExceeded + "|" + macA) {
+	if !al.temCriado(TypeQuotaExceeded + "|" + ipA) {
 		t.Errorf("a cota encheu e nenhum alerta nasceu: %v", al.criados)
 	}
 	st, err := svc.Snapshot()
@@ -232,13 +232,13 @@ func TestCotaSalvaSemOCampoDoAvisoAindaAvisa(t *testing.T) {
 func TestErroDoBancoDevolveOMinutoParaAFila(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewService(db, nil)
-	medir(svc, macA, 1_234_000, 5_000)
+	medir(svc, ipA, 1_234_000, 5_000)
 	db.Close() // qualquer consulta a partir daqui falha
 
 	svc.Flush()
 
 	svc.mu.Lock()
-	porInstante := svc.pending[macA]
+	porInstante := svc.pending[ipA]
 	svc.mu.Unlock()
 	var rx, tx uint64
 	for _, d := range porInstante {
@@ -260,8 +260,8 @@ func TestFalhaAoGravarNaoTiraOAparelhoDoControleDeCiclo(t *testing.T) {
 	db := newTestDB(t)
 	al := &alerterFalso{}
 	svc := NewService(db, al)
-	aparelho(t, db, macA, "192.168.3.50", "notebook")
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 1, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	aparelho(t, db, ipA, "notebook")
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 1, Period: storage.HostPeriodDaily, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -273,9 +273,9 @@ func TestFalhaAoGravarNaoTiraOAparelhoDoControleDeCiclo(t *testing.T) {
 	if _, err := db.Conn().Exec(derrubaHostUsage); err != nil {
 		t.Fatalf("derrubar host_usage: %v", err)
 	}
-	medir(svc, macA, 1_000, 0)
+	medir(svc, ipA, 1_000, 0)
 	svc.Flush()
-	if _, visto := svc.lastCycle[macA]; !visto {
+	if _, visto := svc.lastCycle[ipA]; !visto {
 		t.Fatal("o aparelho saiu do controle de ciclo por causa de um erro de gravação")
 	}
 	if _, err := db.Conn().Exec(recriaHostUsage); err != nil {
@@ -287,7 +287,7 @@ func TestFalhaAoGravarNaoTiraOAparelhoDoControleDeCiclo(t *testing.T) {
 	svc.nowFn = func() time.Time { return hoje }
 	al.resolvidos = nil
 	svc.Flush()
-	if !al.temResolvido(TypeQuotaExceeded + "|" + macA) {
+	if !al.temResolvido(TypeQuotaExceeded + "|" + ipA) {
 		t.Errorf("a virada do dia não fechou os alertas de ontem: %v", al.resolvidos)
 	}
 }
@@ -301,16 +301,16 @@ const (
 
 // ─── 7. A tela precisa distinguir aparelho comportado de medição morta ──────
 //
-// host_metadata guarda a linha para sempre depois do primeiro avistamento,
-// então Present continua verdadeiro para o MAC de privacidade que um celular
-// rotacionou ontem: 0% consumido, barra verde, para sempre — a cota-fantasma.
+// host_info guarda a linha para sempre depois do primeiro avistamento, então
+// Present continua verdadeiro para a máquina que foi destruída ontem: 0%
+// consumido, barra verde, para sempre — a cota-fantasma.
 // LastSeen e MeasuredAt são o que permite à tela dizer "sem medição neste
 // ciclo" em vez de desenhar saúde.
 func TestSnapshotDizQuandoOAparelhoFoiVistoEQuandoFoiMedido(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewService(db, nil)
-	aparelho(t, db, macA, "192.168.3.50", "tablet")
-	if err := svc.Save(storage.HostQuota{MAC: macA, LimitGB: 1, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
+	aparelho(t, db, ipA, "tablet")
+	if err := svc.Save(storage.HostQuota{IP: ipA, LimitGB: 1, Period: storage.HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -326,7 +326,7 @@ func TestSnapshotDizQuandoOAparelhoFoiVistoEQuandoFoiMedido(t *testing.T) {
 		t.Error("last_seen veio zerado para um aparelho que está no inventário")
 	}
 
-	medir(svc, macA, 1_000, 0)
+	medir(svc, ipA, 1_000, 0)
 	svc.Flush()
 	st, err = svc.Snapshot()
 	if err != nil {

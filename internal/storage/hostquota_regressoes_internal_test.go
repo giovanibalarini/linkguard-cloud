@@ -23,21 +23,21 @@ func abrirCota(t *testing.T) *DB {
 // distinga.
 func TestConsumoDiarioENaoSeMisturaComOMensalNoMesmoInstante(t *testing.T) {
 	db := abrirCota(t)
-	const mac = "aa:bb:cc:dd:ee:ff"
+	const ip = "10.0.238.5"
 	const inicio = int64(1_754_006_400) // 1 de agosto
 
-	if err := db.AddHostUsage(mac, HostPeriodMonthly, inicio, 1000, 0); err != nil {
+	if err := db.AddHostUsage(ip, HostPeriodMonthly, inicio, 1000, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AddHostUsage(mac, HostPeriodDaily, inicio, 7, 0); err != nil {
+	if err := db.AddHostUsage(ip, HostPeriodDaily, inicio, 7, 0); err != nil {
 		t.Fatal(err)
 	}
 
-	mensal, err := db.GetHostUsage(mac, HostPeriodMonthly, inicio)
+	mensal, err := db.GetHostUsage(ip, HostPeriodMonthly, inicio)
 	if err != nil {
 		t.Fatal(err)
 	}
-	diario, err := db.GetHostUsage(mac, HostPeriodDaily, inicio)
+	diario, err := db.GetHostUsage(ip, HostPeriodDaily, inicio)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestConsumoDiarioENaoSeMisturaComOMensalNoMesmoInstante(t *testing.T) {
 	}
 
 	// E o histórico tem de dizer QUAL dos dois é cada linha.
-	hist, err := db.GetHostUsageHistory(mac, 12)
+	hist, err := db.GetHostUsageHistory(ip, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,13 +66,13 @@ func TestConsumoDiarioENaoSeMisturaComOMensalNoMesmoInstante(t *testing.T) {
 }
 
 // GetHostUsageAll filtra por (period, cycle_start) e a chave primária começa
-// por mac: sem o índice, é varredura da tabela inteira. Com ciclo diário a
+// por ip: sem o índice, é varredura da tabela inteira. Com ciclo diário a
 // tabela cresce uma linha por aparelho por dia, e o Snapshot roda a cada minuto
 // por aba aberta.
 func TestGetHostUsageAllUsaIndiceENaoVarreATabela(t *testing.T) {
 	db := abrirCota(t)
 	rows, err := db.Conn().Query(
-		`EXPLAIN QUERY PLAN SELECT mac, period, cycle_start, rx_bytes, tx_bytes, updated_at FROM host_usage WHERE period = ? AND cycle_start = ?`,
+		`EXPLAIN QUERY PLAN SELECT ip, period, cycle_start, rx_bytes, tx_bytes, updated_at FROM host_usage WHERE period = ? AND cycle_start = ?`,
 		HostPeriodMonthly, int64(1))
 	if err != nil {
 		t.Fatalf("EXPLAIN QUERY PLAN: %v", err)
@@ -102,25 +102,25 @@ func TestGetHostUsageAllUsaIndiceENaoVarreATabela(t *testing.T) {
 // porta que o Delete foi escrito para trancar.
 func TestMoveHostUsageLevaOConsumoParaAChaveNova(t *testing.T) {
 	db := abrirCota(t)
-	const mac = "aa:bb:cc:dd:ee:ff"
-	if err := db.AddHostUsage(mac, HostPeriodMonthly, 100, 950, 50); err != nil {
+	const ip = "10.0.238.5"
+	if err := db.AddHostUsage(ip, HostPeriodMonthly, 100, 950, 50); err != nil {
 		t.Fatal(err)
 	}
 	// A chave nova já tem consumo: o move SOMA, não substitui.
-	if err := db.AddHostUsage(mac, HostPeriodMonthly, 200, 1, 0); err != nil {
+	if err := db.AddHostUsage(ip, HostPeriodMonthly, 200, 1, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MoveHostUsage(mac, HostPeriodMonthly, 100, HostPeriodMonthly, 200); err != nil {
+	if err := db.MoveHostUsage(ip, HostPeriodMonthly, 100, HostPeriodMonthly, 200); err != nil {
 		t.Fatalf("MoveHostUsage: %v", err)
 	}
-	novo, err := db.GetHostUsage(mac, HostPeriodMonthly, 200)
+	novo, err := db.GetHostUsage(ip, HostPeriodMonthly, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if novo.RxBytes != 951 || novo.TxBytes != 50 {
 		t.Errorf("chave nova = %d/%d, queria 951/50", novo.RxBytes, novo.TxBytes)
 	}
-	velho, err := db.GetHostUsage(mac, HostPeriodMonthly, 100)
+	velho, err := db.GetHostUsage(ip, HostPeriodMonthly, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,16 +134,16 @@ func TestMoveHostUsageLevaOConsumoParaAChaveNova(t *testing.T) {
 // tela (o Snapshot só itera inventário mais cotas) e imortal no banco.
 func TestPurgeHostUsagePodaOTransitorioEPreservaQuemTemCota(t *testing.T) {
 	db := abrirCota(t)
-	const comCota = "aa:bb:cc:dd:ee:ff"
-	const transitorio = "11:22:33:44:55:66"
-	const zerada = "99:88:77:66:55:44"
+	const comCota = "10.0.238.5"
+	const transitorio = "10.0.85.102"
+	const zerada = "10.0.85.68"
 
-	if err := db.SaveHostQuota(HostQuota{MAC: comCota, LimitGB: 5, Period: HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
+	if err := db.SaveHostQuota(HostQuota{IP: comCota, LimitGB: 5, Period: HostPeriodMonthly, CycleDay: 1, AlertPct: 80, AlertEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	// Linha preservada pelo Delete: limite zero. Ela existe para guardar o
 	// ciclo, e não para imunizar o histórico contra a retenção.
-	if err := db.SaveHostQuota(HostQuota{MAC: zerada, LimitGB: 0, Period: HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
+	if err := db.SaveHostQuota(HostQuota{IP: zerada, LimitGB: 0, Period: HostPeriodMonthly, CycleDay: 1, AlertPct: 80}); err != nil {
 		t.Fatal(err)
 	}
 	for _, m := range []string{comCota, transitorio, zerada} {

@@ -13,18 +13,18 @@ const recente = new Date(AGORA - 60_000).toISOString();
 const antigo = new Date(AGORA - 3 * 3600_000).toISOString();
 
 const HOSTS: HostLike[] = [
-  { mac: 'aa:00:01', ip: '192.168.3.47', hostname: 'DESKTOP-9F2C', alias: 'notebook-maria', last_seen: recente },
-  { mac: 'aa:00:02', ip: '192.168.3.51', hostname: 'tv-sala', alias: '', last_seen: antigo },
-  { mac: 'aa:00:03', ip: '', hostname: 'sem-ip', alias: '', last_seen: recente },
-  { mac: 'aa:00:04', ip: '192.168.3.99', hostname: '', alias: '', last_seen: '' },
+  { ip: '192.168.3.47', hostname: 'instance-20260801-1200', alias: 'notebook-maria', last_seen: recente },
+  { ip: '192.168.3.51', hostname: 'tv-sala', alias: '', last_seen: antigo },
+  { ip: '', hostname: 'sem-ip', alias: '', last_seen: recente },
+  { ip: '192.168.3.99', hostname: '', alias: '', last_seen: '' },
 ];
 
 {
   // O apelido ganha do hostname: foi o ADMIN quem o escreveu, justamente para
-  // reconhecer o aparelho. "DESKTOP-9F2C" não ajuda ninguém.
+  // reconhecer a máquina. "instance-20260801-1200" não ajuda ninguém.
   eq(hostName(HOSTS[0]), 'notebook-maria', 'apelido tem precedência');
   eq(hostName(HOSTS[1]), 'tv-sala', 'sem apelido, usa o hostname');
-  eq(hostName(HOSTS[3]), 'aa:00:04', 'sem os dois, o MAC — melhor que linha em branco');
+  eq(hostName(HOSTS[3]), '192.168.3.99', 'sem os dois, o IP — melhor que linha em branco');
 }
 
 {

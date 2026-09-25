@@ -24,8 +24,8 @@
 //     por software, e não por um admin, sobrevive a reinstalação e volta
 //     sozinho — e ninguém sabe de onde ele veio.
 //
-//  3. A CHAVE ERRADA BLOQUEIA O VIZINHO. O bloqueio vale por MAC e por IP; um
-//     aparelho que herdou o endereço de outro leva o corte do outro.
+//  3. A CHAVE ERRADA BLOQUEIA O VIZINHO. O bloqueio vale por IP; uma máquina
+//     que herdou o endereço de outra leva o corte da outra.
 //
 //  4. É EXATAMENTE A CLASSE DE MUDANÇA QUE internal/nftables/survival.go
 //     descreve: a que quebra DIAS depois, sem relação visível com a mudança.
@@ -107,10 +107,9 @@ const (
 	// retencaoSemCota é por quanto tempo o consumo de um aparelho SEM cota
 	// declarada fica no banco.
 	//
-	// Existe porque host_usage não tem outra poda: uma linha cujo MAC não está
-	// no inventário nem em host_quota é invisível na tela e imortal no banco.
-	// Telefone moderno rotaciona o endereço físico a cada associação; com ciclo
-	// diário, cada um deixa uma linha por dia, para sempre.
+	// Existe porque host_usage não tem outra poda: uma linha de máquina sem
+	// cota é invisível na tela e imortal no banco. Com ciclo diário, cada VM
+	// efêmera que passou deixa uma linha por dia, para sempre.
 	//
 	// Quem TEM cota declarada não é podado: aquele histórico é o que responde
 	// "o teto está no lugar certo?".
@@ -127,7 +126,7 @@ const (
 // para o serviço ser testável sem banco de alerta — mesmo padrão do resto do produto.
 //
 // O último parâmetro se chama linkID no alerts.Service por herança; o que ele
-// carrega é "sobre O QUE é este alerta". Aqui é o MAC do aparelho, que é a
+// carrega é "sobre O QUE é este alerta". Aqui é o IP da máquina, que é a
 // identidade certa: dois aparelhos estourando a cota ao mesmo tempo precisam
 // de dois alertas, e resolver um não pode fechar o do outro.
 type Alerter interface {
@@ -137,14 +136,12 @@ type Alerter interface {
 
 // Status é o que o painel mostra por aparelho.
 type Status struct {
-	MAC string `json:"mac"`
-	// Name é o apelido do aparelho, com queda para nome de host, endereço e
-	// MAC. É o que vai na tela e no texto do alerta: um alerta que diz
-	// "aa:bb:cc:dd:ee:ff estourou a cota" obriga o admin a ir procurar de
-	// quem é aquele aparelho, que é justamente o trabalho que o apelido existe
-	// para poupar.
+	IP string `json:"ip"`
+	// Name é o apelido da máquina, com queda para o nome da instância e o IP.
+	// É o que vai na tela e no texto do alerta: um alerta que diz "10.0.1.20
+	// estourou a cota" obriga o admin a ir procurar de quem é aquele IP, que
+	// é justamente o trabalho que o apelido existe para poupar.
 	Name         string  `json:"name"`
-	IP           string  `json:"ip"`
 	Configured   bool    `json:"configured"`
 	AlertEnabled bool    `json:"alert_enabled"`
 	LimitGB      float64 `json:"limit_gb"`
@@ -163,10 +160,9 @@ type Status struct {
 	// ver é uma cota que ninguém consegue remover.
 	//
 	// PRESENT NÃO É "O APARELHO AINDA EXISTE", e é importante não ler
-	// assim: host_metadata guarda a linha para sempre depois do primeiro
-	// avistamento, então o MAC de privacidade que um celular rotacionou ontem
-	// continua "presente" hoje. Quem responde a essa pergunta são os dois
-	// campos abaixo.
+	// assim: host_info guarda a linha para sempre depois do primeiro
+	// avistamento, então a VM apagada ontem continua "presente" hoje. Quem
+	// responde a essa pergunta são os dois campos abaixo.
 	Present bool `json:"present"`
 	// LastSeen é quando o inventário viu o aparelho pela última vez, e
 	// MeasuredAt é quando a MEDIÇÃO deste ciclo foi atualizada pela última vez
@@ -235,15 +231,15 @@ func NewService(db *storage.DB, alertSvc Alerter) *Service {
 // cota contariam coisas diferentes.
 //
 // O ts não é decoração: ver o cabeçalho deste arquivo, seção O TEMPO.
-func (s *Service) AddHostBytes(mac string, ts int64, rx, tx uint64) {
-	if mac == "" || (rx == 0 && tx == 0) {
+func (s *Service) AddHostBytes(ip string, ts int64, rx, tx uint64) {
+	if ip == "" || (rx == 0 && tx == 0) {
 		return
 	}
 	s.mu.Lock()
-	porInstante := s.pending[mac]
+	porInstante := s.pending[ip]
 	if porInstante == nil {
 		porInstante = map[int64]delta{}
-		s.pending[mac] = porInstante
+		s.pending[ip] = porInstante
 	}
 	d := porInstante[ts]
 	d.rx += rx
@@ -265,11 +261,11 @@ func (s *Service) devolver(pendente map[string]map[int64]delta) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for mac, porInstante := range pendente {
-		alvo := s.pending[mac]
+	for ip, porInstante := range pendente {
+		alvo := s.pending[ip]
 		if alvo == nil {
 			alvo = map[int64]delta{}
-			s.pending[mac] = alvo
+			s.pending[ip] = alvo
 		}
 		for ts, d := range porInstante {
 			j := alvo[ts]
@@ -322,22 +318,22 @@ func (s *Service) Flush() {
 	// está usando a rede, e não ao tamanho do inventário. E não é só quem tem
 	// cota, também de propósito: medir quem não declarou nada é o que permite
 	// ao admin descobrir ONDE declarar — a mesma escolha do link.
-	macs := make([]string, 0, len(pendente)+len(quotas))
+	ips := make([]string, 0, len(pendente)+len(quotas))
 	visto := map[string]bool{}
-	for mac := range pendente {
-		macs = append(macs, mac)
-		visto[mac] = true
+	for ip := range pendente {
+		ips = append(ips, ip)
+		visto[ip] = true
 	}
-	for mac := range quotas {
-		if !visto[mac] {
-			macs = append(macs, mac)
+	for ip := range quotas {
+		if !visto[ip] {
+			ips = append(ips, ip)
 		}
 	}
-	sort.Strings(macs) // ordem estável: o log e os testes agradecem
+	sort.Strings(ips) // ordem estável: o log e os testes agradecem
 
 	now := s.nowFn()
 	loc := now.Location()
-	atual := make(map[string]ciclo, len(macs))
+	atual := make(map[string]ciclo, len(ips))
 	naoGravado := map[string]map[int64]delta{}
 
 	// ─── PASSO 1: gravar ─────────────────────────────────────────────────────
@@ -347,33 +343,33 @@ func (s *Service) Flush() {
 	// duas coisas estivessem no mesmo laço, o lote seria carregado no primeiro
 	// aparelho que precisasse dele e sairia desatualizado para todos os que
 	// gravassem depois.
-	for _, mac := range macs {
-		q := quotas[mac]
+	for _, ip := range ips {
+		q := quotas[ip]
 		period, dia := periodoDe(q), diaDe(q)
-		atual[mac] = ciclo{period, CycleStart(now, period, dia).Unix()}
+		atual[ip] = ciclo{period, CycleStart(now, period, dia).Unix()}
 
-		for ts, d := range pendente[mac] {
+		for ts, d := range pendente[ip] {
 			// O CICLO SAI DO INSTANTE DA MEDIÇÃO, e não do instante do flush.
 			// Ver o cabeçalho deste arquivo, seção O TEMPO.
 			inicio := CycleStart(time.Unix(ts, 0).In(loc), period, dia).Unix()
-			if err := s.db.AddHostUsage(mac, period, inicio, d.rx, d.tx); err != nil {
-				slog.Warn("cota por aparelho: não consegui acumular o consumo; volta para a fila", "mac", mac, "err", err)
-				if naoGravado[mac] == nil {
-					naoGravado[mac] = map[int64]delta{}
+			if err := s.db.AddHostUsage(ip, period, inicio, d.rx, d.tx); err != nil {
+				slog.Warn("cota por aparelho: não consegui acumular o consumo; volta para a fila", "ip", ip, "err", err)
+				if naoGravado[ip] == nil {
+					naoGravado[ip] = map[int64]delta{}
 				}
-				naoGravado[mac][ts] = d
+				naoGravado[ip][ts] = d
 			}
 		}
 	}
 	s.devolver(naoGravado)
 
 	// ─── PASSO 2: virada de ciclo e avaliação ────────────────────────────────
-	novoLastCycle := make(map[string]ciclo, len(macs))
+	novoLastCycle := make(map[string]ciclo, len(ips))
 	usoPorCiclo := map[ciclo]map[string]storage.HostUsage{}
 	var nomes map[string]string
 
-	for _, mac := range macs {
-		c := atual[mac]
+	for _, ip := range ips {
+		c := atual[ip]
 
 		// Virada de ciclo: o consumo volta a zero, então os avisos do ciclo
 		// anterior deixam de ser verdade. Resolvê-los é o que permite o ciclo
@@ -383,20 +379,20 @@ func (s *Service) Flush() {
 		// COM CICLO DIÁRIO ISSO É A DIFERENÇA ENTRE A FEATURE FUNCIONAR E NÃO
 		// FUNCIONAR. No mensal, um alerta preso mataria o aviso a partir do
 		// segundo MÊS; no diário, a partir do segundo DIA.
-		prev, conhecido := s.lastCycle[mac]
+		prev, conhecido := s.lastCycle[ip]
 		if !conhecido {
-			prev, conhecido = s.cicloNoDisco(mac)
+			prev, conhecido = s.cicloNoDisco(ip)
 		}
 		if conhecido && prev != c && s.alertSvc != nil {
-			s.alertSvc.AutoResolve(TypeQuotaWarning, mac)
-			s.alertSvc.AutoResolve(TypeQuotaExceeded, mac)
+			s.alertSvc.AutoResolve(TypeQuotaWarning, ip)
+			s.alertSvc.AutoResolve(TypeQuotaExceeded, ip)
 		}
 		// SEMPRE, inclusive quando a gravação do passo 1 falhou para este
 		// aparelho: se ele saísse do mapa, o flush seguinte o veria como
 		// desconhecido e a virada de ciclo dele não resolveria alerta nenhum.
-		novoLastCycle[mac] = c
+		novoLastCycle[ip] = c
 
-		q, temCota := quotas[mac]
+		q, temCota := quotas[ip]
 		if !temCota || !q.AlertEnabled || q.LimitGB <= 0 {
 			continue
 		}
@@ -404,7 +400,7 @@ func (s *Service) Flush() {
 		if !carregado {
 			uso, err = s.db.GetHostUsageAll(c.period, c.start)
 			if err != nil {
-				slog.Warn("cota por aparelho: não consegui ler o consumo do ciclo", "mac", mac, "err", err)
+				slog.Warn("cota por aparelho: não consegui ler o consumo do ciclo", "ip", ip, "err", err)
 				continue
 			}
 			usoPorCiclo[c] = uso
@@ -412,17 +408,16 @@ func (s *Service) Flush() {
 		if nomes == nil {
 			nomes = s.nomes()
 		}
-		nome := nomes[mac]
+		nome := nomes[ip]
 		if nome == "" {
-			nome = mac
+			nome = ip
 		}
-		u := uso[mac]
-		s.evaluate(nome, mac, q, u.RxBytes+u.TxBytes)
+		u := uso[ip]
+		s.evaluate(nome, ip, q, u.RxBytes+u.TxBytes)
 	}
 
 	// lastCycle guarda só quem foi processado nesta rodada. Sem a poda, o mapa
-	// cresceria com todo MAC que já passou pela rede — inclusive os aleatórios
-	// que telefone moderno gera a cada associação.
+	// cresceria com toda máquina que já passou por aqui.
 	s.lastCycle = novoLastCycle
 	s.podar(now)
 }
@@ -440,8 +435,8 @@ func (s *Service) Flush() {
 //
 // No mensal, a chance de um reinício cair em cima da virada é pequena. No
 // DIÁRIO, é rotina.
-func (s *Service) cicloNoDisco(mac string) (ciclo, bool) {
-	hist, err := s.db.GetHostUsageHistory(mac, 1)
+func (s *Service) cicloNoDisco(ip string) (ciclo, bool) {
+	hist, err := s.db.GetHostUsageHistory(ip, 1)
 	if err != nil || len(hist) == 0 {
 		return ciclo{}, false
 	}
@@ -482,37 +477,35 @@ func diaDe(q storage.HostQuota) int {
 	return q.CycleDay
 }
 
-// nomes devolve o nome legível de cada aparelho conhecido, indexado por MAC.
+// nomes devolve o nome legível de cada máquina conhecida, indexado por IP.
 //
-// Lê host_metadata, e não o inventário vivo (hosts.Service.List), porque o
-// inventário vivo executa "ip neigh" e este código roda num ticker de um
-// minuto: acoplar o acumulador a um comando externo faria a contagem depender
-// de algo que pode demorar ou falhar. O apelido está no banco de qualquer
-// forma — é o próprio hosts.Service quem o grava.
+// Lê host_info, e não o inventário vivo (hosts.Service.List), porque o
+// inventário vivo lê o nftables e este código roda num ticker de um minuto:
+// acoplar o acumulador a um comando externo faria a contagem depender de algo
+// que pode demorar ou falhar. O apelido está no banco de qualquer forma — é o
+// próprio hosts.Service quem o grava.
 func (s *Service) nomes() map[string]string {
-	metaList, err := s.db.ListHostMetadata()
+	metaList, err := s.db.ListHostInfo()
 	if err != nil {
-		slog.Warn("cota por aparelho: não consegui ler o inventário; o alerta vai sair com o endereço físico", "err", err)
+		slog.Warn("cota por aparelho: não consegui ler o inventário; o alerta vai sair com o IP", "err", err)
 		return map[string]string{}
 	}
 	out := make(map[string]string, len(metaList))
 	for _, m := range metaList {
-		out[m.MAC] = NomeDe(m)
+		out[m.IP] = NomeDe(m)
 	}
 	return out
 }
 
 // NomeDe escolhe como o aparelho é chamado na tela e no alerta.
-func NomeDe(m storage.HostMetadata) string {
+func NomeDe(m storage.HostInfo) string {
 	switch {
 	case m.Alias != "":
 		return m.Alias
 	case m.Hostname != "":
 		return m.Hostname
-	case m.IP != "":
-		return m.IP
 	default:
-		return m.MAC
+		return m.IP
 	}
 }
 
@@ -525,7 +518,7 @@ func NomeDe(m storage.HostMetadata) string {
 // 500 MB — que é exatamente o tamanho que se declara para uma câmera ou um
 // tablet — sairia como "0.0 GB de 0 GB", o defeito que a metade de link
 // deste mesmo recurso já pagou numa validação em máquina real.
-func (s *Service) evaluate(nome, mac string, q storage.HostQuota, used uint64) {
+func (s *Service) evaluate(nome, ip string, q storage.HostQuota, used uint64) {
 	if s.alertSvc == nil {
 		return
 	}
@@ -541,19 +534,19 @@ func (s *Service) evaluate(nome, mac string, q storage.HostQuota, used uint64) {
 		// O aviso de "chegando lá" deixa de ser verdade quando a cota
 		// acaba: mantê-lo aberto ao lado do crítico põe dois alertas do mesmo
 		// aparelho na tela dizendo coisas diferentes sobre o mesmo fato.
-		s.alertSvc.AutoResolve(TypeQuotaWarning, mac)
+		s.alertSvc.AutoResolve(TypeQuotaWarning, ip)
 		_ = s.alertSvc.Create(TypeQuotaExceeded, alerts.SeverityCritical,
 			fmt.Sprintf("Cota estourada: %s", nome),
 			fmt.Sprintf("O aparelho %s já consumiu %s dos %s %s (%.0f%%). "+
 				"O LinkGuard NÃO corta nem limita a banda dele — este alerta é um aviso.",
 				nome, humanBytes(float64(used)), humanGB(q.LimitGB), janela, pct),
-			mac)
+			ip)
 	case pct >= float64(q.AlertPct):
 		_ = s.alertSvc.Create(TypeQuotaWarning, alerts.SeverityWarning,
 			fmt.Sprintf("Cota em %.0f%%: %s", pct, nome),
 			fmt.Sprintf("O aparelho %s consumiu %s dos %s %s.",
 				nome, humanBytes(float64(used)), humanGB(q.LimitGB), janela),
-			mac)
+			ip)
 	}
 }
 
@@ -578,22 +571,22 @@ func (s *Service) Snapshot() ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	metaList, err := s.db.ListHostMetadata()
+	metaList, err := s.db.ListHostInfo()
 	if err != nil {
 		return nil, err
 	}
-	meta := make(map[string]storage.HostMetadata, len(metaList))
+	meta := make(map[string]storage.HostInfo, len(metaList))
 	for _, m := range metaList {
-		meta[m.MAC] = m
+		meta[m.IP] = m
 	}
 
-	macs := make([]string, 0, len(meta)+len(quotas))
-	for mac := range meta {
-		macs = append(macs, mac)
+	ips := make([]string, 0, len(meta)+len(quotas))
+	for ip := range meta {
+		ips = append(ips, ip)
 	}
-	for mac := range quotas {
-		if _, ok := meta[mac]; !ok {
-			macs = append(macs, mac)
+	for ip := range quotas {
+		if _, ok := meta[ip]; !ok {
+			ips = append(ips, ip)
 		}
 	}
 
@@ -603,9 +596,9 @@ func (s *Service) Snapshot() ([]Status, error) {
 	// inteira, em vez de uma por linha.
 	usoPorCiclo := map[ciclo]map[string]storage.HostUsage{}
 
-	out := make([]Status, 0, len(macs))
-	for _, mac := range macs {
-		q, hasQuota := quotas[mac]
+	out := make([]Status, 0, len(ips))
+	for _, ip := range ips {
+		q, hasQuota := quotas[ip]
 		period, cycleDay := periodoDe(q), diaDe(q)
 		start := CycleStart(now, period, cycleDay)
 		c := ciclo{period, start.Unix()}
@@ -617,10 +610,10 @@ func (s *Service) Snapshot() ([]Status, error) {
 			}
 			usoPorCiclo[c] = uso
 		}
-		u := uso[mac]
-		m, present := meta[mac]
+		u := uso[ip]
+		m, present := meta[ip]
 
-		nome := mac
+		nome := ip
 		var lastSeen int64
 		if present {
 			nome = NomeDe(m)
@@ -632,9 +625,8 @@ func (s *Service) Snapshot() ([]Status, error) {
 		// banco": a linha sobrevive à remoção da cota justamente para
 		// preservar o ciclo (ver Delete), com limite zero.
 		st := Status{
-			MAC:          mac,
+			IP:           ip,
 			Name:         nome,
-			IP:           m.IP,
 			Configured:   hasQuota && q.LimitGB > 0,
 			AlertEnabled: hasQuota && q.AlertEnabled && q.LimitGB > 0,
 			LimitGB:      q.LimitGB,
@@ -669,15 +661,15 @@ func (s *Service) Snapshot() ([]Status, error) {
 
 // Save valida e grava a cota de um aparelho.
 func (s *Service) Save(q storage.HostQuota) error {
-	// O endereço físico é normalizado para a ÚNICA grafia que o resto do
-	// produto usa. Sem isso, "AA-BB-CC-DD-EE-FF" viraria uma segunda linha
-	// para o mesmo aparelho: a cota ficaria numa chave e o consumo medido
-	// noutra, e a tela mostraria uma cota que nunca enche.
-	mac := validate.MACCanonico(q.MAC)
-	if mac == "" {
-		return fmt.Errorf("endereço físico inválido")
+	// O IP é normalizado para a ÚNICA grafia que o resto do produto usa. Sem
+	// isso, "010.0.1.20" viraria uma segunda linha para a mesma máquina: a
+	// cota ficaria numa chave e o consumo medido noutra, e a tela mostraria
+	// uma cota que nunca enche.
+	ip := validate.IPv4Canonico(q.IP)
+	if ip == "" {
+		return fmt.Errorf("IP inválido: use o IPv4 privado da máquina")
 	}
-	q.MAC = mac
+	q.IP = ip
 	if q.LimitGB < 0 {
 		return fmt.Errorf("cota inválida")
 	}
@@ -715,7 +707,7 @@ func (s *Service) Save(q storage.HostQuota) error {
 	if err != nil {
 		return err
 	}
-	if antiga, existia := quotas[mac]; existia {
+	if antiga, existia := quotas[ip]; existia {
 		antigoPeriodo, antigoDia := periodoDe(antiga), diaDe(antiga)
 		if antigoPeriodo != q.Period || antigoDia != q.CycleDay {
 			// TROCAR O PERÍODO OU O DIA DE FECHAMENTO MOVE A CHAVE DO CICLO.
@@ -734,12 +726,12 @@ func (s *Service) Save(q storage.HostQuota) error {
 			now := s.nowFn()
 			de := CycleStart(now, antigoPeriodo, antigoDia).Unix()
 			para := CycleStart(now, q.Period, q.CycleDay).Unix()
-			if err := s.db.MoveHostUsage(mac, antigoPeriodo, de, q.Period, para); err != nil {
+			if err := s.db.MoveHostUsage(ip, antigoPeriodo, de, q.Period, para); err != nil {
 				return err
 			}
 			if s.alertSvc != nil {
-				s.alertSvc.AutoResolve(TypeQuotaWarning, mac)
-				s.alertSvc.AutoResolve(TypeQuotaExceeded, mac)
+				s.alertSvc.AutoResolve(TypeQuotaWarning, ip)
+				s.alertSvc.AutoResolve(TypeQuotaExceeded, ip)
 			}
 		}
 	}
@@ -760,20 +752,20 @@ func (s *Service) Save(q storage.HostQuota) error {
 // maior: com período diário, apagar a linha move o ciclo de "hoje" para
 // "desde o dia 1", e o número exibido daria um salto para cima, não para
 // baixo.
-func (s *Service) Delete(mac string) error {
-	mac = validate.MACCanonico(mac)
-	if mac == "" {
-		return fmt.Errorf("endereço físico inválido")
+func (s *Service) Delete(ip string) error {
+	ip = validate.IPv4Canonico(ip)
+	if ip == "" {
+		return fmt.Errorf("IP inválido")
 	}
 	if s.alertSvc != nil {
-		s.alertSvc.AutoResolve(TypeQuotaWarning, mac)
-		s.alertSvc.AutoResolve(TypeQuotaExceeded, mac)
+		s.alertSvc.AutoResolve(TypeQuotaWarning, ip)
+		s.alertSvc.AutoResolve(TypeQuotaExceeded, ip)
 	}
 	quotas, err := s.db.GetHostQuotas()
 	if err != nil {
 		return err
 	}
-	q, ok := quotas[mac]
+	q, ok := quotas[ip]
 	if !ok {
 		return nil // nunca teve cota: nada a remover
 	}
@@ -783,12 +775,12 @@ func (s *Service) Delete(mac string) error {
 }
 
 // History devolve os ciclos anteriores de um aparelho.
-func (s *Service) History(mac string, limit int) ([]storage.HostUsage, error) {
-	mac = validate.MACCanonico(mac)
-	if mac == "" {
-		return nil, fmt.Errorf("endereço físico inválido")
+func (s *Service) History(ip string, limit int) ([]storage.HostUsage, error) {
+	ip = validate.IPv4Canonico(ip)
+	if ip == "" {
+		return nil, fmt.Errorf("IP inválido")
 	}
-	return s.db.GetHostUsageHistory(mac, limit)
+	return s.db.GetHostUsageHistory(ip, limit)
 }
 
 // ─── ciclo ───────────────────────────────────────────────────────────────────

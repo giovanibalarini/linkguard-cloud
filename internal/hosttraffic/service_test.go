@@ -17,19 +17,15 @@ func TestRankHostsOrdenaPorConsumoTotal(t *testing.T) {
 		"192.168.3.50": {RxBytes: 5000, TxBytes: 1000},
 		"192.168.3.51": {RxBytes: 100, TxBytes: 50},
 		"192.168.3.52": {RxBytes: 9000, TxBytes: 0},
-		"8.8.8.8":      {RxBytes: 999999, TxBytes: 999999}, // fora da LAN
+		"10.0.2.15":    {RxBytes: 7000, TxBytes: 0}, // outra sub-rede da VCN
+		"lixo":         {RxBytes: 999999},
 	}
-	got := rankHosts(contadores, "192.168.3.0/24")
-	if len(got) != 3 {
-		t.Fatalf("queria 3 hosts da LAN, veio %d: %+v", len(got), got)
+	got := rankHosts(contadores)
+	if len(got) != 4 {
+		t.Fatalf("queria as 4 máquinas contadas, veio %d: %+v", len(got), got)
 	}
-	if got[0].IP != "192.168.3.52" || got[1].IP != "192.168.3.50" {
+	if got[0].IP != "192.168.3.52" || got[1].IP != "10.0.2.15" || got[2].IP != "192.168.3.50" {
 		t.Errorf("ordem por consumo total errada: %+v", got)
-	}
-	for _, h := range got {
-		if h.IP == "8.8.8.8" {
-			t.Error("endereço fora da faixa da LAN entrou no ranking")
-		}
 	}
 }
 
@@ -41,9 +37,9 @@ func TestRankHostsDesempateEhEstavel(t *testing.T) {
 		"192.168.3.11": {RxBytes: 100},
 		"192.168.3.12": {RxBytes: 100},
 	}
-	primeira := rankHosts(contadores, "192.168.3.0/24")
+	primeira := rankHosts(contadores)
 	for i := 0; i < 20; i++ {
-		outra := rankHosts(contadores, "192.168.3.0/24")
+		outra := rankHosts(contadores)
 		for j := range primeira {
 			if primeira[j].IP != outra[j].IP {
 				t.Fatalf("ordem instável entre leituras: %v vs %v", primeira, outra)
@@ -52,10 +48,10 @@ func TestRankHostsDesempateEhEstavel(t *testing.T) {
 	}
 }
 
-func TestRankHostsFaixaInvalidaNaoDevolveNil(t *testing.T) {
+func TestRankHostsVazioNaoDevolveNil(t *testing.T) {
 	// nil vira null no JSON e a tela quebra iterando.
-	if got := rankHosts(map[string]nftables.HostCounter{"1.2.3.4": {}}, "faixa-torta"); got == nil {
-		t.Error("faixa inválida devolveu nil em vez de lista vazia")
+	if got := rankHosts(map[string]nftables.HostCounter{"lixo": {}}); got == nil {
+		t.Error("nenhuma máquina válida devolveu nil em vez de lista vazia")
 	}
 }
 
@@ -72,7 +68,7 @@ func TestTopTalkersSemFonteDizQueNaoSabe(t *testing.T) {
 	// Lista vazia seria indistinguível de "ninguém trafegou" — o exato engano
 	// que a #112 existe para acabar.
 	s := NewService(firewall.NewDryRunExecutor())
-	if _, err := s.TopTalkers(context.Background(), "192.168.3.0/24"); err == nil {
+	if _, err := s.TopTalkers(context.Background()); err == nil {
 		t.Error("sem fonte de contadores, TopTalkers devia devolver erro")
 	}
 }
@@ -80,7 +76,7 @@ func TestTopTalkersSemFonteDizQueNaoSabe(t *testing.T) {
 func TestTopTalkersPropagaErroDaFonte(t *testing.T) {
 	s := NewService(firewall.NewDryRunExecutor())
 	s.SetCounterSource(&contadorFalso{err: errors.New("nft fora do ar")})
-	if _, err := s.TopTalkers(context.Background(), "192.168.3.0/24"); err == nil {
+	if _, err := s.TopTalkers(context.Background()); err == nil {
 		t.Error("erro do nft foi engolido")
 	}
 }
@@ -90,7 +86,7 @@ func TestTopTalkersUsaAFonteDeContadores(t *testing.T) {
 	s.SetCounterSource(&contadorFalso{dados: map[string]nftables.HostCounter{
 		"192.168.3.50": {RxBytes: 10, TxBytes: 20},
 	}})
-	got, err := s.TopTalkers(context.Background(), "192.168.3.0/24")
+	got, err := s.TopTalkers(context.Background())
 	if err != nil {
 		t.Fatalf("TopTalkers: %v", err)
 	}

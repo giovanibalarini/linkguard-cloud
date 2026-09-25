@@ -26,8 +26,8 @@ nav.vpn:
   pt: "VPN"
   en: "VPN"
 nav.hosts:
-  pt: "Hosts"
-  en: "Hosts"
+  pt: "Máquinas"
+  en: "Machines"
 nav.dns:
   pt: "DNS"
   en: "DNS"
@@ -681,23 +681,38 @@ fw.sysmembers.driftTitle:
   pt: "O bloqueio está ligado aqui, mas o firewall não confirma as linhas dele."
   en: "The block is enabled here, but the firewall does not confirm its lines."
 fw.sysmembers.noHostMatch:
-  pt: "sem host correspondente no inventário"
-  en: "no matching host in the inventory"
-fw.sysmembers.macBlockTitle:
-  pt: "O bloqueio de host é feito pelo MAC, no inventário. Este IP está no set mas não casa com nenhum host conhecido."
-  en: "Host blocking is done by MAC, in the inventory. This IP is in the set but does not match any known host."
+  pt: "sem nome no inventário"
+  en: "not named in the inventory"
 fw.sysmembers.cidrPlaceholder:
   pt: "CIDR ou IP (ex.: 163.116.128.0/17)"
   en: "CIDR or IP (e.g. 163.116.128.0/17)"
 fw.sysmembers.hosts:
-  pt: "Hosts"
-  en: "Hosts"
+  pt: "Máquinas"
+  en: "Machines"
 fw.sysmembers.blockHost:
-  pt: "Bloquear host"
-  en: "Block host"
+  pt: "Bloquear máquina"
+  en: "Block machine"
+fw.sysmembers.unblockHost:
+  pt: "Desbloquear máquina"
+  en: "Unblock machine"
+fw.sysmembers.unblockConfirm:
+  pt: "Desbloquear a máquina {nome}?"
+  en: "Unblock machine {nome}?"
+fw.sysmembers.blockWhere:
+  pt: "Máquinas são bloqueadas pela página"
+  en: "Machines are blocked from the page"
+fw.sysmembers.noHostAvailable:
+  pt: "Nenhuma máquina disponível."
+  en: "No machine available."
+fw.sysmembers.noHostForFilter:
+  pt: "Nenhuma máquina para este filtro."
+  en: "No machine for this filter."
+fw.sysmembers.pickerNote:
+  pt: "O IP da máquina entra no set @blocked_hosts e fica marcado como bloqueado no inventário."
+  en: "The machine's IP goes into the @blocked_hosts set and is marked as blocked in the inventory."
 fw.sysmembers.filterPlaceholder:
-  pt: "Filtrar por IP, MAC, apelido..."
-  en: "Filter by IP, MAC, nickname..."
+  pt: "Filtrar por IP, nome, apelido..."
+  en: "Filter by IP, name, alias..."
 common.close:
   pt: "Fechar"
   en: "Close"

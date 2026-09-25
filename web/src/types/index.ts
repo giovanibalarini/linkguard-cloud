@@ -527,11 +527,18 @@ export interface DNSData { config: NetsvcConfig; blocklist: string[]; last_apply
 
 export interface HostTraffic { ip: string; rx_bytes: number; tx_bytes: number; }
 
+/**
+ * Uma máquina do inventário, identificada pelo IP.
+ *
+ * `vcn` é máquina da conta (de qualquer sub-rede); `vpn` é pessoa conectada
+ * pelo túnel. `hostname` é o nome da instância no DNS reverso da VCN, ou o
+ * usuário dono do peer da VPN. `online` = trafegou nos últimos 10 minutos.
+ */
+export type HostKind = 'vcn' | 'vpn';
+
 export interface NetHost {
   ip: string;
-  mac: string;
-  interface: string;
-  state: string;
+  kind: HostKind;
   online: boolean;
   hostname?: string;
   alias?: string;
@@ -780,7 +787,7 @@ export interface BlockLogResponse {
   entries: BlockLogEntry[];
 }
 
-// ─── Cota por aparelho (issue #126) ──────────────────────────────────────────
+// ─── Cota por máquina (issue #126) ──────────────────────────────────────────
 // limit_gb e o consumo são em GB DECIMAIS (10^9). O consumo é medido dos
 // contadores por endereço do nftables, que são IPv4 — a tela diz isso.
 //
@@ -790,14 +797,14 @@ export interface BlockLogResponse {
 export type HostQuotaPeriod = 'monthly' | 'daily';
 
 export interface HostQuotaStatus {
-  mac: string;
-  /** Apelido, com queda para nome de host, IP e MAC. */
-  name: string;
+  /** A máquina — é a chave da cota. */
   ip: string;
+  /** Apelido, com queda para o nome da instância e o IP. */
+  name: string;
   configured: boolean;
   /**
    * O AVISO está ligado. Chama-se alert_enabled, e não enabled, de propósito:
-   * "enabled" numa linha de cota por aparelho é a palavra que qualquer
+   * "enabled" numa linha de cota por máquina é a palavra que qualquer
    * leitor entende como "aplicar a cota", e esta feature não aplica nada.
    * Quem o define é o backend, a partir do limite — o PUT não o manda.
    */
@@ -813,23 +820,22 @@ export interface HostQuotaStatus {
   used_bytes: number;
   used_pct: number;
   /**
-   * O aparelho está no inventário.
+   * A máquina está no inventário.
    *
-   * NÃO É "o aparelho ainda existe": host_metadata guarda a linha para
-   * sempre depois do primeiro avistamento, então o endereço que um celular
-   * rotacionou ontem continua presente hoje. Quem responde a essa pergunta são
-   * os dois campos abaixo.
+   * NÃO É "a máquina ainda existe": host_info guarda a linha para sempre
+   * depois do primeiro avistamento, então a instância destruída ontem continua
+   * presente hoje. Quem responde a essa pergunta são os dois campos abaixo.
    */
   present: boolean;
-  /** Quando o inventário viu o aparelho pela última vez (unix, 0 = nunca). */
+  /** Quando o inventário viu a máquina pela última vez (unix, 0 = nunca). */
   last_seen: number;
   /** Quando a medição DESTE ciclo foi atualizada (unix, 0 = nada medido). */
   measured_at: number;
 }
 
-/** Um ciclo fechado do histórico de consumo de um aparelho. */
+/** Um ciclo fechado do histórico de consumo de uma máquina. */
 export interface HostUsageCycle {
-  mac: string;
+  ip: string;
   /** Diário ou mensal: sem isto, um ciclo de um dia e um de um mês se parecem. */
   period: HostQuotaPeriod;
   cycle_start: number;

@@ -146,26 +146,26 @@ svc.dnslog.col.type:
 
 # ─── Hosts da rede ─────────────────────────────────────────────────────────
 svc.hosts.title:
-  pt: "Hosts da rede"
-  en: "Network hosts"
+  pt: "Máquinas"
+  en: "Machines"
 svc.hosts.subtitle:
-  pt: "{online} online de {total} conhecidos"
-  en: "{online} online out of {total} known"
+  pt: "{online} ativas de {total} conhecidas"
+  en: "{online} active out of {total} known"
 svc.hosts.filter.placeholder:
-  pt: "Filtrar por IP, MAC, apelido..."
-  en: "Filter by IP, MAC, alias..."
+  pt: "Filtrar por IP, nome, apelido..."
+  en: "Filter by IP, name, alias..."
 svc.hosts.filter.aria:
-  pt: "Filtrar hosts"
-  en: "Filter hosts"
+  pt: "Filtrar máquinas"
+  en: "Filter machines"
 svc.hosts.notEnforced.one:
-  pt: "O host bloqueado abaixo pode não estar sendo bloqueado de verdade."
-  en: "The blocked host below may not actually be blocked."
+  pt: "A máquina bloqueada abaixo pode não estar sendo bloqueada de verdade."
+  en: "The blocked machine below may not actually be blocked."
 svc.hosts.notEnforced.many:
-  pt: "Os {n} hosts bloqueados abaixo podem não estar sendo bloqueados de verdade."
-  en: "The {n} blocked hosts below may not actually be blocked."
+  pt: "As {n} máquinas bloqueadas abaixo podem não estar sendo bloqueadas de verdade."
+  en: "The {n} blocked machines below may not actually be blocked."
 svc.hosts.offButLive:
-  pt: "O bloqueio de hosts aparece desligado, mas ainda está valendo no firewall."
-  en: "Host blocking looks disabled, but it is still in force in the firewall."
+  pt: "O bloqueio de máquinas aparece desligado, mas ainda está valendo no firewall."
+  en: "Machine blocking looks disabled, but it is still in force in the firewall."
 svc.hosts.unknownEnforcement:
   pt: "Não dá para confirmar aqui se os bloqueios abaixo estão em vigor."
   en: "There is no way to confirm here whether the blocks below are in effect."
@@ -176,8 +176,8 @@ svc.hosts.talkers.title:
   pt: "Top consumidores"
   en: "Top talkers"
 svc.hosts.talkers.hint:
-  pt: "— quem está usando a banda agora (fluxos ativos)"
-  en: "— who is using the bandwidth right now (active flows)"
+  pt: "— o que cada máquina já passou pelo firewall"
+  en: "— what each machine has passed through the firewall"
 svc.hosts.talkers.down:
   pt: "Download"
   en: "Download"
@@ -185,14 +185,14 @@ svc.hosts.talkers.up:
   pt: "Upload"
   en: "Upload"
 svc.hosts.loadError:
-  pt: "Não foi possível carregar os hosts."
-  en: "Could not load the hosts."
+  pt: "Não foi possível carregar as máquinas."
+  en: "Could not load the machines."
 svc.hosts.empty:
-  pt: "Nenhum host encontrado"
-  en: "No hosts found"
+  pt: "Nenhuma máquina ainda. Elas aparecem quando trafegam pelo firewall."
+  en: "No machines yet. They show up once they pass traffic through the firewall."
 svc.hosts.noMatch:
-  pt: "Nenhum host corresponde ao filtro"
-  en: "No host matches the filter"
+  pt: "Nenhuma máquina corresponde ao filtro"
+  en: "No machine matches the filter"
 svc.hosts.alias:
   pt: "Apelido"
   en: "Alias"
@@ -203,76 +203,94 @@ svc.hosts.unblock:
   pt: "Desbloquear"
   en: "Unblock"
 svc.hosts.badge.blocked:
-  pt: "bloqueado"
+  pt: "bloqueada"
   en: "blocked"
 svc.hosts.badge.notEnforced:
-  pt: "bloqueado — não em vigor"
+  pt: "bloqueada — não em vigor"
   en: "blocked — not in effect"
 svc.hosts.col.host:
-  pt: "Host"
-  en: "Host"
+  pt: "Máquina"
+  en: "Machine"
 svc.hosts.col.ip:
   pt: "IP"
   en: "IP"
-svc.hosts.col.mac:
-  pt: "MAC"
-  en: "MAC"
-svc.hosts.col.interface:
-  pt: "Interface"
-  en: "Interface"
+svc.hosts.col.kind:
+  pt: "Origem"
+  en: "Source"
+svc.hosts.kind.vcn:
+  pt: "VCN"
+  en: "VCN"
+svc.hosts.kind.vcnHint:
+  pt: "Máquina da conta na Oracle"
+  en: "Machine in the Oracle account"
+svc.hosts.kind.vpn:
+  pt: "VPN"
+  en: "VPN"
+svc.hosts.kind.vpnHint:
+  pt: "Pessoa conectada pela VPN"
+  en: "Person connected through the VPN"
 svc.hosts.col.state:
   pt: "Estado"
   en: "State"
+svc.hosts.state.active:
+  pt: "ativa"
+  en: "active"
+svc.hosts.state.idle:
+  pt: "sem tráfego"
+  en: "no traffic"
+svc.hosts.state.hint:
+  pt: "Ativa = trafegou pelo firewall nos últimos 10 minutos."
+  en: "Active = passed traffic through the firewall in the last 10 minutes."
 svc.hosts.col.actions:
   pt: "Ações"
   en: "Actions"
 svc.hosts.aliasModal.title:
-  pt: "Apelido do host"
-  en: "Host alias"
+  pt: "Apelido da máquina"
+  en: "Machine alias"
 svc.hosts.aliasModal.placeholder:
-  pt: "Ex.: PC do João, TV da sala"
-  en: "e.g. John's laptop, living room TV"
+  pt: "Ex.: banco de produção, VM do Jenkins"
+  en: "e.g. production database, Jenkins VM"
 svc.hosts.alias.saveError:
   pt: "Erro ao salvar apelido"
   en: "Failed to save the alias"
 svc.hosts.blockModal.title:
-  pt: "Bloquear host"
-  en: "Block host"
+  pt: "Bloquear máquina"
+  en: "Block machine"
 svc.hosts.unblockModal.title:
-  pt: "Desbloquear host"
-  en: "Unblock host"
+  pt: "Desbloquear máquina"
+  en: "Unblock machine"
 svc.hosts.confirm.block:
-  pt: "Deseja bloquear o host"
-  en: "Block host"
+  pt: "Deseja bloquear a máquina"
+  en: "Block machine"
 svc.hosts.confirm.unblock:
-  pt: "Deseja desbloquear o host"
-  en: "Unblock host"
+  pt: "Deseja desbloquear a máquina"
+  en: "Unblock machine"
 svc.hosts.confirm.wontApply:
   pt: "Este bloqueio não vai entrar em vigor agora."
   en: "This block will not take effect now."
 svc.hosts.err.block:
-  pt: "Erro ao bloquear host"
-  en: "Failed to block host"
+  pt: "Erro ao bloquear a máquina"
+  en: "Failed to block the machine"
 svc.hosts.err.unblock:
-  pt: "Erro ao desbloquear host"
-  en: "Failed to unblock host"
+  pt: "Erro ao desbloquear a máquina"
+  en: "Failed to unblock the machine"
 svc.hosts.processing:
   pt: "Processando..."
   en: "Processing..."
 
 # ─── Histórico de consumo por host (issue #113) ───────────────────────────────
 svc.hosts.history.title:
-  pt: "Consumo do aparelho"
-  en: "Device usage"
+  pt: "Consumo da máquina"
+  en: "Machine usage"
 svc.hosts.history.open:
-  pt: "Ver o consumo deste aparelho ao longo do tempo"
-  en: "See this device's usage over time"
+  pt: "Ver o consumo desta máquina ao longo do tempo"
+  en: "See this machine's usage over time"
 svc.hosts.history.empty:
-  pt: "Ainda não há histórico para este aparelho. A série começa quando ele passa a trafegar — o consumo anterior à atualização não existe retroativamente."
-  en: "No history for this device yet. The series starts once it passes traffic — usage from before the update does not exist retroactively."
+  pt: "Ainda não há histórico para esta máquina. A série começa quando ela passa a trafegar pelo firewall."
+  en: "No history for this machine yet. The series starts once it passes traffic through the firewall."
 svc.hosts.history.error:
-  pt: "Não foi possível carregar o histórico deste aparelho."
-  en: "Could not load this device's history."
+  pt: "Não foi possível carregar o histórico desta máquina."
+  en: "Could not load this machine's history."
 
 # ─── Fuga de DNS (issue #124) ─────────────────────────────────────────────────
 # O aviso não é disclaimer jurídico: é o que impede a tela de vender como
@@ -414,11 +432,11 @@ svc.fluxos.config.saveError:
 # sem "só IPv4" o número subconta em silêncio, e sem "avisa, não corta" a tela
 # vende um controle que o produto deliberadamente não tem.
 svc.hosts.quota.title:
-  pt: "Cota por aparelho"
-  en: "Per-device data cap"
+  pt: "Cota por máquina"
+  en: "Per-machine data cap"
 svc.hosts.quota.subtitle:
-  pt: "Quanto cada aparelho já consumiu no ciclo, e aviso antes de passar do teto declarado."
-  en: "How much each device has used in the current cycle, with a warning before it passes the declared cap."
+  pt: "Quanto cada máquina já consumiu no ciclo, e aviso antes de passar do teto declarado."
+  en: "How much each machine has used in the current cycle, with a warning before it passes the declared cap."
 svc.hosts.quota.help.title:
   pt: "De onde vem este número"
   en: "Where this number comes from"
@@ -429,23 +447,23 @@ svc.hosts.quota.helpMeasuredTerm:
   pt: "medido pelo firewall, só IPv4"
   en: "measured by the firewall, IPv4 only"
 svc.hosts.quota.help2:
-  pt: ", a partir dos contadores por endereço do nftables — os mesmos que desenham os gráficos por aparelho. Ela conta TUDO o que o firewall encaminha, inclusive de uma rede interna para outra (uma cópia para o NAS da casa entra na conta), e o tráfego IPv6 NÃO entra. GB aqui é 10⁹."
-  en: ", from the nftables per-address counters — the same ones that draw the per-device charts. It counts EVERYTHING the firewall forwards, including traffic between internal networks (a copy to the local NAS is counted), and IPv6 traffic is NOT counted. GB means 10⁹."
+  pt: ", a partir dos contadores por endereço do nftables — os mesmos que desenham os gráficos por máquina. Ela conta TUDO o que o firewall encaminha, inclusive de uma sub-rede para outra e de ou para a VPN, e o tráfego IPv6 NÃO entra. GB aqui é 10⁹."
+  en: ", from the nftables per-address counters — the same ones that draw the per-machine charts. It counts EVERYTHING the firewall forwards, including traffic between subnets and to or from the VPN, and IPv6 traffic is NOT counted. GB means 10⁹."
 svc.hosts.quota.warnNoEnforcement:
-  pt: "Isto avisa: não corta o aparelho nem limita a banda dele."
-  en: "This warns only: it does not cut the device off, nor limit its bandwidth."
+  pt: "Isto avisa: não corta a máquina nem limita a banda dela."
+  en: "This warns only: it does not cut the machine off, nor limit its bandwidth."
 svc.hosts.quota.warnWhereItStops:
-  pt: "O aviso pára no painel. Para ele sair por Telegram, WhatsApp, e-mail ou webhook, ligue \"deixar os alertas que nomeiam um aparelho saírem da caixa\" em Configurações › Notificações."
-  en: "The warning stops on the dashboard. To let it go out over Telegram, WhatsApp, e-mail or webhook, turn on \"let alerts that name a device leave the box\" under Settings › Notifications."
+  pt: "O aviso pára no painel. Para ele sair por Telegram, WhatsApp, e-mail ou webhook, ligue \"deixar os alertas que nomeiam uma máquina saírem da caixa\" em Configurações › Notificações."
+  en: "The warning stops on the dashboard. To let it go out over Telegram, WhatsApp, e-mail or webhook, turn on \"let alerts that name a machine leave the box\" under Settings › Notifications."
 svc.hosts.quota.noMeasure:
   pt: "sem medição neste ciclo"
   en: "no measurement this cycle"
 svc.hosts.quota.noMeasureHint:
-  pt: "A cota está declarada e nada foi medido para este aparelho no ciclo vigente. Pode ser um aparelho parado — ou um endereço físico que não existe mais na rede (telefones modernos trocam o endereço a cada associação)."
-  en: "The cap is set and nothing has been measured for this device in the current cycle. It may be an idle device — or a physical address that is no longer on the network (modern phones rotate it on every association)."
+  pt: "A cota está declarada e nada foi medido para esta máquina no ciclo vigente. Pode ser uma máquina parada, desligada ou já destruída."
+  en: "The cap is set and nothing has been measured for this machine in the current cycle. It may be idle, stopped or already terminated."
 svc.hosts.quota.periodChangeWarning:
-  pt: "Trocar o período ou o dia de fechamento redefine o ciclo: o consumo já medido é levado para o ciclo novo e os alertas abertos deste aparelho são fechados."
-  en: "Changing the period or the cycle day redefines the cycle: usage measured so far is carried into the new cycle and this device's open alerts are closed."
+  pt: "Trocar o período ou o dia de fechamento redefine o ciclo: o consumo já medido é levado para o ciclo novo e os alertas abertos desta máquina são fechados."
+  en: "Changing the period or the cycle day redefines the cycle: usage measured so far is carried into the new cycle and this machine's open alerts are closed."
 svc.hosts.quota.used:
   pt: "{used} de {limit} · {pct}%"
   en: "{used} of {limit} · {pct}%"
@@ -498,8 +516,8 @@ svc.hosts.quota.cancel:
   pt: "Cancelar"
   en: "Cancel"
 svc.hosts.quota.empty:
-  pt: "Nenhum aparelho medido ainda. A contagem começa quando um aparelho da LAN atravessa o firewall."
-  en: "No device measured yet. Counting starts when a LAN device passes traffic through the firewall."
+  pt: "Nenhuma máquina medida ainda. A contagem começa quando uma máquina atravessa o firewall."
+  en: "No machine measured yet. Counting starts when a machine passes traffic through the firewall."
 svc.hosts.quota.error.save:
   pt: "Não foi possível salvar a cota."
   en: "Could not save the cap."

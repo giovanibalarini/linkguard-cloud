@@ -346,27 +346,6 @@ func TestBloqueioDeHostCasaEnderecoFisico(t *testing.T) {
 	}
 }
 
-func TestEnderecoFisicoTortoNaoChegaAoNft(t *testing.T) {
-	// net.ParseMAC aceita formas que o nft não escreve — traço, ponto e
-	// endereços InfiniBand de 20 bytes. O valor sai do banco e é interpolado no
-	// argv do nft.
-	for _, ruim := range []string{
-		"aa-bb-cc-dd-ee-ff",
-		"aabb.ccdd.eeff",
-		"00:00:00:00:fe:80:00:00:00:00:00:00:02:00:5e:10:00:00:00:01",
-		"aa:bb:cc:dd:ee",
-		"; drop",
-		"",
-	} {
-		if _, err := macParaNft(ruim); err == nil {
-			t.Errorf("endereço físico %q foi aceito", ruim)
-		}
-	}
-	if got, err := macParaNft("AA:BB:CC:DD:EE:FF"); err != nil || got != "aa:bb:cc:dd:ee:ff" {
-		t.Errorf("maiúsculas: got %q, err %v", got, err)
-	}
-}
-
 func TestAPortaDoSSHNaoEhFixaEmVinteEDois(t *testing.T) {
 	// O DEFEITO QUE ESTE TESTE PRENDE. A liberação de gerência existe para a
 	// proteção de entrada não trancar o admin do lado de fora. Ela usava o

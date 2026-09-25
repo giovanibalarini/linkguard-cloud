@@ -2,18 +2,19 @@ package metrics
 
 import (
 	"fmt"
+	"net/netip"
 	"sort"
 	"strings"
 	"sync"
 )
 
-// Métricas por aparelho, para o coletor do cliente (issue #118).
+// Métricas por máquina, para o coletor do cliente (issue #118).
 //
 // A ISSUE PEDE ISTO NO /metrics, E ISSO NÃO PODE SER FEITO. O /metrics está
 // registrado fora do grupo autenticado, e a suíte de validação exige que essa
 // porta responda pela WAN — a proteção de entrada não pode fechá-la, porque
-// fechar a porta do painel é tranca. Publicar endereço físico e consumo por
-// aparelho ali seria um endpoint público de inventário da rede do cliente.
+// fechar a porta do painel é tranca. Publicar IP, nome e consumo por máquina
+// ali seria um endpoint público de inventário da rede do cliente.
 //
 // Não é hipótese: a mesma leitura que apontou isso mostrou que a #115 propõe
 // permissão RBAC nova para VER esse dado na tela. O produto ficaria exigindo
@@ -27,7 +28,7 @@ import (
 // E é opt-in: sem token configurado, a rota não existe. Um recurso que publica
 // inventário não pode nascer ligado porque alguém atualizou o pacote.
 
-// PorHost guarda o último valor conhecido de cada aparelho, para render em
+// PorHost guarda o último valor conhecido de cada máquina, para render em
 // formato de exposição do Prometheus.
 //
 // GUARDA, E NÃO COLETA: quem mede é o amostrador de #113, que já grava a série
@@ -48,30 +49,30 @@ func NovoPorHost() *PorHost {
 	return &PorHost{linhas: map[string]amostraHost{}}
 }
 
-// Registrar guarda a última leitura de um aparelho.
+// Registrar guarda a última leitura de uma máquina, chaveada pelo IP.
 //
-// O rótulo é o que a tela chama de aparelho — apelido, nome de host ou endereço
-// físico. Ele identifica, e é justamente por isso que esta rota é autenticada.
-func (p *PorHost) Registrar(mac, rotulo string, rx, tx float64) {
-	if mac == "" {
+// O rótulo é o que a tela chama de máquina — apelido, nome da instância ou o
+// IP. Ele identifica, e é justamente por isso que esta rota é autenticada.
+func (p *PorHost) Registrar(ip, rotulo string, rx, tx float64) {
+	if ip == "" {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.linhas[mac] = amostraHost{rotulo: rotulo, rx: rx, tx: tx}
+	p.linhas[ip] = amostraHost{rotulo: rotulo, rx: rx, tx: tx}
 }
 
-// Limpar esquece os aparelhos que não estão mais na lista.
+// Limpar esquece as máquinas que não estão mais na lista.
 //
-// Sem isto, um aparelho que saiu da rede continuaria publicando o último valor
+// Sem isto, uma máquina que saiu da rede continuaria publicando o último valor
 // para sempre — e um gráfico no Grafana mostraria uma linha reta perpétua onde
 // deveria haver uma série que acaba. Métrica que não morre é métrica que mente.
 func (p *PorHost) Limpar(vivos map[string]bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for mac := range p.linhas {
-		if !vivos[mac] {
-			delete(p.linhas, mac)
+	for ip := range p.linhas {
+		if !vivos[ip] {
+			delete(p.linhas, ip)
 		}
 	}
 }
@@ -80,31 +81,39 @@ func (p *PorHost) Limpar(vivos map[string]bool) {
 //
 // Escrito à mão, e não com o registry do client_golang, por uma razão de
 // segurança e não de gosto: o registry aberto é varrido por um teste que FALHA
-// se qualquer série com identidade de aparelho estiver nele. Registrar estas
+// se qualquer série com identidade de máquina estiver nele. Registrar estas
 // séries lá para depois filtrar na saída seria confiar num filtro; mantê-las
 // fora do registry torna o vazamento impossível por construção.
 func (p *PorHost) Exposicao() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	macs := make([]string, 0, len(p.linhas))
-	for m := range p.linhas {
-		macs = append(macs, m)
+	ips := make([]string, 0, len(p.linhas))
+	for ip := range p.linhas {
+		ips = append(ips, ip)
 	}
-	sort.Strings(macs)
+	// Por endereço, e não como texto: "10.0.1.9" antes de "10.0.1.10".
+	sort.Slice(ips, func(i, j int) bool {
+		a, errA := netip.ParseAddr(ips[i])
+		b, errB := netip.ParseAddr(ips[j])
+		if errA != nil || errB != nil {
+			return ips[i] < ips[j]
+		}
+		return a.Less(b)
+	})
 
 	var b strings.Builder
-	b.WriteString("# HELP linkguard_host_rx_bytes_per_second Consumo de descida por aparelho da rede local.\n")
+	b.WriteString("# HELP linkguard_host_rx_bytes_per_second Consumo de descida por máquina.\n")
 	b.WriteString("# TYPE linkguard_host_rx_bytes_per_second gauge\n")
-	for _, m := range macs {
-		l := p.linhas[m]
-		fmt.Fprintf(&b, "linkguard_host_rx_bytes_per_second{mac=%q,nome=%q} %g\n", m, escapar(l.rotulo), l.rx)
+	for _, ip := range ips {
+		l := p.linhas[ip]
+		fmt.Fprintf(&b, "linkguard_host_rx_bytes_per_second{ip=%q,nome=%q} %g\n", ip, escapar(l.rotulo), l.rx)
 	}
-	b.WriteString("# HELP linkguard_host_tx_bytes_per_second Consumo de subida por aparelho da rede local.\n")
+	b.WriteString("# HELP linkguard_host_tx_bytes_per_second Consumo de subida por máquina.\n")
 	b.WriteString("# TYPE linkguard_host_tx_bytes_per_second gauge\n")
-	for _, m := range macs {
-		l := p.linhas[m]
-		fmt.Fprintf(&b, "linkguard_host_tx_bytes_per_second{mac=%q,nome=%q} %g\n", m, escapar(l.rotulo), l.tx)
+	for _, ip := range ips {
+		l := p.linhas[ip]
+		fmt.Fprintf(&b, "linkguard_host_tx_bytes_per_second{ip=%q,nome=%q} %g\n", ip, escapar(l.rotulo), l.tx)
 	}
 	return b.String()
 }

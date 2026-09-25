@@ -165,6 +165,22 @@ func IPv4(s string) bool {
 	return err == nil && addr.Is4()
 }
 
+// IPv4Canonico devolve s como IPv4 na grafia canônica, ou "" quando não é um.
+//
+// A grafia IPv4-mapeada ("::ffff:10.0.0.5") vira o IPv4 puro: é a forma que o
+// contador do nft entrega e que o inventário de máquinas grava, e a máquina é
+// identificada pelo IP — duas grafias do mesmo endereço seriam duas máquinas.
+func IPv4Canonico(s string) string {
+	addr, err := netip.ParseAddr(strings.TrimSpace(s))
+	if err != nil {
+		return ""
+	}
+	if addr = addr.Unmap(); !addr.Is4() {
+		return ""
+	}
+	return addr.String()
+}
+
 // NormalizeMAC lowercases and trims s, returning "" if it is not a valid MAC
 // address. O retorno vazio é o sinal de rejeição — quem chama compara com "".
 func NormalizeMAC(s string) string {

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
-	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
 
 // Family/table the application owns.
@@ -703,42 +702,6 @@ func (s *Service) EnsureBlockedMACSet(ctx context.Context) error {
 	return nil
 }
 
-// BlockMAC põe o endereço físico de um host no set de bloqueados. Diferente de
-// BlockHost, isto vale para todas as famílias.
-func (s *Service) BlockMAC(ctx context.Context, mac string) (string, error) {
-	mac, err := macParaNft(mac)
-	if err != nil {
-		return "", err
-	}
-	out, err := s.exec.Execute(ctx, "nft", "add", "element", Family, Table, BlockedMACSet, "{", mac, "}")
-	return out, err
-}
-
-// macParaNft normaliza e VALIDA o endereço físico na forma que o nft aceita.
-//
-// validate.NormalizeMAC sozinho não basta aqui: ele delega a net.ParseMAC, que
-// também aceita "01-02-03-04-05-06", "0102.0304.0506" e endereços InfiniBand de
-// 20 bytes — nenhum deles escrito como o nft escreve. O valor sai do banco e é
-// interpolado no argv do nft, que junta os argumentos e parseia o resultado:
-// é a mesma porta que reIface fecha nos outros geradores deste pacote.
-func macParaNft(mac string) (string, error) {
-	norm := validate.NormalizeMAC(mac)
-	if norm == "" || !reMAC.MatchString(norm) {
-		return "", fmt.Errorf("endereço físico inválido: %q", mac)
-	}
-	return norm, nil
-}
-
-// UnblockMAC tira o endereço físico do set.
-func (s *Service) UnblockMAC(ctx context.Context, mac string) (string, error) {
-	mac, err := macParaNft(mac)
-	if err != nil {
-		return "", err
-	}
-	out, err := s.exec.Execute(ctx, "nft", "delete", "element", Family, Table, BlockedMACSet, "{", mac, "}")
-	return out, err
-}
-
 // AddBlocklist blocks a destination CIDR by adding it to the blocklist set.
 func (s *Service) AddBlocklist(ctx context.Context, cidr string) (string, error) {
 	cidr = strings.TrimSpace(cidr)
@@ -1043,11 +1006,8 @@ func (s *Service) ListUserRules(ctx context.Context) ([]UserRule, error) {
 // ruleset). Every user-supplied token below is constrained to a safe charset.
 var (
 	reIface = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,15}$`)
-	// reMAC é a forma que o nft escreve e aceita: seis octetos em minúsculas
-	// separados por dois-pontos. Ver macParaNft.
-	reMAC  = regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`)
-	reMark = regexp.MustCompile(`^(0x[0-9a-fA-F]{1,8}|[0-9]{1,10})$`)
-	rePort = regexp.MustCompile(`^[0-9]{1,5}(-[0-9]{1,5})?$`)
+	reMark  = regexp.MustCompile(`^(0x[0-9a-fA-F]{1,8}|[0-9]{1,10})$`)
+	rePort  = regexp.MustCompile(`^[0-9]{1,5}(-[0-9]{1,5})?$`)
 )
 
 // ValidMark reports whether a fwmark string is a plain hex/decimal number.

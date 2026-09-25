@@ -68,7 +68,7 @@ export default function HostQuota({ canEdit }: Props) {
   }, [load]);
 
   const startEdit = (r: HostQuotaStatus) => {
-    setEditing(r.mac);
+    setEditing(r.ip);
     setLimitGB(r.configured ? String(r.limit_gb) : '');
     setPeriod(r.period ?? 'monthly');
     setCycleDay(String(r.cycle_day || 1));
@@ -76,13 +76,13 @@ export default function HostQuota({ canEdit }: Props) {
     setErr('');
   };
 
-  const save = async (mac: string) => {
+  const save = async (ip: string) => {
     setBusy(true); setErr('');
     try {
       // O corpo NÃO manda alert_enabled. Quem decide se o aviso fica ligado é o
       // backend, a partir do limite: um campo booleano que a tela manda e nunca
       // lê de volta é a receita para uma cota desenhada e muda.
-      await client.put(`/api/hosts/quotas/${encodeURIComponent(mac)}`, {
+      await client.put(`/api/hosts/quotas/${encodeURIComponent(ip)}`, {
         limit_gb: Number(limitGB),
         period,
         cycle_day: Number(cycleDay),
@@ -94,9 +94,9 @@ export default function HostQuota({ canEdit }: Props) {
     finally { setBusy(false); }
   };
 
-  const remove = async (mac: string) => {
+  const remove = async (ip: string) => {
     setBusy(true); setErr('');
-    try { await client.delete(`/api/hosts/quotas/${encodeURIComponent(mac)}`); await load(); }
+    try { await client.delete(`/api/hosts/quotas/${encodeURIComponent(ip)}`); await load(); }
     catch (e) { setErr(errMsg(e, t('svc.hosts.quota.error.remove'))); }
     finally { setBusy(false); }
   };
@@ -146,14 +146,14 @@ export default function HostQuota({ canEdit }: Props) {
           const warn = r.configured && !over && r.used_pct >= r.alert_pct;
           const barColor = over ? 'bg-red-500' : warn ? 'bg-amber-500' : 'bg-emerald-500';
           return (
-            <li key={r.mac} className="rounded-lg border border-gray-800 p-3">
+            <li key={r.ip} className="rounded-lg border border-gray-800 p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="text-white text-sm font-medium">
-                  {r.name} <span className="text-gray-600 font-mono text-xs">{r.mac}</span>
+                  {r.name}{r.name !== r.ip && <span className="text-gray-600 font-mono text-xs"> {r.ip}</span>}
                   {!r.present && <span className="ml-2 text-[11px] text-gray-500">({t('svc.hosts.quota.absent')})</span>}
                   {/* Cota declarada e NADA medido neste ciclo. Sem este rótulo,
-                      um aparelho comportado com 0% da cota e um endereço físico
-                      que não existe mais desenham a mesma barra verde. */}
+                      uma máquina parada com 0% da cota e uma instância
+                      já destruída desenham a mesma barra verde. */}
                   {r.configured && r.measured_at === 0 && (
                     <span className="ml-2 text-[11px] text-amber-500/90" title={t('svc.hosts.quota.noMeasureHint')}>
                       ({t('svc.hosts.quota.noMeasure')})
@@ -177,13 +177,13 @@ export default function HostQuota({ canEdit }: Props) {
               <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-gray-600">
                 <span>{t('svc.hosts.quota.cycle')}: {cycleLabel(r.cycle_start, r.cycle_end)}</span>
                 <span>↓ {humanBytes(r.rx_bytes)} · ↑ {humanBytes(r.tx_bytes)}</span>
-                {canEdit && editing !== r.mac && (
+                {canEdit && editing !== r.ip && (
                   <button onClick={() => startEdit(r)} className="text-blue-400 hover:text-blue-300">
                     {r.configured ? t('svc.hosts.quota.edit') : t('svc.hosts.quota.define')}
                   </button>
                 )}
-                {canEdit && r.configured && editing !== r.mac && (
-                  <button onClick={() => remove(r.mac)} disabled={busy}
+                {canEdit && r.configured && editing !== r.ip && (
+                  <button onClick={() => remove(r.ip)} disabled={busy}
                     title={t('svc.hosts.quota.removeHint')}
                     className="text-gray-500 hover:text-red-400 inline-flex items-center gap-1">
                     <Trash2 className="w-3 h-3" /> {t('svc.hosts.quota.remove')}
@@ -191,7 +191,7 @@ export default function HostQuota({ canEdit }: Props) {
                 )}
               </div>
 
-              {editing === r.mac && (
+              {editing === r.ip && (
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
                   <label className="block">
                     <span className="text-gray-400 text-xs">{t('svc.hosts.quota.limit')}</span>
@@ -218,7 +218,7 @@ export default function HostQuota({ canEdit }: Props) {
                       inputMode="numeric" className="input mt-1 w-full font-mono" />
                   </label>
                   <div className="flex gap-2">
-                    <button onClick={() => save(r.mac)} disabled={busy || !limitGB}
+                    <button onClick={() => save(r.ip)} disabled={busy || !limitGB}
                       className="btn-primary text-xs flex items-center gap-1 disabled:opacity-50">
                       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                       {t('svc.hosts.quota.save')}

@@ -89,13 +89,17 @@ type RoleSeed struct {
 	AlwaysSync bool
 }
 
-// ─── HostMetadata ────────────────────────────────────────────────────────────
+// ─── HostInfo ────────────────────────────────────────────────────────────────
 
-// HostMetadata stores admin-set and observed data about a LAN host, keyed by
-// MAC (more stable than IP under DHCP). The live state (interface, NUD state)
-// comes from the neighbour table at list time and is not persisted here.
-type HostMetadata struct {
-	MAC       string    `json:"mac"`
+// HostInfo é o que o produto sabe de uma máquina que passa por esta caixa,
+// identificada pelo IP privado.
+//
+// POR QUE IP, E NÃO MAC. A versão on-prem identificava pelo MAC da tabela de
+// vizinhança, que é estável sob DHCP. Na VCN isso não enxerga quase nada: uma
+// máquina de outra sub-rede chega pelo roteador virtual da Oracle e nunca
+// aparece na vizinhança desta caixa, e a Oracle não troca o IP privado de uma
+// VNIC enquanto ela existe.
+type HostInfo struct {
 	IP        string    `json:"ip"`
 	Hostname  string    `json:"hostname"`
 	Alias     string    `json:"alias"`

@@ -24,13 +24,13 @@ func TestSeriesPorHostNaoEntramNoRegistroAberto(t *testing.T) {
 
 func TestExposicaoTemOsDoisSentidosEEhOrdenada(t *testing.T) {
 	p := NovoPorHost()
-	p.Registrar("bb:bb:bb:bb:bb:bb", "Notebook", 200, 20)
-	p.Registrar("aa:aa:aa:aa:aa:aa", "Celular", 100, 10)
+	p.Registrar("10.0.1.10", "api", 200, 20)
+	p.Registrar("10.0.1.9", "banco", 100, 10)
 
 	out := p.Exposicao()
 	for _, quer := range []string{
-		`linkguard_host_rx_bytes_per_second{mac="aa:aa:aa:aa:aa:aa",nome="Celular"} 100`,
-		`linkguard_host_tx_bytes_per_second{mac="bb:bb:bb:bb:bb:bb",nome="Notebook"} 20`,
+		`linkguard_host_rx_bytes_per_second{ip="10.0.1.9",nome="banco"} 100`,
+		`linkguard_host_tx_bytes_per_second{ip="10.0.1.10",nome="api"} 20`,
 		"# TYPE linkguard_host_rx_bytes_per_second gauge",
 	} {
 		if !strings.Contains(out, quer) {
@@ -39,8 +39,9 @@ func TestExposicaoTemOsDoisSentidosEEhOrdenada(t *testing.T) {
 	}
 	// Ordem estável: um coletor que recebe as séries em ordem diferente a cada
 	// raspagem produz diff inútil em toda revisão de configuração.
-	if strings.Index(out, "aa:aa") > strings.Index(out, "bb:bb") {
-		t.Error("a exposição não está ordenada por endereço físico")
+	// E por endereço, não como texto.
+	if strings.Index(out, `"10.0.1.9"`) > strings.Index(out, `"10.0.1.10"`) {
+		t.Error("a exposição não está ordenada por endereço")
 	}
 }
 
@@ -48,7 +49,7 @@ func TestApelidoComAspaNaoCorrompeAExposicao(t *testing.T) {
 	// Apelido é texto livre digitado pelo admin. Uma aspa ali quebraria o
 	// formato e o coletor descartaria TODAS as séries — não só a linha ruim.
 	p := NovoPorHost()
-	p.Registrar("aa:aa:aa:aa:aa:aa", `TV da "sala"`+"\nfalsa", 1, 2)
+	p.Registrar("10.0.1.9", `TV da "sala"`+"\nfalsa", 1, 2)
 	out := p.Exposicao()
 	if strings.Contains(out, "\"sala\"") {
 		t.Errorf("aspa não escapada na exposição:\n%s", out)
@@ -61,21 +62,21 @@ func TestApelidoComAspaNaoCorrompeAExposicao(t *testing.T) {
 	}
 }
 
-func TestAparelhoQueSaiuParaDePublicar(t *testing.T) {
-	// Métrica que não morre é métrica que mente: um aparelho que saiu da rede
+func TestMaquinaQueSaiuParaDePublicar(t *testing.T) {
+	// Métrica que não morre é métrica que mente: uma máquina que saiu da rede
 	// continuaria publicando o último valor para sempre, e o gráfico mostraria
 	// uma linha reta perpétua onde deveria haver uma série que acaba.
 	p := NovoPorHost()
-	p.Registrar("aa:aa:aa:aa:aa:aa", "Celular", 100, 10)
-	p.Registrar("bb:bb:bb:bb:bb:bb", "Notebook", 200, 20)
+	p.Registrar("10.0.1.9", "banco", 100, 10)
+	p.Registrar("10.0.1.10", "api", 200, 20)
 
-	p.Limpar(map[string]bool{"aa:aa:aa:aa:aa:aa": true})
+	p.Limpar(map[string]bool{"10.0.1.9": true})
 
 	out := p.Exposicao()
-	if strings.Contains(out, "bb:bb:bb:bb:bb:bb") {
-		t.Error("o aparelho que saiu da rede continua publicando")
+	if strings.Contains(out, `"10.0.1.10"`) {
+		t.Error("a máquina que saiu da rede continua publicando")
 	}
-	if !strings.Contains(out, "aa:aa:aa:aa:aa:aa") {
-		t.Error("o aparelho presente sumiu junto")
+	if !strings.Contains(out, `"10.0.1.9"`) {
+		t.Error("a máquina presente sumiu junto")
 	}
 }
