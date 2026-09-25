@@ -371,7 +371,7 @@ export interface FirewallRule {
 // §4.1): the rules themselves plus the persisted outcome of the most recent
 // user_rules reconcile — apply_status is undefined only when a reconcile
 // has genuinely never run yet (never a synthetic "ok" standing in for
-// "unknown"), same LastApply shape used by NTP/DHCP/DNS.
+// "unknown"), same LastApply shape used by DNS.
 export interface FirewallRulesData {
   rules: FirewallRule[];
   apply_status?: FirewallApplyStatus;
@@ -613,38 +613,18 @@ export interface PortForward {
 }
 
 export interface NetsvcConfig {
-  backend: string;
-  interface: string;
-  subnet_cidr: string;
-  range_start: string;
-  range_end: string;
-  gateway: string;
-  lease_hours: number;
-  dns_to_clients: string[];
   upstreams: string[];
   log_queries: boolean;
   /** Entrega das RESPOSTAS de DNS ao coletor, que alimenta o mapa endereço → nome (#116). */
   dnstap_enabled?: boolean;
-  domain_suffix: string;
-  // Controle de fuga de DNS (#124). Ver a tela de DNS para o que cada um
-  // realmente garante — e o que não garante.
-  force_local_dns: boolean;
-  block_dot: boolean;
-  dns_except_ips: string[];
 }
-export interface DHCPReservation { mac: string; ip: string; hostname: string; created_at?: string; updated_at?: string; }
-export interface DHCPLease { expiry: number; mac: string; ip: string; hostname: string; }
 // warning (I-7): o apply terminou bem, mas o backend descartou entradas
 // inválidas que a tela ainda mostra como configuradas (domínio de bloqueio,
-// upstream de DNS, servidor NTP). É um terceiro estado entre "falhou" e
+// upstream de DNS). É um terceiro estado entre "falhou" e
 // "tudo em vigor" — nunca deve ser exibido como sucesso puro.
 export interface LastApply { ok: boolean; error?: string; warning?: string; at: number; }
-export interface DHCPData { config: NetsvcConfig; reservations: DHCPReservation[]; leases: DHCPLease[]; backend: string; last_apply?: LastApply; }
-export interface DNSData { config: NetsvcConfig; blocklist: string[]; backend: string; last_apply?: LastApply; }
+export interface DNSData { config: NetsvcConfig; blocklist: string[]; last_apply?: LastApply; }
 
-export interface NTPConfig { servers: string[]; timezone: string; serve_lan: boolean; allowed_networks: string[]; }
-export interface NTPStatus { installed: boolean; synced: boolean; stratum?: number; offset_secs?: number; source?: string; }
-export interface NTPData { config: NTPConfig; status: NTPStatus; timezones: string[]; last_apply?: LastApply; firewall_apply?: LastApply; suggested_network: string; }
 
 export interface HostTraffic { ip: string; rx_bytes: number; tx_bytes: number; }
 
@@ -758,7 +738,6 @@ export interface MonitoringConfig {
 
 export interface RestoreResult {
   settings: number;
-  reservations: number;
   blocklist: number;
   secrets_to_reconfigure: string[];
 }

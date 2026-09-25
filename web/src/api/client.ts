@@ -6,8 +6,8 @@ const client = axios.create({
 });
 
 // Timeout para as ações que podem instalar pacote antes de fazer o que
-// prometeram: o apply de DHCP/DNS (kea + unbound + dns-root-data) e a
-// instalação do chrony.
+// prometeram: o apply do DNS (unbound + dns-root-data) e a VPN
+// (wireguard-tools).
 //
 // O timeout padrão de 15s não serve para elas. Pior: quando ele estourava, o
 // apt NÃO morria junto (a unidade transiente do systemd-run termina a

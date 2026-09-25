@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
@@ -65,26 +63,10 @@ func detectPlatformOnBoot(db *storage.DB) platform.Snapshot {
 // as duas respostas são verdadeiras ao mesmo tempo. sanitizeNetworks, do lado
 // do nftables, descarta duplicata, CIDR inválido, curinga e IPv6.
 func redesLocais(db *storage.DB, plat platform.Snapshot) []string {
-	var redes []string
-
-	// SÓ o que o admin CONFIGUROU, nunca o DefaultConfig. netsvc.DefaultConfig()
-	// traz 192.168.3.0/24 cravado — a rede de casa de quem escreveu o produto —,
-	// e numa instalação nova não há netsvc_config no banco. Ler o default aqui
-	// punha a rede de um terceiro dentro do firewall do cliente, tratada como
-	// "dentro". Numa máquina que por acaso alcance esse /24, é buraco de verdade;
-	// nas outras é só mentira no painel. Ausência de configuração é ausência de
-	// rede local, e quem responde nesse caso é a plataforma, logo abaixo.
-	if cidr := redeConfigurada(db); cidr != "" {
-		redes = append(redes, cidr)
-	}
-
-	if plat.Facts.OCI != nil {
-		for _, v := range plat.Facts.OCI.VNICs {
-			if v.SubnetCIDR != "" {
-				redes = append(redes, v.SubnetCIDR)
-			}
-		}
-	}
+	// Quem responde é a plataforma. Até 25/09/2026 entrava aqui também a LAN
+	// configurada na tela de DHCP; o DHCP saiu da versão de nuvem, e a rede
+	// privada é a da VCN, que a fabric informa.
+	redes := redesDasPlacas(plat)
 
 	// NUM GATEWAY DE TRÂNSITO, "DENTRO" É O ESPAÇO PRIVADO INTEIRO — não a
 	// sub-rede desta placa.
@@ -108,31 +90,16 @@ func redesLocais(db *storage.DB, plat platform.Snapshot) []string {
 	return redes
 }
 
-// redeConfigurada é o CIDR da LAN que o admin CONFIGUROU pela tela, ou "" quando
-// ninguém configurou nada. A única definição disso no produto, porque havia duas
-// e as duas erravam do mesmo jeito.
-//
-// NUNCA cai no netsvc.DefaultConfig(). Aquele default traz 192.168.3.0/24
-// cravado — a rede doméstica de quem escreveu o produto, com gateway
-// 192.168.3.3 —, e numa instalação nova não existe netsvc_config no banco.
-// Semear com ele punha a rede de um terceiro dentro do firewall do cliente,
-// tratada como "dentro": no eixo das regras e, pior, na lista anti-lockout do
-// AdminAccess. Medido numa VM da OCI recém-criada, onde as regras nasceram com
-// `ip saddr { 10.0.0.0/24, 192.168.3.0/24 }`.
-//
-// A caixa on-prem não muda: lá o netsvc_config ESTÁ gravado (192.168.3.0/24,
-// br10), então a leitura devolve o mesmo de sempre.
-func redeConfigurada(db *storage.DB) string {
-	raw, _ := db.GetSetting("netsvc_config")
-	if raw == "" {
-		return ""
+// redesDasPlacas são as sub-redes das placas desta máquina, como a fabric da
+// nuvem as informa. Fora da nuvem, nenhuma.
+func redesDasPlacas(plat platform.Snapshot) []string {
+	var redes []string
+	if plat.Facts.OCI != nil {
+		for _, v := range plat.Facts.OCI.VNICs {
+			if v.SubnetCIDR != "" {
+				redes = append(redes, v.SubnetCIDR)
+			}
+		}
 	}
-	var netCfg netsvc.Config
-	if err := json.Unmarshal([]byte(raw), &netCfg); err != nil {
-		// Config ilegível não vira silêncio: sem isto a caixa perderia a rede da
-		// LAN sem nada no log, e as regras nasceriam estreitas demais.
-		slog.Warn("netsvc_config ilegível; a rede local dele não entra no eixo das regras", "err", err)
-		return ""
-	}
-	return netCfg.SubnetCIDR
+	return redes
 }

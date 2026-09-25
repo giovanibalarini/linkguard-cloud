@@ -336,12 +336,12 @@ func TestEnsureToleratesNilAlerter(t *testing.T) {
 func TestInstallPackagesRunsAptOutsideOurOwnSandbox(t *testing.T) {
 	exec := newFakeExec()
 
-	if err := InstallPackages(context.Background(), exec, "chrony"); err != nil {
+	if err := InstallPackages(context.Background(), exec, "qrencode"); err != nil {
 		t.Fatalf("InstallPackages: %v", err)
 	}
 	want := "systemd-run --collect --pipe --wait --setenv=DEBIAN_FRONTEND=noninteractive " +
 		"-- apt-get install -y --no-install-recommends " +
-		"-o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef chrony"
+		"-o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef qrencode"
 	if len(exec.executed) != 1 || exec.executed[0] != want {
 		t.Errorf("executed = %v, want [%s]", exec.executed, want)
 	}
@@ -398,9 +398,9 @@ func TestEveryBasePackageHasAConsequence(t *testing.T) {
 // that already has the package. This is on the DHCP/DNS apply path, which runs
 // on every save.
 func TestEnsureInstalledIsANoOpWhenThePackageIsAlreadyThere(t *testing.T) {
-	exec := newFakeExec("kea-dhcp4-server", "unbound")
+	exec := newFakeExec("wireguard-tools", "unbound")
 
-	installed, err := EnsureInstalled(context.Background(), exec, "kea-dhcp4-server", "unbound")
+	installed, err := EnsureInstalled(context.Background(), exec, "wireguard-tools", "unbound")
 
 	if err != nil {
 		t.Fatalf("EnsureInstalled: %v", err)
@@ -418,13 +418,13 @@ func TestEnsureInstalledIsANoOpWhenThePackageIsAlreadyThere(t *testing.T) {
 func TestEnsureInstalledBringsInWhatIsMissing(t *testing.T) {
 	exec := newFakeExec("unbound")
 
-	installed, err := EnsureInstalled(context.Background(), exec, "kea-dhcp4-server", "unbound")
+	installed, err := EnsureInstalled(context.Background(), exec, "wireguard-tools", "unbound")
 
 	if err != nil {
 		t.Fatalf("EnsureInstalled: %v", err)
 	}
-	if len(installed) != 1 || installed[0] != "kea-dhcp4-server" {
-		t.Errorf("installed = %v, want [kea-dhcp4-server] (only what was missing)", installed)
+	if len(installed) != 1 || installed[0] != "wireguard-tools" {
+		t.Errorf("installed = %v, want [wireguard-tools] (only what was missing)", installed)
 	}
 	if !exec.ran("apt-get install") {
 		t.Errorf("expected an apt-get install, got %v", exec.executed)
@@ -441,7 +441,7 @@ func TestEnsureInstalledRefreshesTheIndexAndRetriesOnce(t *testing.T) {
 	exec := newFakeExec()
 	exec.installFailsUntilUpdate = true
 
-	installed, err := EnsureInstalled(context.Background(), exec, "kea-dhcp4-server")
+	installed, err := EnsureInstalled(context.Background(), exec, "wireguard-tools")
 
 	if err != nil {
 		t.Fatalf("EnsureInstalled after retry: %v", err)
@@ -462,7 +462,7 @@ func TestEnsureInstalledExplainsItselfWhenAptCannotInstall(t *testing.T) {
 	exec := newFakeExec()
 	exec.installFails = true
 
-	installed, err := EnsureInstalled(context.Background(), exec, "kea-dhcp4-server")
+	installed, err := EnsureInstalled(context.Background(), exec, "wireguard-tools")
 
 	if err == nil {
 		t.Fatal("expected an error when the package could not be installed")
@@ -472,9 +472,9 @@ func TestEnsureInstalledExplainsItselfWhenAptCannotInstall(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{
-		"kea-dhcp4-server",         // which package
+		"wireguard-tools",          // which package
 		"Unable to locate package", // why apt failed
-		"DHCP",                     // what stops working
+		"VPN",                      // what stops working
 		"apt-get install -y",       // how to fix it by hand
 	} {
 		if !strings.Contains(msg, want) {
@@ -489,12 +489,12 @@ func TestEnsureInstalledReportsWhatIsStillMissingAfterAPartialInstall(t *testing
 	exec := newFakeExec()
 	exec.installOnly = map[string]bool{"unbound": true}
 
-	installed, err := EnsureInstalled(context.Background(), exec, "kea-dhcp4-server", "unbound")
+	installed, err := EnsureInstalled(context.Background(), exec, "wireguard-tools", "unbound")
 
 	if err == nil {
-		t.Fatal("expected an error: kea-dhcp4-server is still missing")
+		t.Fatal("expected an error: wireguard-tools is still missing")
 	}
-	if !strings.Contains(err.Error(), "kea-dhcp4-server") {
+	if !strings.Contains(err.Error(), "wireguard-tools") {
 		t.Errorf("error must name what is still missing, got %q", err.Error())
 	}
 	if strings.Contains(err.Error(), "unbound —") {
@@ -511,7 +511,7 @@ func TestEnsureInstalledIsANoOpInDryRun(t *testing.T) {
 	exec := newFakeExec()
 	exec.dryRun = true
 
-	installed, err := EnsureInstalled(context.Background(), exec, "kea-dhcp4-server")
+	installed, err := EnsureInstalled(context.Background(), exec, "wireguard-tools")
 
 	if err != nil {
 		t.Fatalf("dry-run must not fail: %v", err)
@@ -528,7 +528,7 @@ func TestEnsureInstalledIsANoOpInDryRun(t *testing.T) {
 // installed on demand: naming a package without saying what its absence
 // breaks leaves the admin guessing.
 func TestEveryOnDemandPackageHasAConsequence(t *testing.T) {
-	for _, pkg := range []string{"kea-dhcp4-server", "unbound", "dns-root-data", "chrony", "wireguard-tools", "qrencode"} {
+	for _, pkg := range []string{"wireguard-tools", "unbound", "dns-root-data", "qrencode", "wireguard-tools", "qrencode"} {
 		if strings.TrimSpace(consequences[pkg]) == "" {
 			t.Errorf("on-demand package %s has no consequence text", pkg)
 		}
@@ -608,7 +608,7 @@ func TestEnsureInstalledSerializesConcurrentInstalls(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = EnsureInstalled(context.Background(), exec, "kea-dhcp4-server", "unbound")
+			_, errs[i] = EnsureInstalled(context.Background(), exec, "wireguard-tools", "unbound")
 		}(i)
 	}
 	wg.Wait()
@@ -633,7 +633,7 @@ func TestEnsureInstalledSerializesConcurrentInstalls(t *testing.T) {
 // on the DHCP page. The admin needs the reason, not the transcript; the
 // transcript stays in the journal, which is where a transcript belongs.
 func TestInstallFailureMessageKeepsTheReasonAndDropsTheTranscript(t *testing.T) {
-	raw := errors.New(`command "systemd-run --pipe --wait -- apt-get install -y kea-dhcp4-server" failed: ` +
+	raw := errors.New(`command "systemd-run --pipe --wait -- apt-get install -y wireguard-tools" failed: ` +
 		"Running as unit: run-p1494-i1794.service; invocation ID: bb438f09288648c59fc87afcf67e3651\n" +
 		"E: Failed to fetch http://mirror/pool/main/i/isc-kea/kea-common_2.6.3-1_amd64.deb  Unable to connect\n" +
 		"E: Failed to fetch http://mirror/pool/main/i/isc-kea/kea-dhcp4-server_2.6.3-1_amd64.deb  Unable to connect\n" +
@@ -642,7 +642,7 @@ func TestInstallFailureMessageKeepsTheReasonAndDropsTheTranscript(t *testing.T) 
 		"Finished with result: exit-code\nMain processes terminated with: code=exited, status=100/n/a\n" +
 		"Service runtime: 7.694s\nCPU time consumed: 685ms\nMemory peak: 22.8M (swap: 0B)")
 
-	msg := installFailureMessage([]string{"kea-dhcp4-server"}, raw)
+	msg := installFailureMessage([]string{"wireguard-tools"}, raw)
 
 	if !strings.Contains(msg, "Unable to connect") {
 		t.Errorf("o motivo real tem que sobreviver, obtive %q", msg)
@@ -659,7 +659,7 @@ func TestInstallFailureMessageKeepsTheReasonAndDropsTheTranscript(t *testing.T) 
 		t.Errorf("mensagem com %d caracteres é banner de painel, não log: %q", len(msg), msg)
 	}
 	// O que o admin precisa continua lá.
-	for _, want := range []string{"kea-dhcp4-server", "DHCP", "apt-get install -y"} {
+	for _, want := range []string{"wireguard-tools", "VPN", "apt-get install -y"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("a mensagem tem que citar %q, obtive %q", want, msg)
 		}
@@ -678,7 +678,7 @@ func TestTodaChamadaDeAptRecolheAUnidadeTransiente(t *testing.T) {
 	exec.installFails = true
 
 	// install (2x, por causa do retry) + apt-get update
-	_, _ = EnsureInstalled(context.Background(), exec, "kea-dhcp4-server")
+	_, _ = EnsureInstalled(context.Background(), exec, "wireguard-tools")
 
 	if len(exec.executed) == 0 {
 		t.Fatal("nenhum comando executado")

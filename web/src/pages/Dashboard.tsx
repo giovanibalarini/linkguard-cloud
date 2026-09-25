@@ -139,7 +139,7 @@ export default function Dashboard() {
    *
    * Um painel que só grava quando o operador se lembra de apertar um botão é um
    * painel que ele perde ao fechar a aba — e o projeto já tem a decisão tomada
-   * para o mesmo problema em DHCP/DNS: salvar aplica.
+   * para o mesmo problema no DNS: salvar aplica.
    */
   const aplicar = useCallback(
     (next: LayoutItem[]) => {

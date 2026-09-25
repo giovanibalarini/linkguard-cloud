@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/keaunbound"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/unbound"
 )
 
 // Config drift watchers.
@@ -562,7 +562,7 @@ func (c *Collector) checkCaminhoNSS() {
 
 	path := c.nsswitchPath
 	if path == "" {
-		path = keaunbound.NsswitchPath
+		path = unbound.NsswitchPath
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -573,8 +573,8 @@ func (c *Collector) checkCaminhoNSS() {
 	// linha `hosts: files dns` (a produção de hoje) nenhum módulo com ação de
 	// corte aparece antes do dns, e nenhum systemctl é executado no tique.
 	resolvedAtivo, perguntou := false, false
-	caminho := keaunbound.AnalisarCaminhoNSS(string(raw), func(nome string) bool {
-		if nome != keaunbound.ModuloResolved {
+	caminho := unbound.AnalisarCaminhoNSS(string(raw), func(nome string) bool {
+		if nome != unbound.ModuloResolved {
 			return false
 		}
 		if !perguntou {
@@ -607,13 +607,13 @@ func (c *Collector) checkCaminhoNSS() {
 	// o systemd-resolved apenas parado o painel não fica verde. O conserto que
 	// este vigia reconhece é o duradouro — a linha `hosts:` deixar de encerrar a
 	// busca antes do dns —, e não um daemon que volta no próximo boot.
-	if caminho.Estado == keaunbound.NSSIndeterminado {
+	if caminho.Estado == unbound.NSSIndeterminado {
 		slog.Debug("caminho de resolução: sem veredito neste tique",
 			"nsswitch", path, "hosts", caminho.Hosts, "motivo", caminho.Motivo)
 		return
 	}
 
-	tr := c.observe("dns:caminho", caminho.Estado == keaunbound.NSSAlcancaDNS, c.nowFn())
+	tr := c.observe("dns:caminho", caminho.Estado == unbound.NSSAlcancaDNS, c.nowFn())
 	c.ensureMeta("dns:caminho", "dns-caminho", "resource")
 	switch tr {
 	case transDown:
@@ -631,7 +631,7 @@ func (c *Collector) checkCaminhoNSS() {
 		// caixa continua resolvendo nomes" manda o operador caçar um problema
 		// silencioso enquanto o barulhento está na cara. Ver os tipos em
 		// internal/alerts.
-		if caminho.Estado == keaunbound.NSSSemModuloDNS {
+		if caminho.Estado == unbound.NSSSemModuloDNS {
 			_ = c.alertSvc.ResolucaoSemModuloDNS(detalhe)
 		} else {
 			_ = c.alertSvc.CaminhoDNSForaDoLocal(detalhe)

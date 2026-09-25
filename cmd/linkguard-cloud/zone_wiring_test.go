@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
@@ -159,8 +158,8 @@ func TestAMaquinaNovaNaoHerdaARedeDeCasaDeQuemEscreveuOProduto(t *testing.T) {
 	redes := redesLocais(db, snap)
 
 	for _, r := range redes {
-		if r == netsvc.DefaultConfig().SubnetCIDR {
-			t.Fatalf("a rede do DefaultConfig (%s) vazou para as regras de uma máquina que nunca a configurou: %v", r, redes)
+		if r == "192.168.3.0/24" {
+			t.Fatalf("a rede de casa de quem escreveu o produto (%s) vazou para as regras de uma máquina nova: %v", r, redes)
 		}
 	}
 	if !contem(redes, "10.0.0.0/24") {
@@ -180,90 +179,4 @@ func contem(xs []string, alvo string) bool {
 		}
 	}
 	return false
-}
-
-// TestARedeConfiguradaPeloAdminEntraNoEixo é o outro lado: quando o admin
-// configurou de fato a rede pela tela, ela conta — é a LAN do painel.
-func TestARedeConfiguradaPeloAdminEntraNoEixo(t *testing.T) {
-	db := bancoDeTeste(t)
-	if err := db.SetSetting("netsvc_config", `{"subnet_cidr":"172.20.0.0/16"}`); err != nil {
-		t.Fatalf("SetSetting: %v", err)
-	}
-	fatos := platform.Facts{
-		Kind: platform.KindOCI,
-		OCI: &platform.OCIFacts{
-			MaxVNICAttachments: 1,
-			VNICs:              []platform.OCIVNIC{{SubnetCIDR: "10.0.0.0/24"}},
-		},
-	}
-	snap := platform.Snapshot{Format: platform.SnapshotFormat, Facts: fatos, Capabilities: platform.DeriveCapabilities(fatos)}
-
-	redes := redesLocais(db, snap)
-
-	temConfigurada, temDaPlataforma := false, false
-	for _, r := range redes {
-		if r == "172.20.0.0/16" {
-			temConfigurada = true
-		}
-		if r == "10.0.0.0/24" {
-			temDaPlataforma = true
-		}
-	}
-	if !temConfigurada || !temDaPlataforma {
-		t.Errorf("as duas redes verdadeiras tinham de entrar, obtive %v", redes)
-	}
-}
-
-// TestConfigIlegivelNaoApagaARedeDaPlataforma: JSON corrompido não pode virar
-// silêncio — a mesma disciplina de ntpInputStateFrom e de hostflows.
-func TestConfigIlegivelNaoApagaARedeDaPlataforma(t *testing.T) {
-	db := bancoDeTeste(t)
-	if err := db.SetSetting("netsvc_config", `{isto não é json`); err != nil {
-		t.Fatalf("SetSetting: %v", err)
-	}
-	fatos := platform.Facts{
-		Kind: platform.KindOCI,
-		OCI: &platform.OCIFacts{
-			MaxVNICAttachments: 1,
-			VNICs:              []platform.OCIVNIC{{SubnetCIDR: "10.0.0.0/24"}},
-		},
-	}
-	snap := platform.Snapshot{Format: platform.SnapshotFormat, Facts: fatos, Capabilities: platform.DeriveCapabilities(fatos)}
-
-	redes := redesLocais(db, snap)
-
-	if !contem(redes, "10.0.0.0/24") {
-		t.Errorf("a rede da plataforma tinha de sobreviver a uma config ilegível, obtive %v", redes)
-	}
-	if contem(redes, netsvc.DefaultConfig().SubnetCIDR) && netsvc.DefaultConfig().SubnetCIDR != "192.168.0.0/16" {
-		t.Errorf("o DefaultConfig vazou mesmo com config ilegível: %v", redes)
-	}
-}
-
-// TestAListaAntiLockoutNaoNasceComARedeDeOutraPessoa é o mesmo vazamento do
-// teste acima, no sítio onde ele é PIOR: AdminAccess.LANNetworks alimenta as
-// regras que existem para o admin não se trancar para fora. Numa caixa nova a
-// lista nascia com 192.168.3.0/24 — uma rede que aquela máquina não tem e que
-// o dono dela nunca viu.
-func TestAListaAntiLockoutNaoNasceComARedeDeOutraPessoa(t *testing.T) {
-	db := bancoDeTeste(t)
-	if got := redeConfigurada(db); got != "" {
-		t.Errorf("sem netsvc_config gravado a resposta tem de ser vazia, obtive %q", got)
-	}
-	if got := redeConfigurada(db); got == netsvc.DefaultConfig().SubnetCIDR {
-		t.Errorf("o DefaultConfig vazou: %q", got)
-	}
-}
-
-// TestOnPremNaoRegridePorqueLaAConfiguracaoEstaGravada prende o motivo de este
-// conserto ser seguro para a máquina que roda 24/7: lá o netsvc_config existe,
-// então a leitura devolve exatamente o que devolvia antes.
-func TestOnPremNaoRegridePorqueLaAConfiguracaoEstaGravada(t *testing.T) {
-	db := bancoDeTeste(t)
-	if err := db.SetSetting("netsvc_config", `{"subnet_cidr":"192.168.3.0/24","interface":"br10"}`); err != nil {
-		t.Fatalf("SetSetting: %v", err)
-	}
-	if got := redeConfigurada(db); got != "192.168.3.0/24" {
-		t.Errorf("a rede configurada da produção tem de sobreviver, obtive %q", got)
-	}
 }

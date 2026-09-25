@@ -3,8 +3,8 @@ package firewallrules
 // A política padrão do firewall, guardada e revertida como o resto (issue #78).
 //
 // ONDE ELA MORA. Na tabela `settings`, e não numa coluna nova nem numa migração
-// versionada. O precedente é o `ensureUniqueDHCPReservationIP`: migração que
-// falha no boot não é um erro de schema, é o firewall não subir — a classe do
+// versionada. O precedente foi o índice único das reservas de DHCP (#59), da
+// época em que o produto servia DHCP: migração que falha no boot não é um erro de schema, é o firewall não subir — a classe do
 // incidente de 2026-07-24. Um par chave/valor não paga esse risco.
 //
 // POR QUE ELA ENTRA NO SNAPSHOT. A janela de 90 segundos reverte o que está no

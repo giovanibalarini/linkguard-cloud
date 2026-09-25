@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -21,9 +20,8 @@ import (
 
 // Result reports what a restore applied.
 type Result struct {
-	Settings     int
-	Reservations int
-	Blocklist    int
+	Settings  int
+	Blocklist int
 	// SkippedLocal é quantas chaves de estado local da máquina foram
 	// ignoradas — ver machineLocalSettingKeys.
 	SkippedLocal int
@@ -57,8 +55,8 @@ var ErrLockedOut = errors.New("muitas tentativas com senha incorreta")
 // db.SetSetting(k, v), with no validator in between: a crafted or corrupted
 // .lgbak file could put anything at all into netsvc_config or the DNS
 // blocklist, both of which reach a root daemon's config file
-// (unbound.conf/kea-dhcp4.conf) by string concatenation elsewhere in this
-// codebase (see internal/keaunbound.GenerateUnboundConfig, which now also
+// (unbound.conf) by string concatenation elsewhere in this
+// codebase (see internal/unbound.GenerateUnboundConfig, which now also
 // defends itself independently — see that function's own fix — but restore
 // is the entry point that made the gap reachable in practice, since it is
 // the one place these values can land in the DB with no handler in front of
@@ -140,43 +138,17 @@ const (
 	monitoringSettingsKey = "monitoring"
 )
 
-// validateNetsvcConfigRestore parses a netsvc_config settings blob and runs
-// every field through the same checks NetsvcHandler.UpdateDHCPConfig and
-// UpdateDNSConfig apply to an admin-submitted value (see
-// internal/api/handlers/netsvc.go) — same validate.Iface/validate.Domain
-// calls, same net.ParseIP/ParseCIDR checks, field for field. A value accepted
-// here is exactly as injection-safe against unbound.conf/kea-dhcp4.conf as one
-// that came in through the panel.
+// validateNetsvcConfigRestore passa um netsvc_config restaurado pela mesma
+// validação da tela de DNS (netsvc.ValidaConfig). Um backup do linkguard-fw
+// traz os campos de DHCP junto; eles são ignorados ao ler e não voltam a ser
+// gravados.
 func validateNetsvcConfigRestore(raw string) error {
 	var cfg netsvc.Config
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return fmt.Errorf("netsvc_config: JSON inválido: %w", err)
 	}
-	if cfg.Interface != "" && !validate.Iface(cfg.Interface) {
-		return fmt.Errorf("netsvc_config: interface inválida: %q", cfg.Interface)
-	}
-	if cfg.SubnetCIDR != "" {
-		if _, _, err := net.ParseCIDR(cfg.SubnetCIDR); err != nil {
-			return fmt.Errorf("netsvc_config: sub-rede (subnet_cidr) inválida: %q", cfg.SubnetCIDR)
-		}
-	}
-	for _, v := range []string{cfg.RangeStart, cfg.RangeEnd, cfg.Gateway} {
-		if v != "" && net.ParseIP(v) == nil {
-			return fmt.Errorf("netsvc_config: endereço IP inválido: %q", v)
-		}
-	}
-	if cfg.DomainSuffix != "" && !validate.Domain(cfg.DomainSuffix) {
-		return fmt.Errorf("netsvc_config: domínio (domain_suffix) inválido: %q", cfg.DomainSuffix)
-	}
-	for _, d := range cfg.DNSToClients {
-		if d != "" && net.ParseIP(d) == nil {
-			return fmt.Errorf("netsvc_config: DNS (dns_to_clients) inválido: %q", d)
-		}
-	}
-	for _, u := range cfg.Upstreams {
-		if u != "" && net.ParseIP(u) == nil {
-			return fmt.Errorf("netsvc_config: upstream inválido: %q", u)
-		}
+	if err := netsvc.ValidaConfig(cfg); err != nil {
+		return fmt.Errorf("netsvc_config: %w", err)
 	}
 	return nil
 }
@@ -198,7 +170,7 @@ func validateMonitoringConfigRestore(raw string) error {
 	return nil
 }
 
-// Apply valida o backup inteiro e grava settings, reservas DHCP e blocklist de
+// Apply valida o backup inteiro e grava settings e blocklist de
 // DNS numa transação só. Não reinicia serviço nenhum (o operador reaplica
 // DHCP/DNS/firewall depois) e não toca em usuários/papéis nem em links WAN, de
 // modo que uma restauração nunca tranca o operador para fora nem mexe no
@@ -232,22 +204,6 @@ func Apply(db *storage.DB, data BackupData) (Result, error) {
 		}
 		normalizedBlocklist = append(normalizedBlocklist, nd)
 	}
-	normalizedReservations := make([]storage.DHCPReservation, 0, len(data.Reservations))
-	for _, rsv := range data.Reservations {
-		mac := validate.NormalizeMAC(rsv.MAC)
-		if mac == "" {
-			return Result{}, invalid("backup contém reserva DHCP com MAC inválido — nada foi restaurado: %s", rsv.MAC)
-		}
-		ip := strings.TrimSpace(rsv.IP)
-		// Mesma guarda do handler (#152): o restore refaz o banco SEM passar por
-		// ele, e todo campo em que este caminho for mais permissivo é um jeito
-		// de plantar um valor que a tela nunca deixaria entrar. Um backup tirado
-		// antes da guarda pode conter um endereço IPv6 aqui.
-		if !validate.IPv4(ip) {
-			return Result{}, invalid("backup contém reserva DHCP com endereço que não é IPv4 — nada foi restaurado: %s", rsv.IP)
-		}
-		normalizedReservations = append(normalizedReservations, storage.DHCPReservation{MAC: mac, IP: ip, Hostname: rsv.Hostname})
-	}
 
 	// As chaves de estado local da máquina saem antes da escrita — são estado
 	// desta caixa, não configuração. Ver machineLocalSettingKeys para o que
@@ -268,9 +224,8 @@ func Apply(db *storage.DB, data BackupData) (Result, error) {
 	// única pista. A promessa de "nada foi restaurado", que a validação acima
 	// já fazia, agora vale também para a escrita.
 	counts, err := db.ApplyRestore(storage.RestorePayload{
-		Settings:     toRestore,
-		Reservations: normalizedReservations,
-		Blocklist:    normalizedBlocklist,
+		Settings:  toRestore,
+		Blocklist: normalizedBlocklist,
 	})
 	if err != nil {
 		return Result{}, err
@@ -278,7 +233,6 @@ func Apply(db *storage.DB, data BackupData) (Result, error) {
 
 	res := Result{
 		Settings:     counts.Settings,
-		Reservations: counts.Reservations,
 		Blocklist:    counts.Blocklist,
 		SkippedLocal: skippedLocal,
 	}

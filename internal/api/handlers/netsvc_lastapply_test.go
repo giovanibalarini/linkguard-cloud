@@ -11,17 +11,12 @@ import (
 
 type fakeNetsvcProvider struct{}
 
-func (fakeNetsvcProvider) Backend() netsvc.Backend { return netsvc.BackendKeaUnbound }
-func (fakeNetsvcProvider) GenerateConfigs(netsvc.Config, []netsvc.Reservation, []string, string) ([]netsvc.ConfigFile, error) {
+func (fakeNetsvcProvider) GenerateConfigs(netsvc.Config, []string) ([]netsvc.ConfigFile, error) {
 	return nil, nil
 }
-func (fakeNetsvcProvider) Apply(context.Context, netsvc.Config, []netsvc.Reservation, []string) (string, error) {
-	return "", nil
-}
-func (fakeNetsvcProvider) ReloadConfigs(context.Context, netsvc.Config, []netsvc.Reservation, []string, string) (netsvc.ApplyResult, error) {
+func (fakeNetsvcProvider) ReloadConfigs(context.Context, netsvc.Config, []string) (netsvc.ApplyResult, error) {
 	return netsvc.ApplyResult{}, nil
 }
-func (fakeNetsvcProvider) Leases(context.Context) ([]netsvc.Lease, error) { return nil, nil }
 
 // TestLastApplyStatusNilWhenNeverApplied is the regression test for a false
 // "última aplicação falhou" banner shown on the DHCP/DNS pages of a brand-new
@@ -38,7 +33,7 @@ func TestLastApplyStatusNilWhenNeverApplied(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	h := NewNetsvcHandler(db, fakeNetsvcProvider{}, nil, nil)
+	h := NewNetsvcHandler(db, fakeNetsvcProvider{}, nil)
 
 	if got := h.lastApplyStatus(); got != nil {
 		t.Fatalf("expected nil last_apply before any apply attempt, got %+v", got)
@@ -61,7 +56,7 @@ func TestLastApplyStatusNilWhenNeverApplied(t *testing.T) {
 // vigor" não são a mesma afirmação.
 type warningNetsvcProvider struct{ fakeNetsvcProvider }
 
-func (warningNetsvcProvider) ReloadConfigs(context.Context, netsvc.Config, []netsvc.Reservation, []string, string) (netsvc.ApplyResult, error) {
+func (warningNetsvcProvider) ReloadConfigs(context.Context, netsvc.Config, []string) (netsvc.ApplyResult, error) {
 	return netsvc.ApplyResult{Warnings: []string{"2 domínio(s) da lista de bloqueio são inválidos e não foram aplicados ao DNS"}}, nil
 }
 
@@ -72,7 +67,7 @@ func TestLastApplyStatusCarriesRenderWarnings(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	h := NewNetsvcHandler(db, warningNetsvcProvider{}, nil, nil)
+	h := NewNetsvcHandler(db, warningNetsvcProvider{}, nil)
 	if err := h.doReload(context.Background()); err != nil {
 		t.Fatalf("doReload: %v", err)
 	}

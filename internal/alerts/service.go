@@ -159,7 +159,7 @@ type Notifier interface {
 // decide what it is safe to close on a restart.
 //
 // TypeRuleError is deliberately excluded: it is a catch-all raised from
-// seven unrelated call sites (failover, NTP apply, DHCP/DNS apply, and four
+// seven unrelated call sites (failover, NTP apply, DNS apply, and four
 // in the balancer) with nothing that ever resolves it — see Create's doc
 // comment for why. Clearing it at startup would silently discard a genuine
 // unacknowledged failure that no watcher will ever re-raise on its own,
@@ -246,7 +246,7 @@ func (s *Service) SetNotifier(n Notifier) {
 // explicitly closed (AutoResolve / createRecovery), so (type, linkID) alone
 // is a sound identity for it — there's exactly one open condition of that
 // kind at a time. rule_error has no recovery path: it's a catch-all raised
-// from seven unrelated call sites (failover, NTP apply, DHCP/DNS apply, and
+// from seven unrelated call sites (failover, NTP apply, DNS apply, and
 // four in the balancer) with nothing to ever resolve it. Deduping it by type
 // alone would mean the first rule_error ever recorded opens a row that never
 // closes, permanently masking every later, unrelated Critical failure from
@@ -890,31 +890,31 @@ func (s *Service) SecurityUpdatesNone() error {
 		"Não há atualizações de segurança aguardando instalação.", "")
 }
 
-// NetsvcDepsMissing raises the "the DHCP/DNS the admin asked for is not
-// running" alert: the panel accepted the configuration, but the package that
-// would serve it (kea-dhcp4-server, unbound) is not installed and LinkGuard
+// NetsvcDepsMissing raises the "the DNS the admin asked for is not running"
+// alert: the panel accepted the configuration, but the package that would
+// serve it (unbound) is not installed and LinkGuard
 // could not install it either. Critical for the same reason BaseDepsMissing
 // is: the box looks configured and is serving nothing, which is the false
 // confidence this product exists to eliminate.
 //
-// It is deliberately NOT TypeRuleError (the catch-all the DHCP/DNS apply
+// It is deliberately NOT TypeRuleError (the catch-all the DNS apply
 // used to raise for every failure): "Firewall Rule Error" over a message
 // about a missing package tells the admin to look in the wrong place, and
 // nothing ever resolves a rule_error — while this condition does resolve,
 // the moment the package gets installed.
 func (s *Service) NetsvcDepsMissing(detail string) error {
-	return s.Create(TypeNetsvcDepsMissing, SeverityCritical, "DHCP/DNS sem os pacotes necessários",
+	return s.Create(TypeNetsvcDepsMissing, SeverityCritical, "DNS sem os pacotes necessários",
 		detail, "")
 }
 
 // NetsvcDepsOK clears NetsvcDepsMissing and records that LinkGuard installed
-// the DHCP/DNS packages itself. Raised only on the transition — an apply
+// the DNS packages itself. Raised only on the transition — an apply
 // that had to install something — never on the routine applies that follow,
 // which would turn the recovery into noise.
 func (s *Service) NetsvcDepsOK(detail string) error {
 	s.AutoResolve(TypeNetsvcDepsMissing, "")
-	return s.createRecovery(TypeNetsvcDepsOK, "Pacotes do DHCP/DNS instalados",
-		"O LinkGuard instalou sob demanda o que faltava para servir DHCP/DNS: "+detail, "")
+	return s.createRecovery(TypeNetsvcDepsOK, "Pacotes do DNS instalados",
+		"O LinkGuard instalou sob demanda o que faltava para servir DNS: "+detail, "")
 }
 
 // BaseDepsMissing raises the strongest alert this package has when LinkGuard

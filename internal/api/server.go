@@ -109,7 +109,7 @@ type Config struct {
 	// (today: the on-demand chrony install). Nil falls back to exec, which
 	// is only right for tests — in production a 30s deadline on an apt-get
 	// reports failures that are not happening. See
-	// keaunbound.Service.installExec.
+	// unbound.Service.installExec.
 	PkgExec firewall.Executor
 	// CaptureExec é o executor da captura de pacotes. Prazo próprio pelo mesmo
 	// motivo do PkgExec, ao contrário: uma captura pode durar até
@@ -587,25 +587,21 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		r.With(require(auth.PermMonitoringRead)).Get("/api/ai/reports", aiH.ListReports)
 		r.With(require(auth.PermMonitoringRead)).Get("/api/ai/reports/{id}", aiH.GetReport)
 
-		// DHCP / DNS (Kea + unbound)
-		netH := handlers.NewNetsvcHandler(s.db, s.netSvc, s.alertSvc, s.nftSvc)
+		// DNS (unbound): resolvedor da VPN, log, bloqueio e dnstap
+		netH := handlers.NewNetsvcHandler(s.db, s.netSvc, s.alertSvc)
 		s.netH = netH
 		if s.dnstapSvc != nil {
 			netH.SetDNSMapa(s.dnstapSvc.Mapa())
 		}
-		r.With(require(auth.PermDHCPRead)).Get("/api/dhcp", netH.GetDHCP)
-		r.With(require(auth.PermDHCPWrite)).Put("/api/dhcp/config", netH.UpdateDHCPConfig)
-		r.With(require(auth.PermDHCPWrite)).Post("/api/dhcp/reservations", netH.UpsertReservation)
-		r.With(require(auth.PermDHCPWrite)).Delete("/api/dhcp/reservations", netH.DeleteReservation)
 		r.With(require(auth.PermDNSRead)).Get("/api/dns", netH.GetDNS)
 		r.With(require(auth.PermDNSWrite)).Put("/api/dns/config", netH.UpdateDNSConfig)
 		r.With(require(auth.PermDNSWrite)).Post("/api/dns/blocklist", netH.AddBlocklist)
 		r.With(require(auth.PermDNSWrite)).Delete("/api/dns/blocklist", netH.DeleteBlocklist)
 		// O mapa endereço → nome (#116). Leitura de DNS, não de firewall: é a
 		// mesma tela onde o admin liga o recurso.
-		r.With(require(auth.PermDHCPRead)).Get("/api/dns/mapa", netH.MapaDeDominios)
-		r.With(require(auth.PermDHCPRead)).Get("/api/netsvc/preview", netH.Preview)
-		r.With(require(auth.PermDHCPWrite)).Post("/api/netsvc/apply", netH.Apply)
+		r.With(require(auth.PermDNSRead)).Get("/api/dns/mapa", netH.MapaDeDominios)
+		r.With(require(auth.PermDNSRead)).Get("/api/dns/preview", netH.Preview)
+		r.With(require(auth.PermDNSWrite)).Post("/api/dns/apply", netH.Apply)
 
 		// WireGuard is managed on demand. Enrollment is deliberately a POST
 		// with no matching GET for client material: the private config and QR

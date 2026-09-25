@@ -323,9 +323,6 @@ mon.health.empty:
 mon.health.label.nftables:
   pt: "Firewall"
   en: "Firewall"
-mon.health.label.dhcp:
-  pt: "DHCP"
-  en: "DHCP"
 mon.health.label.dns:
   pt: "DNS"
   en: "DNS"

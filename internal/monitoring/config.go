@@ -21,7 +21,7 @@ type Config struct {
 func defaults() Config {
 	return Config{
 		Enabled:                   true,
-		Services:                  []string{"kea-dhcp4-server", "unbound", "nftables"},
+		Services:                  []string{"unbound", "nftables"},
 		DiskThresholdPct:          90,
 		JournalVerifyIntervalDays: 7,
 		UpdatesCheckIntervalHours: 6,
@@ -38,6 +38,7 @@ func LoadConfig(db *storage.DB) Config {
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		return defaults()
 	}
+	c.Services = semServicosAposentados(c.Services)
 	if c.DiskThresholdPct <= 0 || c.DiskThresholdPct > 100 {
 		c.DiskThresholdPct = 90
 	}
@@ -48,6 +49,26 @@ func LoadConfig(db *storage.DB) Config {
 		c.UpdatesCheckIntervalHours = 1
 	}
 	return c
+}
+
+// servicosAposentados são unidades que o produto já vigiou e não tem mais.
+//
+// A caixa que veio do linkguard-fw traz a lista gravada com o
+// kea-dhcp4-server, e a migração para o pacote cloud PARA o kea (a versão
+// cloud não serve DHCP: quem entrega endereço na VCN é a Oracle). Sem este
+// filtro, o vigia olharia uma unidade instalada e parada e diria "Serviço
+// offline: kea-dhcp4-server" — um alerta de queda para um serviço que foi
+// desligado de propósito.
+var servicosAposentados = map[string]bool{"kea-dhcp4-server": true}
+
+func semServicosAposentados(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !servicosAposentados[s] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // SaveConfig persists the config.

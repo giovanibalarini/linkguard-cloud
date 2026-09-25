@@ -7,32 +7,30 @@ import (
 
 // ─── Restauração de backup ───────────────────────────────────────────────────
 //
-// ApplyRestore grava settings + reservas DHCP + blocklist DNS na MESMA
+// ApplyRestore grava settings + blocklist DNS na MESMA
 // transação, então ele atravessa repo_settings.go e repo_netsvc.go. Ele não foi
 // partido em três: a transação única é justamente a garantia do restore ("ou
 // vale inteiro, ou o banco fica como estava"), e um restore recortado em três
 // arquivos convida o próximo a escrever três transações. A restauração é o
 // domínio; os três SQLs são o conteúdo dela.
 //
-// Só o que roda dentro dessa transação mora aqui. Escrita normal de setting,
-// reserva ou domínio bloqueado continua em repo_settings.go / repo_netsvc.go.
+// Só o que roda dentro dessa transação mora aqui. Escrita normal de setting
+// ou domínio bloqueado continua em repo_settings.go / repo_netsvc.go.
 
-// RestorePayload é o que uma restauração grava: as três coleções, já validadas
+// RestorePayload é o que uma restauração grava: as coleções, já validadas
 // e normalizadas por quem chama.
 type RestorePayload struct {
-	Settings     map[string]string
-	Reservations []DHCPReservation
-	Blocklist    []string
+	Settings  map[string]string
+	Blocklist []string
 }
 
 // RestoreCounts é quanto de cada coisa entrou.
 type RestoreCounts struct {
-	Settings     int
-	Reservations int
-	Blocklist    int
+	Settings  int
+	Blocklist int
 }
 
-// ApplyRestore grava as três coleções numa transação só: ou a configuração
+// ApplyRestore grava as coleções numa transação só: ou a configuração
 // restaurada vale inteira, ou o banco fica exatamente como estava.
 //
 // Antes disto o restore era um laço por coleção com o erro engolido
@@ -62,16 +60,6 @@ func (db *DB) ApplyRestore(p RestorePayload) (RestoreCounts, error) {
 			return RestoreCounts{}, fmt.Errorf("restaurar a chave %q: %w", k, err)
 		}
 		c.Settings++
-	}
-	for _, r := range p.Reservations {
-		if _, err := tx.Exec(`
-			INSERT INTO dhcp_reservations (mac, ip, hostname, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, hostname = excluded.hostname, updated_at = excluded.updated_at`,
-			r.MAC, r.IP, r.Hostname, now, now); err != nil {
-			return RestoreCounts{}, fmt.Errorf("restaurar a reserva DHCP %s: %w", r.MAC, err)
-		}
-		c.Reservations++
 	}
 	for _, d := range p.Blocklist {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO dns_blocklist (domain) VALUES (?)`, d); err != nil {

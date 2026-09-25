@@ -67,7 +67,7 @@ export const SYSTEM_KINDS: Record<string, SystemKind> = {
   [KIND_BLOCKED_HOSTS]: {
     // O alcance real é o da chain: as duas linhas vivem na forward, e só
     // nela. Dizer "qualquer tráfego" era falso justamente onde mais engana —
-    // um host "bloqueado" continua abrindo o painel, o SSH, o DNS e o DHCP
+    // um host "bloqueado" continua abrindo o painel, o SSH e o DNS
     // do próprio firewall, porque isso é input, não forward.
     what: 'fw.systemKind.blockedHosts.what',
     lines: ['ip saddr @blocked_hosts counter drop', 'ip daddr @blocked_hosts counter drop'],

@@ -41,7 +41,7 @@ func newRestoreDB(t *testing.T) *storage.DB {
 // validNetsvcConfigJSON é um netsvc_config limpo e inteiramente válido — a
 // linha de base que todo teste de "restauração recusada não grava nada"
 // restaura antes, para haver estado bom conhecido a provar intacto.
-const validNetsvcConfigJSON = `{"backend":"kea-unbound","interface":"br10","subnet_cidr":"192.168.3.0/24","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3","lease_hours":12,"dns_to_clients":["192.168.3.3"],"upstreams":[],"log_queries":false,"domain_suffix":"lan"}`
+const validNetsvcConfigJSON = `{"upstreams":["1.1.1.1","9.9.9.9"],"log_queries":false,"dnstap_enabled":false}`
 
 func backupWith(settings map[string]string) backup.BackupData {
 	return backup.BackupData{Version: "test-version", Kind: "linkguard-fw-backup", Settings: settings}
@@ -127,14 +127,10 @@ func TestApplyRejectsAndWritesNothing(t *testing.T) {
 		name string
 		data backup.BackupData
 	}{
-		{"subnet_cidr inválido", backupWith(map[string]string{
-			"netsvc_config": `{"backend":"kea-unbound","interface":"br10","subnet_cidr":"not-a-cidr","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3"}`,
-		})},
-		{"interface inválida", backupWith(map[string]string{
-			// Uma quebra de linha em "interface" cairia no interfaces-config do
-			// kea-dhcp4.conf por concatenação de string; um nome deste tamanho
-			// também é recusado direto por validate.Iface.
-			"netsvc_config": `{"backend":"kea-unbound","interface":"this-interface-name-is-way-too-long-for-linux","subnet_cidr":"192.168.3.0/24","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3"}`,
+		{"upstream que não é IP", backupWith(map[string]string{
+			// O upstream cai no forward-zone do unbound.conf por concatenação
+			// de string; o que não for IP puro tem de ser recusado.
+			"netsvc_config": `{"upstreams":["1.1.1.1\nforward-addr: 6.6.6.6"],"log_queries":false}`,
 		})},
 		{"monitoring com formato errado", backupWith(map[string]string{
 			"monitoring": `{"services":{"nao":"e uma lista"}}`,
@@ -142,14 +138,6 @@ func TestApplyRejectsAndWritesNothing(t *testing.T) {
 		{"domínio de bloqueio com injeção", backup.BackupData{
 			Version: "test-version", Kind: "linkguard-fw-backup",
 			Blocklist: []string{"good.example.com", "evil.com\ninclude: \"/etc/passwd"},
-		}},
-		{"reserva DHCP com MAC inválido", backup.BackupData{
-			Version: "test-version", Kind: "linkguard-fw-backup",
-			Reservations: []storage.DHCPReservation{{MAC: "nao-e-um-mac", IP: "192.168.3.50"}},
-		}},
-		{"reserva DHCP com IP inválido", backup.BackupData{
-			Version: "test-version", Kind: "linkguard-fw-backup",
-			Reservations: []storage.DHCPReservation{{MAC: "aa:bb:cc:dd:ee:ff", IP: "999.999.1.1"}},
 		}},
 	}
 
@@ -159,9 +147,8 @@ func TestApplyRejectsAndWritesNothing(t *testing.T) {
 			// Linha de base boa: é ela que tem de sobreviver intacta.
 			if _, err := backup.Apply(db, backup.BackupData{
 				Version: "test-version", Kind: "linkguard-fw-backup",
-				Settings:     map[string]string{"netsvc_config": validNetsvcConfigJSON},
-				Blocklist:    []string{"good.example.com"},
-				Reservations: []storage.DHCPReservation{{MAC: "11:22:33:44:55:66", IP: "192.168.3.20"}},
+				Settings:  map[string]string{"netsvc_config": validNetsvcConfigJSON},
+				Blocklist: []string{"good.example.com"},
 			}); err != nil {
 				t.Fatalf("linha de base: %v", err)
 			}
@@ -181,7 +168,7 @@ func TestApplyRejectsAndWritesNothing(t *testing.T) {
 	}
 }
 
-// snapshotState lê as três coleções que uma restauração grava, para provar
+// snapshotState lê as coleções que uma restauração grava, para provar
 // que uma recusa não deixou rastro.
 func snapshotState(t *testing.T, db *storage.DB) map[string]any {
 	t.Helper()
@@ -189,34 +176,29 @@ func snapshotState(t *testing.T, db *storage.DB) map[string]any {
 	if err != nil {
 		t.Fatalf("ExportSettings: %v", err)
 	}
-	res, err := db.ListDHCPReservations()
-	if err != nil {
-		t.Fatalf("ListDHCPReservations: %v", err)
-	}
 	bl, err := db.ListDNSBlocklist()
 	if err != nil {
 		t.Fatalf("ListDNSBlocklist: %v", err)
 	}
-	return map[string]any{"settings": settings, "reservations": res, "blocklist": bl}
+	return map[string]any{"settings": settings, "blocklist": bl}
 }
 
 // TestApplyCleanBackupRestoresEverything prova que a validação não recusa
-// conteúdo legítimo: config, blocklist e reservas entram como vieram (o MAC
-// normalizado para minúsculas, como o handler sempre fez).
+// conteúdo legítimo: config e blocklist entram como vieram (os domínios
+// normalizados para minúsculas, como o handler sempre fez).
 func TestApplyCleanBackupRestoresEverything(t *testing.T) {
 	db := newRestoreDB(t)
 	res, err := backup.Apply(db, backup.BackupData{
-		Version:      "test-version",
-		Kind:         "linkguard-fw-backup",
-		Settings:     map[string]string{"netsvc_config": validNetsvcConfigJSON},
-		Blocklist:    []string{"ads.example.com", " Tracker.Example.NET "},
-		Reservations: []storage.DHCPReservation{{MAC: "AA:BB:CC:DD:EE:FF", IP: "192.168.3.50", Hostname: "pc"}},
+		Version:   "test-version",
+		Kind:      "linkguard-fw-backup",
+		Settings:  map[string]string{"netsvc_config": validNetsvcConfigJSON},
+		Blocklist: []string{"ads.example.com", " Tracker.Example.NET "},
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if res.Settings != 1 || res.Blocklist != 2 || res.Reservations != 1 {
-		t.Fatalf("contagens = %+v, esperava 1 setting, 2 domínios, 1 reserva", res)
+	if res.Settings != 1 || res.Blocklist != 2 {
+		t.Fatalf("contagens = %+v, esperava 1 setting e 2 domínios", res)
 	}
 	if v, _ := db.GetSetting("netsvc_config"); v != validNetsvcConfigJSON {
 		t.Errorf("netsvc_config = %q", v)
@@ -224,10 +206,6 @@ func TestApplyCleanBackupRestoresEverything(t *testing.T) {
 	bl, _ := db.ListDNSBlocklist()
 	if !reflect.DeepEqual(bl, []string{"ads.example.com", "tracker.example.net"}) {
 		t.Errorf("blocklist = %v, esperava normalizada para minúsculas e sem espaços", bl)
-	}
-	rs, _ := db.ListDHCPReservations()
-	if len(rs) != 1 || rs[0].MAC != "aa:bb:cc:dd:ee:ff" || rs[0].IP != "192.168.3.50" {
-		t.Errorf("reservas = %+v", rs)
 	}
 }
 

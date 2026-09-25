@@ -18,7 +18,7 @@ const SCHEDULE_OPTIONS: { value: BackupSchedule; labelKey: string }[] = [
 /**
  * BackupRestore downloads/e-mails the full panel configuration, encrypted
  * with an admin-configured passphrase, and restores from an encrypted file.
- * Restore applies settings + DHCP reservations + DNS blocklist only (never
+ * Restore applies settings + the DNS blocklist only (never
  * users/roles or live WAN links), so it can't lock the admin out.
  */
 export default function BackupRestore() {
@@ -161,7 +161,7 @@ export default function BackupRestore() {
       {restoreResult && (
         <div className="rounded-lg border border-green-500/40 bg-green-500/10 p-4 space-y-3">
           <div className="text-green-300 text-sm">
-            <p className="font-medium">{t('cfg.backup.restore.summary', { settings: restoreResult.settings, reservations: restoreResult.reservations, blocklist: restoreResult.blocklist })}</p>
+            <p className="font-medium">{t('cfg.backup.restore.summary', { settings: restoreResult.settings, blocklist: restoreResult.blocklist })}</p>
             <p className="text-green-400/70 text-xs mt-1">{t('cfg.backup.restore.reapply')}</p>
           </div>
           {restoreResult.secrets_to_reconfigure && restoreResult.secrets_to_reconfigure.length > 0 && (

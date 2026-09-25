@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
-	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
@@ -29,20 +28,6 @@ func (f *fakeExec) ExecuteRead(_ context.Context, cmd string, args ...string) (s
 }
 func (f *fakeExec) IsDryRun() bool                              { return false }
 func (_ *fakeExec) WriteFile(string, []byte, os.FileMode) error { return nil }
-
-type fakeNetProvider struct{}
-
-func (fakeNetProvider) Backend() netsvc.Backend { return netsvc.BackendKeaUnbound }
-func (fakeNetProvider) GenerateConfigs(netsvc.Config, []netsvc.Reservation, []string, string) ([]netsvc.ConfigFile, error) {
-	return nil, nil
-}
-func (fakeNetProvider) Apply(context.Context, netsvc.Config, []netsvc.Reservation, []string) (string, error) {
-	return "", nil
-}
-func (fakeNetProvider) ReloadConfigs(context.Context, netsvc.Config, []netsvc.Reservation, []string, string) (netsvc.ApplyResult, error) {
-	return netsvc.ApplyResult{}, nil
-}
-func (fakeNetProvider) Leases(context.Context) ([]netsvc.Lease, error) { return nil, nil }
 
 // TestSetBlockedPersistsLiveSnapshot is the regression test for host blocking
 // via the Hosts screen: blocking must save a fresh nftables snapshot (not
@@ -65,7 +50,7 @@ func TestSetBlockedPersistsLiveSnapshot(t *testing.T) {
 
 	const wantRuleset = "table inet linkguard {\n\tset blocked_hosts {\n\t\telements = { 192.168.3.50 }\n\t}\n}\n"
 	nftSvc := nftables.NewService(&fakeExec{ruleset: wantRuleset})
-	svc := hosts.NewService(&fakeExec{ruleset: wantRuleset}, db, nftSvc, fakeNetProvider{})
+	svc := hosts.NewService(&fakeExec{ruleset: wantRuleset}, db, nftSvc)
 
 	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", true); err != nil {
 		t.Fatalf("SetBlocked: %v", err)
@@ -92,7 +77,7 @@ func TestSetBlockedDoesNotPersistTransientDomainCache(t *testing.T) {
 
 	const liveRuleset = "table inet linkguard {\n\tset blocked_hosts {\n\t\telements = { 192.168.3.50 }\n\t}\n\tset dom_blocked {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t\telements = { 9.9.9.9 timeout 1h }\n\t}\n}\n"
 	exec := &fakeExec{ruleset: liveRuleset}
-	svc := hosts.NewService(exec, db, nftables.NewService(exec), fakeNetProvider{})
+	svc := hosts.NewService(exec, db, nftables.NewService(exec))
 
 	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", true); err != nil {
 		t.Fatalf("SetBlocked: %v", err)
@@ -155,7 +140,7 @@ func TestBloquearHostValeAntesDeConhecerOIP(t *testing.T) {
 	// De propósito SEM UpsertHostSighting: este host nunca foi visto, então não
 	// há IP para traduzir.
 	e := &execGravador{}
-	svc := hosts.NewService(e, db, nftables.NewService(e), fakeNetProvider{})
+	svc := hosts.NewService(e, db, nftables.NewService(e))
 
 	if err := svc.SetBlocked(context.Background(), "aa:bb:cc:dd:ee:ff", true); err != nil {
 		t.Fatalf("SetBlocked: %v", err)
@@ -192,7 +177,7 @@ fe80::a8bb:ccff:fedd:eeff dev br10 lladdr aa:bb:cc:dd:ee:ff STALE
 	}
 	t.Cleanup(func() { db.Close() })
 
-	svc := hosts.NewService(&execVizinhanca{saida: vizinhanca}, db, nil, fakeNetProvider{})
+	svc := hosts.NewService(&execVizinhanca{saida: vizinhanca}, db, nil)
 	lista, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)

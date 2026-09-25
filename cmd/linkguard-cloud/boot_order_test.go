@@ -635,7 +635,7 @@ func TestMainWiresTheBootPersistSource(t *testing.T) {
 // TestMainReconciliaOResolvConf guarda a chamada que reescreve o resolv.conf
 // para o resolver local no boot.
 //
-// O guarda antigo aqui vigiava keaSvc.SetAlerter: o veredito sobre o CAMINHO de
+// O guarda antigo aqui vigiava unboundSvc.SetAlerter: o veredito sobre o CAMINHO de
 // resolução (issue #195) nascia dentro do EnsureResolvConf, uma vez por
 // processo. Ele mudou de lugar — quem mede agora é o vigia por tique
 // monitoring.Collector.checkCaminhoNSS, e quem o guarda contra deriva é
@@ -667,7 +667,7 @@ func TestMainReconciliaOResolvConf(t *testing.T) {
 			return true
 		}
 		recv, isIdent := sel.X.(*ast.Ident)
-		if !isIdent || recv.Name != "keaSvc" {
+		if !isIdent || recv.Name != "unboundSvc" {
 			return true
 		}
 		if sel.Sel.Name == "EnsureResolvConf" {
@@ -677,6 +677,6 @@ func TestMainReconciliaOResolvConf(t *testing.T) {
 	})
 
 	if !chamado {
-		t.Fatal("o boot não chama mais keaSvc.EnsureResolvConf: ninguém aponta o resolv.conf para o resolver local, e o dhclient devolve o DNS do provedor na renovação do lease")
+		t.Fatal("o boot não chama mais unboundSvc.EnsureResolvConf: ninguém aponta o resolv.conf para o resolver local, e o dhclient devolve o DNS do provedor na renovação do lease")
 	}
 }

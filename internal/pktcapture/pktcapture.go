@@ -142,7 +142,7 @@ type Service struct {
 	exec    firewall.Executor
 	capExec firewall.Executor
 	// installExec roda o apt-get da instalação sob demanda do tcpdump. Mesmo
-	// motivo do installExec do timesync/keaunbound: 30 s é prazo de `nft`, não
+	// motivo do installExec do unbound: 30 s é prazo de `nft`, não
 	// de download de pacote, e quando ele estoura o apt NÃO morre junto — o
 	// LinkGuard reportaria uma falha que não está acontecendo.
 	installExec firewall.Executor

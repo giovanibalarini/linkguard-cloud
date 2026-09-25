@@ -8,7 +8,6 @@ import type { HealthItem, UpdatesReport } from '../types';
 // Friendly labels for known service unit names.
 const LABEL_KEY: Record<string, string> = {
   'nftables': 'mon.health.label.nftables',
-  'kea-dhcp4-server': 'mon.health.label.dhcp',
   'unbound': 'mon.health.label.dns',
   'ntp-sync': 'mon.health.label.ntpSync',
   'journal-integrity': 'mon.health.label.journalIntegrity',

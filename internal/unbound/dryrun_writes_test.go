@@ -1,4 +1,4 @@
-package keaunbound
+package unbound
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func TestDryRunTouchesNoFileOnDisk(t *testing.T) {
 
 	const sentinela = "NAO PODE SER SOBRESCRITO\n"
 	paths := map[string]string{}
-	for _, name := range []string{"resolv.conf", "dhclient.conf", "kea-dhcp4.conf", "unbound.conf", "unbound-applied.conf"} {
+	for _, name := range []string{"resolv.conf", "dhclient.conf", "unbound.conf", "unbound-applied.conf"} {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte(sentinela), 0o644); err != nil {
 			t.Fatalf("preparar %s: %v", name, err)
@@ -40,13 +40,12 @@ func TestDryRunTouchesNoFileOnDisk(t *testing.T) {
 	}
 	s.resolvConf = paths["resolv.conf"]
 	s.dhclientConf = paths["dhclient.conf"]
-	s.keaConf = paths["kea-dhcp4.conf"]
 	s.unboundConf = paths["unbound.conf"]
 	s.unboundApplied = paths["unbound-applied.conf"]
 
 	ctx := context.Background()
 	s.EnsureResolvConf(ctx)
-	_, _ = s.Apply(ctx, netsvc.Config{}, nil, nil)
+	_, _ = s.ReloadConfigs(ctx, netsvc.Config{}, nil)
 
 	for name, p := range paths {
 		got, err := os.ReadFile(p)
@@ -60,7 +59,7 @@ func TestDryRunTouchesNoFileOnDisk(t *testing.T) {
 	}
 
 	if len(exec.Writes) < 4 {
-		t.Errorf("esperava as escritas de resolv.conf, dhclient.conf, kea e unbound; vieram %d: %v", len(exec.Writes), exec.Writes)
+		t.Errorf("esperava as escritas de resolv.conf, dhclient.conf, unbound.conf e da marca de aplicado; vieram %d: %v", len(exec.Writes), exec.Writes)
 	}
 	if len(exec.Writes) == 0 {
 		t.Error("o executor de dry-run não registrou nenhuma escrita; o teste não exercitou o caminho de gravação")

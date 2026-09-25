@@ -21,15 +21,14 @@ const PassphraseSecretName = "backup_passphrase"
 
 // BackupData is the portable snapshot of the panel's configuration. Settings
 // carry the bulk of it (balancer, port forwards, notifications, DHCP/DNS,
-// 2FA), plus the LAN-facing reservation/blocklist lists. Links are exported for
+// 2FA), plus the DNS blocklist. Links are exported for
 // reference but not auto-restored (they tie into live routing/table IDs).
 type BackupData struct {
-	Version      string                    `json:"version"`
-	Kind         string                    `json:"kind"`
-	Settings     map[string]string         `json:"settings"`
-	Links        []storage.Link            `json:"links"`
-	Reservations []storage.DHCPReservation `json:"dhcp_reservations"`
-	Blocklist    []string                  `json:"dns_blocklist"`
+	Version   string            `json:"version"`
+	Kind      string            `json:"kind"`
+	Settings  map[string]string `json:"settings"`
+	Links     []storage.Link    `json:"links"`
+	Blocklist []string          `json:"dns_blocklist"`
 }
 
 // ErrPassphraseNotConfigured means EncryptSnapshot was called before a backup
@@ -46,10 +45,6 @@ func Snapshot(db *storage.DB, version string) (BackupData, error) {
 	if err != nil {
 		return BackupData{}, err
 	}
-	res, err := db.ListDHCPReservations()
-	if err != nil {
-		return BackupData{}, err
-	}
 	block, err := db.ListDNSBlocklist()
 	if err != nil {
 		return BackupData{}, err
@@ -58,12 +53,11 @@ func Snapshot(db *storage.DB, version string) (BackupData, error) {
 		block = []string{}
 	}
 	return BackupData{
-		Version:      version,
-		Kind:         "linkguard-fw-backup",
-		Settings:     settings,
-		Links:        links,
-		Reservations: res,
-		Blocklist:    block,
+		Version:   version,
+		Kind:      "linkguard-fw-backup",
+		Settings:  settings,
+		Links:     links,
+		Blocklist: block,
 	}, nil
 }
 

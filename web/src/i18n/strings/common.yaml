@@ -31,9 +31,6 @@ nav.vpn:
 nav.hosts:
   pt: "Hosts"
   en: "Hosts"
-nav.dhcp:
-  pt: "DHCP"
-  en: "DHCP"
 nav.dns:
   pt: "DNS"
   en: "DNS"
@@ -178,8 +175,8 @@ fw.posture.input.title:
   pt: "Tráfego destinado ao próprio LinkGuard"
   en: "Traffic addressed to LinkGuard itself"
 fw.posture.input.subtitle:
-  pt: "Quem pode falar com esta máquina: este painel, SSH, o DNS e o DHCP que ela serve."
-  en: "Who may talk to this machine: this panel, SSH, and the DNS and DHCP it serves."
+  pt: "Quem pode falar com esta máquina: este painel, SSH, a VPN e o DNS que ela serve."
+  en: "Who may talk to this machine: this panel, SSH, the VPN and the DNS it serves."
 fw.posture.input.accept:
   pt: "Qualquer máquina que alcance o LinkGuard pode tentar falar com ele."
   en: "Any machine that can reach LinkGuard may try to talk to it."
@@ -265,12 +262,6 @@ fw.posture.survival.admin.what:
 fw.posture.survival.admin.why:
   pt: "SSH e este painel, nas portas que esta máquina realmente usa."
   en: "SSH and this panel, on the ports this machine actually uses."
-fw.posture.survival.dhcpServed.what:
-  pt: "O DHCP que você serve à rede"
-  en: "The DHCP you serve to your network"
-fw.posture.survival.dhcpServed.why:
-  pt: "Sem ele os aparelhos param de pegar IP — e quem estiver na rede vai dizer que “a internet caiu”."
-  en: "Without it devices stop getting an IP — and everyone on the network will say “the internet is down”."
 fw.posture.survival.dnsServed.what:
   pt: "O DNS que você serve à rede"
   en: "The DNS you serve to your network"
@@ -416,8 +407,8 @@ fw.connState.noExpr:
 
 # Grupos do sistema
 fw.systemKind.blockedHosts.what:
-  pt: "Todo tráfego ROTEADO de ou para estes hosts é descartado: eles não saem para a internet nem alcançam outra rede através do firewall. O que eles ainda alcançam é o próprio firewall (painel, SSH, DNS e DHCP), porque estas linhas ficam só na chain forward. Este grupo não tem condição de entrada nem regras: a lista de membros é o próprio conteúdo."
-  en: "All ROUTED traffic from or to these hosts is dropped: they do not reach the internet nor any other network through the firewall. What they can still reach is the firewall itself (panel, SSH, DNS and DHCP), because these lines live only in the forward chain. This group has no entry condition and no rules: the member list is its whole content."
+  pt: "Todo tráfego ROTEADO de ou para estes hosts é descartado: eles não saem para a internet nem alcançam outra rede através do firewall. O que eles ainda alcançam é o próprio firewall (painel, SSH e DNS), porque estas linhas ficam só na chain forward. Este grupo não tem condição de entrada nem regras: a lista de membros é o próprio conteúdo."
+  en: "All ROUTED traffic from or to these hosts is dropped: they do not reach the internet nor any other network through the firewall. What they can still reach is the firewall itself (panel, SSH and DNS), because these lines live only in the forward chain. This group has no entry condition and no rules: the member list is its whole content."
 fw.systemKind.blockedHosts.member.one:
   pt: "host"
   en: "host"

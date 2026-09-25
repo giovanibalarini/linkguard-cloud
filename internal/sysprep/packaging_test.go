@@ -308,10 +308,15 @@ func TestABaseFicaEmRecommendsNuncaEmDepends(t *testing.T) {
 	}
 	// Os pacotes sob demanda: o admin que instala pelo apt (o caminho normal)
 	// já recebe tudo e nunca chega a esperar por um download no painel.
-	for _, pkg := range []string{"kea-dhcp4-server", "unbound", "dns-root-data"} {
+	for _, pkg := range []string{"unbound", "dns-root-data"} {
 		if !recommends[pkg] {
 			t.Errorf("%s é instalado sob demanda pelo LinkGuard e devia estar em Recommends:", pkg)
 		}
+	}
+	// A versão cloud não serve DHCP (a rede é da Oracle). Recomendar o kea
+	// faria o apt instalar e LIGAR um servidor DHCP na VCN.
+	if recommends["kea-dhcp4-server"] {
+		t.Error("kea-dhcp4-server em Recommends: — o apt subiria um servidor DHCP que a versão cloud não usa")
 	}
 }
 

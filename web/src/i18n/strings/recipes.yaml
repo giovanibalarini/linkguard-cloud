@@ -68,27 +68,6 @@ recipes.top-talkers.step3:
   pt: "A barra azul mostra o consumo relativo; à direita, o *download* e o *upload* de cada um."
   en: "The blue bar shows relative usage; to the right, the *download* and *upload* of each one."
 
-recipes.reserve-ip.title:
-  pt: "Dar um IP fixo a um aparelho"
-  en: "Give a device a fixed IP"
-recipes.reserve-ip.summary:
-  pt: "Garantir que um aparelho receba sempre o mesmo endereço."
-  en: "Make sure a device always gets the same address."
-recipes.reserve-ip.cta:
-  pt: "Ir para DHCP"
-  en: "Go to DHCP"
-recipes.reserve-ip.step1:
-  pt: "Em *Hosts*, encontre o aparelho e copie o *MAC* (o \"RG\" da placa de rede)."
-  en: "In *Hosts*, find the device and copy its *MAC* (the network card's own ID number)."
-recipes.reserve-ip.step2:
-  pt: "Abra a tela *DHCP* e vá em *Reservas*."
-  en: "Open the *DHCP* screen and go to *Reservations*."
-recipes.reserve-ip.step3:
-  pt: "Informe o *MAC*, o *IP fixo* desejado e um nome, e salve."
-  en: "Enter the *MAC*, the *fixed IP* you want and a name, then save."
-recipes.reserve-ip.step4:
-  pt: "Clique em *Aplicar*. Na próxima conexão o aparelho receberá esse IP."
-  en: "Click *Apply*. The device picks up that IP the next time it connects."
 
 recipes.port-forward.title:
   pt: "Liberar / encaminhar uma porta"
@@ -100,8 +79,8 @@ recipes.port-forward.cta:
   pt: "Ir para Firewall"
   en: "Go to Firewall"
 recipes.port-forward.step1:
-  pt: "Reserve um *IP fixo* para o aparelho no *DHCP* (assim o encaminhamento não muda de dono)."
-  en: "Reserve a *fixed IP* for the device in *DHCP*, so the forward never ends up pointing at some other machine."
+  pt: "Anote o *IP privado* da máquina na Oracle (ele é fixo enquanto a placa de rede existir)."
+  en: "Note the machine's *private IP* in Oracle (it stays fixed as long as its network card exists)."
 recipes.port-forward.step2:
   pt: "Abra *Firewall → Encaminhamento*."
   en: "Open *Firewall → Port forwarding*."
@@ -243,37 +222,7 @@ recipes.start.nat.help.body:
   pt: "O *NAT* deixa vários aparelhos da sua casa usarem uma única internet, escondidos atrás do firewall. É o que transforma a máquina num *roteador*."
   en: "*NAT* lets many devices in your home share a single internet connection, hidden behind the firewall. It is what turns this machine into a *router*."
 
-recipes.start.dhcp.title:
-  pt: "Distribua IPs (DHCP)"
-  en: "Hand out IPs (DHCP)"
-recipes.start.dhcp.body:
-  pt: "Dá um endereço automático para cada aparelho que conecta na sua rede."
-  en: "Gives an automatic address to every device that joins your network."
-recipes.start.dhcp.cta:
-  pt: "Configurar DHCP"
-  en: "Configure DHCP"
-recipes.start.dhcp.help.title:
-  pt: "DHCP"
-  en: "DHCP"
-recipes.start.dhcp.help.body:
-  pt: "Sem DHCP você teria que configurar o IP de cada celular, TV e PC na mão. O *DHCP* faz isso sozinho. Você ainda pode *reservar* um IP fixo para um aparelho específico."
-  en: "Without DHCP you would have to set the IP of every phone, TV and PC by hand. *DHCP* does it on its own. You can still *reserve* a fixed IP for one specific device."
 
-recipes.start.dns.title:
-  pt: "Resolva nomes (DNS)"
-  en: "Resolve names (DNS)"
-recipes.start.dns.body:
-  pt: "Traduz \"google.com\" no endereço real — e pode filtrar sites."
-  en: "Translates \"google.com\" into the real address — and can filter sites."
-recipes.start.dns.cta:
-  pt: "Configurar DNS"
-  en: "Configure DNS"
-recipes.start.dns.help.title:
-  pt: "DNS"
-  en: "DNS"
-recipes.start.dns.help.body:
-  pt: "O *DNS* é a \"lista telefônica\" da internet: transforma nomes (_google.com_) em números (IPs). Pelo LinkGuard você vê o que cada aparelho acessa e pode *bloquear* domínios."
-  en: "*DNS* is the \"phone book\" of the internet: it turns names (_google.com_) into numbers (IPs). Through LinkGuard you see what each device reaches and can *block* domains."
 
 recipes.start.sec.title:
   pt: "Proteja o acesso ao painel"

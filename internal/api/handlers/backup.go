@@ -61,7 +61,6 @@ func (h *BackupHandler) Export(w http.ResponseWriter, r *http.Request) {
 // restoreResult reports what the restore applied.
 type restoreResult struct {
 	Settings             int      `json:"settings"`
-	Reservations         int      `json:"reservations"`
 	Blocklist            int      `json:"blocklist"`
 	SecretsToReconfigure []string `json:"secrets_to_reconfigure"`
 }
@@ -136,9 +135,8 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := restoreResult{
-		Settings:     applied.Settings,
-		Reservations: applied.Reservations,
-		Blocklist:    applied.Blocklist,
+		Settings:  applied.Settings,
+		Blocklist: applied.Blocklist,
 	}
 
 	// Secrets are never in the backup file (they live in a separate table

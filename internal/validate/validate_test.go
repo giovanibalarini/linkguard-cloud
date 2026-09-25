@@ -56,7 +56,7 @@ func TestNormalizeDomainTargetValidatesEveryDNSLabel(t *testing.T) {
 	}
 }
 
-// TestValidIface: o nome de interface é interpolado em kea-dhcp4.conf e em
+// TestValidIface: o nome de interface é interpolado em comandos `nft` e em
 // unidades do networkd; o charset é o do kernel (IFNAMSIZ-1 = 15 bytes), sem
 // espaço, aspas ou quebra de linha.
 func TestValidIface(t *testing.T) {

@@ -67,7 +67,7 @@ type unitShape struct {
 }
 
 // daemon e oneshot são atalhos para as duas formas que existem na lista de
-// serviços vigiados: kea/unbound são daemons, nftables é oneshot.
+// serviços vigiados: unbound é daemon, nftables é oneshot.
 func daemon(activeState string) unitShape {
 	return unitShape{loadState: "loaded", activeState: activeState, unitType: "notify"}
 }
@@ -240,8 +240,8 @@ func TestDaemonParadoContinuaSendoQueda(t *testing.T) {
 	}
 }
 
-// Os outros dois vigiados (kea-dhcp4-server, unbound) são instalados SOB
-// DEMANDA, quando o admin liga DHCP/DNS no painel. Numa máquina onde ele
+// O outro vigiado (unbound) é instalado SOB DEMANDA, quando o admin liga o
+// DNS no painel. Numa máquina onde ele
 // nunca ligou, a unidade não existe. Ausência não é queda — e um item
 // vermelho no painel para um serviço que ninguém pediu é dado falso.
 func TestUnidadeAusenteOuMascaradaNaoEQuedaENaoVaiParaOPainel(t *testing.T) {
@@ -250,9 +250,9 @@ func TestUnidadeAusenteOuMascaradaNaoEQuedaENaoVaiParaOPainel(t *testing.T) {
 		"mascarada":     {loadState: "masked", activeState: "inactive"},
 	} {
 		t.Run(nome, func(t *testing.T) {
-			fe := &fakeExec{units: map[string]unitShape{"kea-dhcp4-server": forma}}
+			fe := &fakeExec{units: map[string]unitShape{"unbound": forma}}
 			c, db := newServiceCollector(t, fe)
-			cfg := Config{Enabled: true, Services: []string{"kea-dhcp4-server"}}
+			cfg := Config{Enabled: true, Services: []string{"unbound"}}
 			for i := 0; i < 5; i++ {
 				c.checkServices(cfg)
 			}
@@ -260,7 +260,7 @@ func TestUnidadeAusenteOuMascaradaNaoEQuedaENaoVaiParaOPainel(t *testing.T) {
 				t.Errorf("unidade %s gerou %d alerta(s) service_offline", nome, n)
 			}
 			for _, it := range c.Snapshot() {
-				if it.Name == "kea-dhcp4-server" {
+				if it.Name == "unbound" {
 					t.Errorf("unidade %s apareceu no painel (Up=%v): dado falso", nome, it.Up)
 				}
 			}

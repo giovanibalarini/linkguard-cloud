@@ -170,12 +170,8 @@ var Entries = []Entry{
 		OnlyAtServiceStart: true,
 	},
 	{
-		Path: "/etc/kea", Dir: true, Mode: 0o755,
-		Why: "config do DHCP; precisa existir no start para o kea instalado sob demanda ser configurável sem reiniciar",
-	},
-	{
 		Path: "/etc/unbound/unbound.conf.d", Dir: true, Mode: 0o755,
-		Why: "config do DNS; mesma razão do /etc/kea",
+		Why: "config do DNS; precisa existir no start para o unbound instalado sob demanda ser configurável sem reiniciar",
 	},
 	{
 		// Está na unidade SEM o prefixo `-` (é o sysctl drop-in do
@@ -250,7 +246,7 @@ func Paths() []string {
 // SandboxHint turns "cannot write there" into something the admin can act
 // on, and is shared by every feature that writes into /etc: the likely cause
 // is specific and non-obvious, and the sentence is identical whether the
-// path is /etc/kea (DHCP) or /etc/unbound/unbound.conf.d (DNS).
+// path is /etc/unbound/unbound.conf.d (DNS) or /etc/wireguard (VPN).
 //
 // LinkGuard runs under ProtectSystem=strict and systemd builds the unit's
 // mount namespace when the service STARTS — a directory that did not exist

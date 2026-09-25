@@ -15,13 +15,13 @@ type ctxProbeProvider struct {
 	hadDeadline bool
 }
 
-func (p *ctxProbeProvider) ReloadConfigs(ctx context.Context, _ netsvc.Config, _ []netsvc.Reservation, _ []string, _ string) (netsvc.ApplyResult, error) {
+func (p *ctxProbeProvider) ReloadConfigs(ctx context.Context, _ netsvc.Config, _ []string) (netsvc.ApplyResult, error) {
 	p.sawCanceled = ctx.Err() != nil
 	_, p.hadDeadline = ctx.Deadline()
 	return netsvc.ApplyResult{}, nil
 }
 
-// O primeiro apply numa máquina pelada instala kea + unbound + dns-root-data.
+// O primeiro apply numa máquina pelada instala unbound + dns-root-data.
 // Se o admin fechar a aba (ou o axios desistir), o apt NÃO morre junto — a
 // unidade transiente do systemd-run termina a transação. Cancelar o trabalho
 // junto com o cliente fazia o LinkGuard registrar uma falha que não estava
@@ -30,7 +30,7 @@ func (p *ctxProbeProvider) ReloadConfigs(ctx context.Context, _ netsvc.Config, _
 func TestApplyNaoMorreJuntoComOCliente(t *testing.T) {
 	db := newPrereqTestDB(t)
 	p := &ctxProbeProvider{}
-	h := NewNetsvcHandler(db, p, nil, nil)
+	h := NewNetsvcHandler(db, p, nil)
 
 	// Requisição cujo contexto já foi cancelado: é o que o net/http entrega
 	// quando o cliente desiste.

@@ -1,8 +1,7 @@
-package keaunbound
+package unbound
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,12 +13,10 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 )
 
-// recExec records write commands and lets tests control the kea config-test.
+// recExec records write commands and simulates the machine the provider asks about.
 type recExec struct {
-	wrote       []string
-	writes      []string
-	keaTestErr  error  // returned by `kea-dhcp4 -t` if set
-	keaTestPath string // records the file path validateKea passed to `-t`
+	wrote  []string
+	writes []string
 
 	// unboundEnabled controls the answer to `systemctl is-enabled unbound`,
 	// which EnsureResolvConf gates on: unbound is only Recommends: in the
@@ -37,7 +34,8 @@ type recExec struct {
 	unboundCheckPath string
 
 	// missingPkgs is dpkg's view of the box: the packages it reports as NOT
-	// installed. Default (nil) is a machine that already has kea and unbound,
+	// installed. Default (nil) is a machine that already has unbound and
+	// dns-root-data,
 	// so every test that is about the apply itself exercises the apply and
 	// not the install. A test that wants the bare-machine case names the
 	// packages here.
@@ -55,7 +53,7 @@ type recExec struct {
 
 	// failOn faz Execute falhar em qualquer comando que contenha esta
 	// substring — usado para reproduzir o apply que escreve os arquivos e
-	// morre no reload do kea.
+	// morre no restart do unbound.
 	failOn string
 }
 
@@ -113,13 +111,6 @@ func (e *recExec) ExecuteRead(_ context.Context, cmd string, args ...string) (st
 		}
 		return "ok", nil
 	}
-	if len(args) >= 2 && args[0] == "-t" { // kea-dhcp4 -t <file>
-		e.keaTestPath = args[1]
-		if e.keaTestErr != nil {
-			return "config error", e.keaTestErr
-		}
-		return "ok", nil
-	}
 	return "", nil
 }
 func (e *recExec) IsDryRun() bool { return false }
@@ -137,7 +128,6 @@ func newTestSvc(t *testing.T, e *recExec) *Service {
 	t.Helper()
 	dir := t.TempDir()
 	s := NewService(e)
-	s.keaConf = filepath.Join(dir, "kea-dhcp4.conf")
 	s.unboundConf = filepath.Join(dir, "unbound.conf")
 	s.unboundApplied = filepath.Join(dir, "unbound-applied.conf")
 	// O checker é resolvido no sistema de arquivos antes de rodar (I-6),
@@ -156,21 +146,15 @@ func TestReloadConfigsValidatesWritesAndReloads(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
 	// Config files written.
-	if _, err := os.Stat(s.keaConf); err != nil {
-		t.Error("kea config not written")
-	}
 	if _, err := os.Stat(s.unboundConf); err != nil {
 		t.Error("unbound config not written")
 	}
 	// Services reloaded via the canonical, systemd-tracked reload-or-restart.
 	joined := strings.Join(e.writes, "\n")
-	if !strings.Contains(joined, "systemctl reload-or-restart kea-dhcp4-server") {
-		t.Errorf("missing kea reload-or-restart; writes:\n%s", joined)
-	}
 	// unbound gets a real restart here, not the graceful reload: this apply
 	// is the first time the LinkGuard drop-in exists, so the running daemon
 	// has never had these `interface:` lines — and SIGHUP does not re-open
@@ -187,7 +171,7 @@ func TestServiceAddsRuntimeDNSBindingSource(t *testing.T) {
 		return "10.7.0.1", "10.7.0.0/24", true, nil
 	})
 
-	files, err := s.GenerateConfigs(netsvc.DefaultConfig(), nil, nil, "")
+	files, err := s.GenerateConfigs(netsvc.DefaultConfig(), nil)
 	if err != nil {
 		t.Fatalf("GenerateConfigs: %v", err)
 	}
@@ -212,98 +196,22 @@ func TestReloadConfigsRejectsMissingRuntimeDNSAddressBeforeWrite(t *testing.T) {
 		return "10.7.0.1", "10.7.0.0/24", true, nil
 	})
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err == nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err == nil {
 		t.Fatal("expected missing WireGuard address to abort reload")
 	}
 	if _, err := os.Stat(s.unboundConf); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unbound config must not be written, stat err = %v", err)
 	}
-	if _, err := os.Stat(s.keaConf); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("kea config must not be written, stat err = %v", err)
-	}
 }
-
-// TestValidateKeaWritesTempFileNextToRealConfig is the regression test for a
-// real production bug: the validate temp file used to go to os.TempDir()
-// (/tmp), but Debian's kea-dhcp4 AppArmor profile only allows reading under
-// /etc/kea/ — kea-dhcp4 -t failed with "Unable to open file" on every real
-// apply. The fix creates the temp file next to s.keaConf instead.
-func TestValidateKeaWritesTempFileNextToRealConfig(t *testing.T) {
-	e := &recExec{}
-	s := newTestSvc(t, e)
-
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
-		t.Fatalf("ReloadConfigs: %v", err)
-	}
-	if e.keaTestPath == "" {
-		t.Fatal("kea-dhcp4 -t was never called")
-	}
-	wantDir := filepath.Dir(s.keaConf)
-	if gotDir := filepath.Dir(e.keaTestPath); gotDir != wantDir {
-		t.Errorf("validate temp file dir = %q, want %q (same dir as the real kea config, readable by kea-dhcp4's AppArmor profile)", gotDir, wantDir)
-	}
-}
-
-// TestEnsureKeaDirReadableRelaxesRestrictivePermissions is the regression
-// test for a real production bug: Debian's kea-dhcp-server package ships
-// /etc/kea owned _kea:_kea mode 0750. kea-dhcp4's AppArmor profile grants
-// path-based read access under /etc/kea/** but not the dac_override/
-// dac_read_search capabilities needed to bypass that Unix DAC restriction —
-// so even root (LinkGuard, and kea-dhcp4 itself at its own startup) got
-// "Unable to open file" reading a config that both the file permissions
-// (0644) and the AppArmor path rule allowed, because the *directory* blocked
-// the traversal first. LinkGuard owns this the same way it owns nftables
-// bootstrap/ip_forward/conntrack accounting: self-heals on every start
-// regardless of what a package reinstall resets it to.
-func TestEnsureKeaDirReadableRelaxesRestrictivePermissions(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o750); err != nil {
-		t.Fatalf("Chmod setup: %v", err)
-	}
-	s := NewService(&recExec{})
-	s.keaConf = filepath.Join(dir, "kea-dhcp4.conf")
-
-	s.EnsureKeaDirReadable()
-
-	info, err := os.Stat(dir)
-	if err != nil {
-		t.Fatalf("Stat: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0o755 {
-		t.Errorf("dir mode = %o, want %o", got, 0o755)
-	}
-}
-
-func TestReloadConfigsAbortsOnInvalidKeaConfig(t *testing.T) {
-	e := &recExec{keaTestErr: assertErr2{}}
-	s := newTestSvc(t, e)
-
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err == nil {
-		t.Fatal("expected error when kea config test fails")
-	}
-	// No reload, and the production config file must NOT be written.
-	if strings.Contains(strings.Join(e.writes, "\n"), "reload-or-restart") {
-		t.Error("must not reload when config validation fails")
-	}
-	if _, err := os.Stat(s.keaConf); err == nil {
-		t.Error("must not write kea config when validation fails")
-	}
-}
-
-type assertErr2 struct{}
-
-func (assertErr2) Error() string { return "kea config invalid" }
 
 // ─── Finding 3 (S1): ReloadConfigs must validate the unbound candidate with
-// unbound-checkconf before writing it, mirroring validateKea exactly —
-// nothing written or reloaded on failure, same temp-file-next-to-the-real-
-// config placement, and a missing checker must not block the DHCP/DNS
-// apply. Regression tests for .superpowers/sdd/input-validation-audit.md
+// unbound-checkconf before writing it — nothing written or reloaded on
+// failure, the temp file next to the real config, and a missing checker must
+// not block the DNS apply. Regression tests for .superpowers/sdd/input-validation-audit.md
 // finding #3.
 
-// TestReloadConfigsAbortsOnInvalidUnboundConfig is the unbound-side sibling
-// of TestReloadConfigsAbortsOnInvalidKeaConfig: an unbound config that fails
-// unbound-checkconf must abort the whole reload with NEITHER file written
+// TestReloadConfigsAbortsOnInvalidUnboundConfig: an unbound config that fails
+// unbound-checkconf must abort the whole reload with nothing written
 // and no service reloaded — a broken unbound.conf must never land on disk,
 // since it would survive the next reboot and take DNS down (see this
 // finding's motivating incident in the task brief).
@@ -311,7 +219,7 @@ func TestReloadConfigsAbortsOnInvalidUnboundConfig(t *testing.T) {
 	e := &recExec{unboundCheckErr: fmt.Errorf("unbound config invalid")}
 	s := newTestSvc(t, e)
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err == nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err == nil {
 		t.Fatal("expected error when unbound config test fails")
 	}
 	if strings.Contains(strings.Join(e.writes, "\n"), "reload-or-restart") {
@@ -320,21 +228,16 @@ func TestReloadConfigsAbortsOnInvalidUnboundConfig(t *testing.T) {
 	if _, err := os.Stat(s.unboundConf); err == nil {
 		t.Error("must not write unbound config when validation fails")
 	}
-	if _, err := os.Stat(s.keaConf); err == nil {
-		t.Error("must not write kea config either — nothing is applied when any candidate is invalid")
-	}
 }
 
-// TestValidateUnboundWritesTempFileNextToRealConfig mirrors
-// TestValidateKeaWritesTempFileNextToRealConfig: the temp file must live in
-// the same directory as the real unbound config, matching validateKea's
-// AppArmor-driven placement so both validators behave identically even
-// though unbound-checkconf itself has no comparable confinement on Debian.
+// TestValidateUnboundWritesTempFileNextToRealConfig: the temp file must live
+// in the same directory as the real unbound config (see validateUnbound for
+// why).
 func TestValidateUnboundWritesTempFileNextToRealConfig(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
 	if e.unboundCheckPath == "" {
@@ -347,7 +250,7 @@ func TestValidateUnboundWritesTempFileNextToRealConfig(t *testing.T) {
 }
 
 // TestReloadConfigsProceedsWhenUnboundCheckconfMissing: unbound-checkconf
-// not being installed must not block DHCP/DNS apply — Debian's unbound
+// not being installed must not block the DNS apply — Debian's unbound
 // package (and its checker) is a Recommends:, not a Depends:, of this
 // project. The absence is now established by resolving the binary (I-6),
 // not by reading the error text of a command that did run, so the test
@@ -358,7 +261,7 @@ func TestReloadConfigsProceedsWhenUnboundCheckconfMissing(t *testing.T) {
 	s := newTestSvc(t, e)
 	s.unboundCheckBin = filepath.Join(t.TempDir(), "unbound-checkconf") // nunca criado
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("ReloadConfigs should proceed when unbound-checkconf is missing: %v", err)
 	}
 	if _, err := os.Stat(s.unboundConf); err != nil {
@@ -370,107 +273,13 @@ func TestReloadConfigsProceedsWhenUnboundCheckconfMissing(t *testing.T) {
 	}
 }
 
-func TestGenerateKeaConfigValidJSON(t *testing.T) {
-	cfg := netsvc.DefaultConfig()
-	res := []netsvc.Reservation{{MAC: "AA:BB:CC:DD:EE:FF", IP: "192.168.3.50", Hostname: "pc-joao"}}
-	out := GenerateKeaConfig(cfg, res, "")
-
-	// Strip the leading // comment line, the rest must be valid JSON.
-	jsonPart := out[strings.Index(out, "{"):]
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(jsonPart), &parsed); err != nil {
-		t.Fatalf("kea config is not valid JSON: %v\n%s", err, out)
-	}
-	dhcp4, ok := parsed["Dhcp4"].(map[string]any)
-	if !ok {
-		t.Fatal("missing Dhcp4 root")
-	}
-	subnets := dhcp4["subnet4"].([]any)
-	sn := subnets[0].(map[string]any)
-	if sn["subnet"] != "192.168.3.0/24" {
-		t.Errorf("wrong subnet: %v", sn["subnet"])
-	}
-	pool := sn["pools"].([]any)[0].(map[string]any)["pool"]
-	if pool != "192.168.3.10 - 192.168.3.100" {
-		t.Errorf("wrong pool: %v", pool)
-	}
-	rs := sn["reservations"].([]any)[0].(map[string]any)
-	if rs["hw-address"] != "aa:bb:cc:dd:ee:ff" || rs["ip-address"] != "192.168.3.50" {
-		t.Errorf("wrong reservation: %v", rs)
-	}
-	if dhcp4["valid-lifetime"].(float64) != 43200 { // 12h
-		t.Errorf("wrong valid-lifetime: %v", dhcp4["valid-lifetime"])
-	}
-}
-
-// optionData extracts the option-data list of the first subnet, for
-// asserting on individual DHCP options by name.
-func optionData(t *testing.T, out string) []map[string]any {
-	t.Helper()
-	jsonPart := out[strings.Index(out, "{"):]
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(jsonPart), &parsed); err != nil {
-		t.Fatalf("kea config is not valid JSON: %v\n%s", err, out)
-	}
-	dhcp4 := parsed["Dhcp4"].(map[string]any)
-	sn := dhcp4["subnet4"].([]any)[0].(map[string]any)
-	opts := sn["option-data"].([]any)
-	out2 := make([]map[string]any, len(opts))
-	for i, o := range opts {
-		out2[i] = o.(map[string]any)
-	}
-	return out2
-}
-
-// TestGenerateKeaConfigEmitsNTPServersOptionWhenSet: passing the firewall's
-// LAN IP as ntpServer must render DHCP option 42 (ntp-servers) pointing at
-// it, alongside the existing routers/domain-name-servers options — spec §5.
-func TestGenerateKeaConfigEmitsNTPServersOptionWhenSet(t *testing.T) {
-	cfg := netsvc.DefaultConfig() // Gateway: 192.168.3.3
-	out := GenerateKeaConfig(cfg, nil, "192.168.3.3")
-
-	found := false
-	for _, o := range optionData(t, out) {
-		if o["name"] == "ntp-servers" {
-			found = true
-			if o["data"] != "192.168.3.3" {
-				t.Errorf("ntp-servers data = %v, want 192.168.3.3", o["data"])
-			}
-		}
-	}
-	if !found {
-		t.Errorf("expected an ntp-servers option; got options: %v\n%s", optionData(t, out), out)
-	}
-}
-
-// TestGenerateKeaConfigOmitsNTPServersOptionWhenEmpty: the empty string is
-// "not serving" — no ntp-servers option at all, matching today's behaviour
-// exactly (additive feature, off by default).
-func TestGenerateKeaConfigOmitsNTPServersOptionWhenEmpty(t *testing.T) {
-	cfg := netsvc.DefaultConfig()
-	out := GenerateKeaConfig(cfg, nil, "")
-
-	for _, o := range optionData(t, out) {
-		if o["name"] == "ntp-servers" {
-			t.Errorf("expected no ntp-servers option when ntpServer is empty; got: %v", o)
-		}
-	}
-	// Still valid JSON (same pattern as TestGenerateKeaConfigValidJSON).
-	jsonPart := out[strings.Index(out, "{"):]
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(jsonPart), &parsed); err != nil {
-		t.Fatalf("kea config is not valid JSON: %v\n%s", err, out)
-	}
-}
-
 func TestGenerateUnboundConfigRecursiveByDefault(t *testing.T) {
 	cfg := netsvc.DefaultConfig() // empty upstreams = recursive
 	out, _, _ := GenerateUnboundConfig(cfg, []string{"ads.example.com"})
 	wants := []string{
 		"server:",
-		"interface: 192.168.3.3",
 		"interface: 127.0.0.1",
-		"access-control: 192.168.3.0/24 allow",
+		"access-control: 127.0.0.0/8 allow",
 		"num-threads: 2",
 		"local-zone: \"ads.example.com.\" always_nxdomain",
 	}
@@ -548,55 +357,6 @@ func TestGenerateUnboundConfigSkipsInjectedBlocklistEntry(t *testing.T) {
 	}
 	if !strings.Contains(out, `local-zone: "good.example.com." always_nxdomain`) {
 		t.Errorf("valid blocklist entry must still be rendered even though a sibling entry was bad:\n%s", out)
-	}
-}
-
-// TestGenerateUnboundConfigSkipsInvalidDomainSuffix: domain_suffix is
-// concatenated straight into a local-zone directive too — a value with a
-// newline must be dropped rather than injected.
-func TestGenerateUnboundConfigSkipsInvalidDomainSuffix(t *testing.T) {
-	cfg := netsvc.DefaultConfig()
-	cfg.DomainSuffix = "lan\"\ninclude: \"/etc/passwd"
-	out, _, _ := GenerateUnboundConfig(cfg, nil)
-
-	if strings.Contains(out, "include:") {
-		t.Errorf("injected directive via domain_suffix reached unbound.conf:\n%s", out)
-	}
-}
-
-// TestGenerateUnboundConfigRejectsInvalidGateway: Gateway feeds the
-// `interface:` directive by string concatenation. The injected value must
-// never reach unbound.conf — and, since I-7, it does not get there by the
-// directive being quietly dropped (which would leave unbound listening on
-// 127.0.0.1 alone, DNS dead for the LAN, apply reporting success) but by
-// the render failing outright.
-func TestGenerateUnboundConfigRejectsInvalidGateway(t *testing.T) {
-	cfg := netsvc.DefaultConfig()
-	cfg.Gateway = "192.168.3.3\ninterface: 0.0.0.0"
-	out, _, err := GenerateUnboundConfig(cfg, nil)
-
-	if err == nil {
-		t.Fatalf("esperava falha de renderização, obtive:\n%s", out)
-	}
-	if strings.Contains(out, "interface: 0.0.0.0") {
-		t.Errorf("injected interface directive via gateway reached unbound.conf:\n%s", out)
-	}
-}
-
-// TestGenerateUnboundConfigRejectsInvalidSubnetCIDR: SubnetCIDR feeds the
-// `access-control:` directive by string concatenation. Same reasoning as
-// the gateway above — dropping it alone would leave the LAN with no
-// access-control line at all, i.e. no DNS.
-func TestGenerateUnboundConfigRejectsInvalidSubnetCIDR(t *testing.T) {
-	cfg := netsvc.DefaultConfig()
-	cfg.SubnetCIDR = "192.168.3.0/24 allow\naccess-control: 0.0.0.0/0"
-	out, _, err := GenerateUnboundConfig(cfg, nil)
-
-	if err == nil {
-		t.Fatalf("esperava falha de renderização, obtive:\n%s", out)
-	}
-	if strings.Contains(out, "access-control: 0.0.0.0/0") {
-		t.Errorf("injected access-control directive via subnet_cidr reached unbound.conf:\n%s", out)
 	}
 }
 
@@ -858,24 +618,6 @@ func TestEnsureResolvConfReplacesIrregularSpacing(t *testing.T) {
 	}
 }
 
-func TestParseKeaLeases(t *testing.T) {
-	sample := `address,hwaddr,client_id,valid_lifetime,expire,subnet_id,fqdn_fwd,fqdn_rev,hostname,state,user_context,pool_id
-192.168.3.50,aa:bb:cc:dd:ee:ff,,43200,1782500000,1,0,0,pc-joao,0,,0
-192.168.3.61,11:22:33:44:55:66,,43200,1782500100,1,0,0,,0,,0
-192.168.3.99,99:99:99:99:99:99,,43200,1782400000,1,0,0,old,1,,0
-`
-	got := ParseKeaLeases(sample)
-	if len(got) != 2 { // the state=1 row is excluded
-		t.Fatalf("expected 2 active leases, got %d: %+v", len(got), got)
-	}
-	if got[0].IP != "192.168.3.50" || got[0].Hostname != "pc-joao" || got[0].MAC != "aa:bb:cc:dd:ee:ff" {
-		t.Errorf("lease 0 wrong: %+v", got[0])
-	}
-	if got[1].IP != "192.168.3.61" || got[1].Hostname != "" {
-		t.Errorf("lease 1 wrong: %+v", got[1])
-	}
-}
-
 // ─── I-5: o arquivo temporário de validação não pode cair no glob do unbound ──
 //
 // O unbound.conf do Debian faz `include-toplevel:
@@ -889,7 +631,7 @@ func TestValidateUnboundTempFileIsNotPickedUpByTheIncludeGlob(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
 	if e.unboundCheckPath == "" {
@@ -912,7 +654,7 @@ func TestReloadConfigsFailsClosedWhenCheckerRejectsWithAMissingFileMessage(t *te
 	e := &recExec{unboundCheckErr: fmt.Errorf(`[1234:0] fatal error: /var/lib/unbound/root.key: no such file or directory`)}
 	s := newTestSvc(t, e)
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err == nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err == nil {
 		t.Fatal("uma rejeição do unbound-checkconf tem que abortar o apply, mesmo citando arquivo ausente")
 	}
 	if _, err := os.Stat(s.unboundConf); err == nil {
@@ -931,7 +673,7 @@ func TestReloadConfigsSkipsValidationWhenCheckerIsReallyAbsent(t *testing.T) {
 	s := newTestSvc(t, e)
 	s.unboundCheckBin = filepath.Join(t.TempDir(), "nao-existe", "unbound-checkconf")
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("checker ausente não pode bloquear o apply: %v", err)
 	}
 	if e.unboundCheckPath != "" {
@@ -939,47 +681,6 @@ func TestReloadConfigsSkipsValidationWhenCheckerIsReallyAbsent(t *testing.T) {
 	}
 	if _, err := os.Stat(s.unboundConf); err != nil {
 		t.Error("a config devia ser escrita mesmo sem validação possível")
-	}
-}
-
-// ─── I-7: campo singular inválido derruba o apply; entradas de lista contam ──
-//
-// Descartar o Gateway deixa o unbound ouvindo só em 127.0.0.1 e descartar
-// a SubnetCIDR deixa a LAN sem access-control: nos dois casos sai uma
-// config VÁLIDA (o unbound-checkconf aprova) que mata o DNS do escritório
-// em silêncio, enquanto o apply reporta sucesso e o painel segue exibindo
-// os valores configurados. "Pular e logar" só é a estratégia certa para
-// entrada de lista, onde uma entrada ruim não pode afundar as boas.
-func TestGenerateUnboundConfigFailsOnInvalidGateway(t *testing.T) {
-	c := netsvc.DefaultConfig()
-	c.Gateway = "192.168.3.3; evil"
-	if _, _, err := GenerateUnboundConfig(c, nil); err == nil {
-		t.Fatal("um gateway inválido tem que derrubar o apply, não sair do unbound.conf em silêncio")
-	}
-}
-
-func TestGenerateUnboundConfigFailsOnInvalidSubnetCIDR(t *testing.T) {
-	c := netsvc.DefaultConfig()
-	c.SubnetCIDR = "não é cidr"
-	if _, _, err := GenerateUnboundConfig(c, nil); err == nil {
-		t.Fatal("uma sub-rede inválida tem que derrubar o apply: sem access-control a LAN inteira perde o DNS")
-	}
-}
-
-func TestReloadConfigsAbortsWhenASingularUnboundFieldIsInvalid(t *testing.T) {
-	e := &recExec{}
-	s := newTestSvc(t, e)
-	c := netsvc.DefaultConfig()
-	c.Gateway = "192.168.3.3; evil"
-
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err == nil {
-		t.Fatal("ReloadConfigs tinha que falhar com um campo singular inválido")
-	}
-	if _, err := os.Stat(s.unboundConf); err == nil {
-		t.Error("nada pode ser escrito quando a renderização reprova")
-	}
-	if strings.Contains(strings.Join(e.writes, "\n"), "reload-or-restart") {
-		t.Error("nada pode ser recarregado quando a renderização reprova")
 	}
 }
 
@@ -992,7 +693,7 @@ func TestReloadConfigsReportsSkippedListEntries(t *testing.T) {
 	c := netsvc.DefaultConfig()
 	c.Upstreams = []string{"1.1.1.1", "não-é-ip"}
 
-	res, err := s.ReloadConfigs(context.Background(), c, nil, []string{"ads.example.com", "domínio inválido!"}, "")
+	res, err := s.ReloadConfigs(context.Background(), c, []string{"ads.example.com", "domínio inválido!"})
 	if err != nil {
 		t.Fatalf("uma entrada de lista ruim não pode afundar as boas: %v", err)
 	}
@@ -1012,42 +713,43 @@ func TestReloadConfigsReportsSkippedListEntries(t *testing.T) {
 	}
 }
 
-// ─── Instalação sob demanda (kea-dhcp4-server / unbound) ─────────────────────
+// ─── Instalação sob demanda (unbound) ────────────────────────────────────────
 
-// O defeito que originou esta funcionalidade: numa máquina onde o
-// kea-dhcp4-server nunca foi instalado, ligar o DHCP pelo painel morria em
+// O defeito que originou esta funcionalidade, ainda no tempo em que o produto
+// servia DHCP: numa máquina onde o kea-dhcp4-server nunca foi instalado,
+// ligar o DHCP pelo painel morria em
 // `open /etc/kea/kea-validate-*.conf: no such file or directory` — o
 // diretório só existia se algum humano tivesse rodado apt antes. A premissa
 // do produto (FEATURES.md) é o contrário: instalar o LinkGuard é entregar a
 // máquina a ele, e o pacote opcional entra quando o admin liga a
 // funcionalidade.
 func TestReloadConfigsInstallsMissingPackagesOnDemand(t *testing.T) {
-	e := &recExec{missingPkgs: map[string]bool{keaPackage: true}}
+	e := &recExec{missingPkgs: map[string]bool{unboundPackage: true}}
 	s := newTestSvc(t, e)
 
-	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err != nil {
-		t.Fatalf("ReloadConfigs numa máquina sem o kea: %v", err)
+		t.Fatalf("ReloadConfigs numa máquina sem o unbound: %v", err)
 	}
 	joined := strings.Join(e.writes, "\n")
-	if !strings.Contains(joined, "apt-get install") || !strings.Contains(joined, keaPackage) {
+	if !strings.Contains(joined, "apt-get install") || !strings.Contains(joined, unboundPackage) {
 		t.Errorf("o pacote ausente tinha que ser instalado; comandos:\n%s", joined)
 	}
-	if len(res.Installed) != 1 || res.Installed[0] != keaPackage {
-		t.Errorf("Installed = %v, quero [%s] (para o painel poder registrar a transição)", res.Installed, keaPackage)
+	if len(res.Installed) != 1 || res.Installed[0] != unboundPackage {
+		t.Errorf("Installed = %v, quero [%s] (para o painel poder registrar a transição)", res.Installed, unboundPackage)
 	}
-	if _, sErr := os.Stat(s.keaConf); sErr != nil {
+	if _, sErr := os.Stat(s.unboundConf); sErr != nil {
 		t.Errorf("depois de instalar, a config tinha que ser aplicada na mesma execução: %v", sErr)
 	}
 }
 
-// O caminho normal — todo save de DHCP/DNS passa por aqui. Numa máquina já
+// O caminho normal — todo save de DNS passa por aqui. Numa máquina já
 // provisionada isso não pode custar um apt: só um dpkg-query por pacote.
 func TestReloadConfigsDoesNotRunAptWhenThePackagesAreThere(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 
-	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
@@ -1064,26 +766,26 @@ func TestReloadConfigsDoesNotRunAptWhenThePackagesAreThere(t *testing.T) {
 // quê, o que deixa de funcionar e como resolver na mão — e nada pode ser
 // escrito nem recarregado.
 func TestReloadConfigsExplainsAPackageItCouldNotInstall(t *testing.T) {
-	e := &recExec{missingPkgs: map[string]bool{keaPackage: true}, installFails: true}
+	e := &recExec{missingPkgs: map[string]bool{unboundPackage: true}, installFails: true}
 	s := newTestSvc(t, e)
 
-	_, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	_, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err == nil {
-		t.Fatal("aplicar sem o pacote do DHCP tem que falhar, não fingir sucesso")
+		t.Fatal("aplicar sem o pacote do DNS tem que falhar, não fingir sucesso")
 	}
 	var pre *netsvc.PrereqError
 	if !errors.As(err, &pre) {
 		t.Fatalf("o erro tem que ser um netsvc.PrereqError (para a API não devolver 'erro interno'), obtive %T: %v", err, err)
 	}
 	msg := err.Error()
-	for _, want := range []string{keaPackage, "Unable to locate package", "DHCP", "apt-get install -y"} {
+	for _, want := range []string{unboundPackage, "Unable to locate package", "DNS", "apt-get install -y"} {
 		t.Run(want, func(t *testing.T) {
 			if !strings.Contains(msg, want) {
 				t.Errorf("a mensagem tem que citar %q, obtive %q", want, msg)
 			}
 		})
 	}
-	if _, sErr := os.Stat(s.keaConf); sErr == nil {
+	if _, sErr := os.Stat(s.unboundConf); sErr == nil {
 		t.Error("nada pode ser escrito quando o pré-requisito falta")
 	}
 	if strings.Contains(strings.Join(e.writes, "\n"), "reload-or-restart") {
@@ -1094,16 +796,16 @@ func TestReloadConfigsExplainsAPackageItCouldNotInstall(t *testing.T) {
 // A armadilha do systemd: ProtectSystem=strict monta o namespace no start do
 // serviço, então um diretório que não existia naquele momento fica
 // somente-leitura (ou invisível) para o processo em execução mesmo depois de
-// o apt criá-lo. O postinst deste pacote cria /etc/kea e
-// /etc/unbound/unbound.conf.d justamente para que isso não aconteça — mas se
+// o apt criá-lo. O postinst deste pacote cria /etc/unbound/unbound.conf.d
+// justamente para que isso não aconteça — mas se
 // acontecer (instalação por `make install`, diretório apagado à mão), o
 // admin tem que ler o que fazer, não um erro de escrita cru.
 func TestReloadConfigsSaysToRestartWhenTheConfigDirIsOutsideTheSandbox(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
-	s.keaConf = filepath.Join(t.TempDir(), "nao-existe", "kea-dhcp4.conf")
+	s.unboundConf = filepath.Join(t.TempDir(), "nao-existe", "unbound.conf")
 
-	_, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	_, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err == nil {
 		t.Fatal("escrever num diretório inacessível tem que falhar")
 	}
@@ -1112,34 +814,10 @@ func TestReloadConfigsSaysToRestartWhenTheConfigDirIsOutsideTheSandbox(t *testin
 		t.Fatalf("erro = %T (%v), quero um netsvc.PrereqError", err, err)
 	}
 	msg := err.Error()
-	for _, want := range []string{filepath.Dir(s.keaConf), "Reinicie o serviço", "systemctl restart linkguard-cloud"} {
+	for _, want := range []string{filepath.Dir(s.unboundConf), "Reinicie o serviço", "systemctl restart linkguard-cloud"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("a mensagem tem que citar %q, obtive %q", want, msg)
 		}
-	}
-}
-
-// Depois de instalar o kea, o /etc/kea recém-criado pelo pacote vem 0750
-// _kea:_kea e o próprio kea-dhcp4 não consegue ler a config lá dentro (bug
-// real de produção, ver EnsureKeaDirReadable). Instalar sob demanda tem que
-// arrumar isso na hora, não só no próximo boot.
-func TestReloadConfigsRelaxesTheKeaDirAfterInstallingIt(t *testing.T) {
-	e := &recExec{missingPkgs: map[string]bool{keaPackage: true}}
-	s := newTestSvc(t, e)
-	dir := filepath.Dir(s.keaConf)
-	if err := os.Chmod(dir, 0o750); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
-		t.Fatalf("ReloadConfigs: %v", err)
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("modo do %s = %o, quero 0755 (senão o kea-dhcp4 não lê a própria config)", dir, info.Mode().Perm())
 	}
 }
 
@@ -1153,11 +831,11 @@ func TestReloadConfigsClearsAFailedUnitBeforeReloading(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
 	joined := strings.Join(e.writes, "\n")
-	for _, svc := range []string{keaService, unboundService} {
+	for _, svc := range []string{unboundService} {
 		reset := strings.Index(joined, "systemctl reset-failed "+svc)
 		act := strings.Index(joined, "systemctl reload-or-restart "+svc)
 		if act < 0 {
@@ -1188,8 +866,8 @@ func TestReloadRestartsUnboundWhenTheListenAddressChanges(t *testing.T) {
 	}
 
 	c := netsvc.DefaultConfig()
-	c.Gateway = "192.168.3.3"
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err != nil {
+	c.ExtraListenAddresses = []string{"192.168.3.3"}
+	if _, err := s.ReloadConfigs(context.Background(), c, nil); err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
 	joined := strings.Join(e.writes, "\n")
@@ -1204,12 +882,12 @@ func TestReloadKeepsGracefulReloadWhenOnlyTheBlocklistChanges(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 	c := netsvc.DefaultConfig()
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), c, nil); err != nil {
 		t.Fatalf("primeiro apply: %v", err)
 	}
 
 	e.writes = nil
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, []string{"ads.example.com"}, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), c, []string{"ads.example.com"}); err != nil {
 		t.Fatalf("segundo apply: %v", err)
 	}
 	joined := strings.Join(e.writes, "\n")
@@ -1235,7 +913,7 @@ func TestReloadKeepsGracefulReloadWhenOnlyTheBlocklistChanges(t *testing.T) {
 func TestReloadRestartsUnboundRightAfterInstallingIt(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("apply inicial: %v", err)
 	}
 
@@ -1243,7 +921,7 @@ func TestReloadRestartsUnboundRightAfterInstallingIt(t *testing.T) {
 	// daemon voltou com a config padrão do pacote, escutando só no loopback.
 	e.missingPkgs = map[string]bool{unboundPackage: true}
 	e.writes = nil
-	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil); err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
 	if !strings.Contains(strings.Join(e.writes, "\n"), "systemctl restart "+unboundService) {
@@ -1254,14 +932,14 @@ func TestReloadRestartsUnboundRightAfterInstallingIt(t *testing.T) {
 // A instalação sob demanda tem que sair pelo executor de pacote, não pelo
 // executor de 30s da aplicação. Os dois trabalhos não têm nada em comum: um
 // `nft`/`systemctl` que não respondeu em 30s está travado; um apt-get
-// baixando kea + unbound + dns-root-data (~10 MB) passa disso num link de
+// baixando unbound + dns-root-data num espelho lento passa disso num link de
 // escritório sem nada estar errado. E quando o prazo estourava, o apt não
 // morria junto — a unidade transiente do systemd-run terminava a instalação
 // — então o LinkGuard devolvia 503 "não conseguiu instalar" e criava alerta
 // crítico enquanto o pacote entrava com sucesso.
 func TestInstalacaoSobDemandaUsaOExecutorDePacote(t *testing.T) {
-	appExec := &recExec{missingPkgs: map[string]bool{"kea-dhcp4-server": true, "unbound": true, "dns-root-data": true}}
-	pkgExec := &recExec{missingPkgs: map[string]bool{"kea-dhcp4-server": true, "unbound": true, "dns-root-data": true}}
+	appExec := &recExec{missingPkgs: map[string]bool{"unbound": true, "dns-root-data": true}}
+	pkgExec := &recExec{missingPkgs: map[string]bool{"unbound": true, "dns-root-data": true}}
 
 	s := newTestSvc(t, appExec)
 	s.SetInstallExecutor(pkgExec)
@@ -1281,39 +959,38 @@ func TestInstalacaoSobDemandaUsaOExecutorDePacote(t *testing.T) {
 // O defeito "painel diz aplicado, LAN sem DNS" voltando por outra porta.
 //
 // A decisão de reiniciar comparava o ARQUIVO EM DISCO com a config nova — e o
-// arquivo é escrito ANTES do reload. Um apply que escreve os dois arquivos e
-// morre no reload-or-restart do kea deixa o disco já com a config nova; o
-// apply seguinte vê antigo == novo, decide que SIGHUP basta, e o unbound
-// segue nos sockets em que subiu (127.0.0.1): LAN sem DNS, painel dizendo
-// "aplicado".
+// arquivo é escrito ANTES do reload. Um apply que escreve o arquivo e morre
+// no restart deixa o disco já com a config nova; o apply seguinte vê
+// antigo == novo, decide que SIGHUP basta, e o unbound segue nos sockets em
+// que subiu (127.0.0.1): VPN sem DNS, painel dizendo "aplicado".
 //
 // A cláusula slices.Contains(installed, unboundPackage) não protege este
 // caso: o unbound já estava instalado nas duas tentativas.
 func TestUnboundReiniciaQuandoOApplyAnteriorMorreuDepoisDeEscreverOsArquivos(t *testing.T) {
 	// O unbound em execução subiu escutando só no loopback (padrão do
 	// pacote), e é isso que o marcador de "ativado" registra.
-	e := &recExec{failOn: "systemctl reload-or-restart " + keaService}
+	e := &recExec{failOn: "systemctl restart " + unboundService}
 	s := newTestSvc(t, e)
 	if err := os.WriteFile(s.unboundApplied, []byte("server:\n  interface: 127.0.0.1\n"), 0o600); err != nil {
 		t.Fatalf("preparar marcador: %v", err)
 	}
 
 	c := netsvc.DefaultConfig()
-	c.Gateway = "192.168.3.3"
+	c.ExtraListenAddresses = []string{"192.168.3.3"}
 
-	// Apply 1: escreve os arquivos e morre no reload do kea.
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err == nil {
-		t.Fatal("esperava falha no reload do kea")
+	// Apply 1: escreve o arquivo e morre no restart do unbound.
+	if _, err := s.ReloadConfigs(context.Background(), c, nil); err == nil {
+		t.Fatal("esperava falha no restart do unbound")
 	}
 	if got := readFileOrEmpty(s.unboundConf); !strings.Contains(got, "interface: 192.168.3.3") {
 		t.Fatalf("o teste depende de o arquivo já ter sido escrito no apply que falhou; conteúdo:\n%s", got)
 	}
 
-	// Apply 2: o kea volta a funcionar. O unbound em execução continua nos
-	// sockets antigos, então TEM que ser restart.
+	// Apply 2: o restart volta a funcionar. O unbound em execução continua
+	// nos sockets antigos, então TEM que ser restart.
 	e.failOn = ""
 	e.writes = nil
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), c, nil); err != nil {
 		t.Fatalf("segundo apply: %v", err)
 	}
 	joined := strings.Join(e.writes, "\n")
@@ -1325,13 +1002,13 @@ func TestUnboundReiniciaQuandoOApplyAnteriorMorreuDepoisDeEscreverOsArquivos(t *
 // E o marcador só pode ser escrito quando a config foi de fato ATIVADA —
 // senão ele herda exatamente o defeito do arquivo em disco.
 func TestOMarcadorDeAtivadoNaoEEscritoQuandoOApplyFalha(t *testing.T) {
-	e := &recExec{failOn: "systemctl reload-or-restart " + keaService}
+	e := &recExec{failOn: "systemctl restart " + unboundService}
 	s := newTestSvc(t, e)
 
 	c := netsvc.DefaultConfig()
-	c.Gateway = "192.168.3.3"
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err == nil {
-		t.Fatal("esperava falha no reload do kea")
+	c.ExtraListenAddresses = []string{"192.168.3.3"}
+	if _, err := s.ReloadConfigs(context.Background(), c, nil); err == nil {
+		t.Fatal("esperava falha no restart do unbound")
 	}
 	if _, err := os.Stat(s.unboundApplied); err == nil {
 		t.Error("o apply falhou: nada pode ter sido registrado como ativado")
@@ -1345,9 +1022,9 @@ func TestOMarcadorEvitaRestartDesnecessarioNoApplySeguinte(t *testing.T) {
 	e := &recExec{}
 	s := newTestSvc(t, e)
 	c := netsvc.DefaultConfig()
-	c.Gateway = "192.168.3.3"
+	c.ExtraListenAddresses = []string{"192.168.3.3"}
 
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, nil, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), c, nil); err != nil {
 		t.Fatalf("primeiro apply: %v", err)
 	}
 	if readFileOrEmpty(s.unboundApplied) == "" {
@@ -1355,7 +1032,7 @@ func TestOMarcadorEvitaRestartDesnecessarioNoApplySeguinte(t *testing.T) {
 	}
 
 	e.writes = nil
-	if _, err := s.ReloadConfigs(context.Background(), c, nil, []string{"ads.example.com"}, ""); err != nil {
+	if _, err := s.ReloadConfigs(context.Background(), c, []string{"ads.example.com"}); err != nil {
 		t.Fatalf("segundo apply: %v", err)
 	}
 	if strings.Contains(strings.Join(e.writes, "\n"), "systemctl restart "+unboundService) {
@@ -1404,12 +1081,11 @@ func TestASondaDeEscritaAindaDetectaDiretorioNaoGravavel(t *testing.T) {
 // ─── dns-root-data: pré-requisito de instalar o unbound, não de aplicar ───
 //
 // I-2 da revisão final. ReloadConfigs começa em ensurePackages, que exigia
-// kea + unbound + dns-root-data; faltando QUALQUER um, devolvia PrereqError e
-// nada era escrito nem recarregado. Numa máquina em que kea e unbound estão
-// instalados e servindo, mas dns-root-data não está, o admin ficava sem
-// conseguir aplicar mudança nenhuma de DHCP/DNS enquanto o apt não pudesse
-// instalar — e a hora em que se mexe em DHCP/DNS costuma ser exatamente a
-// hora em que a WAN está ruim.
+// unbound + dns-root-data; faltando QUALQUER um, devolvia PrereqError e nada
+// era escrito nem recarregado. Numa máquina em que o unbound está instalado e
+// servindo, mas dns-root-data não está, o admin ficava sem conseguir aplicar
+// mudança nenhuma de DNS enquanto o apt não pudesse instalar — e a hora em
+// que se mexe em DNS costuma ser exatamente a hora em que a WAN está ruim.
 func TestFaltaDeDnsRootDataNaoImpedeOApplyComUnboundJaInstalado(t *testing.T) {
 	e := &recExec{
 		missingPkgs:  map[string]bool{dnsRootDataPackage: true},
@@ -1417,14 +1093,14 @@ func TestFaltaDeDnsRootDataNaoImpedeOApplyComUnboundJaInstalado(t *testing.T) {
 	}
 	s := newTestSvc(t, e)
 
-	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err != nil {
 		t.Fatalf("o apply tinha que acontecer mesmo sem dns-root-data: %v", err)
 	}
 
 	// Aplicou de verdade: os dois daemons foram recarregados.
 	joined := strings.Join(e.writes, "\n")
-	for _, svc := range []string{keaService, unboundService} {
+	for _, svc := range []string{unboundService} {
 		if !strings.Contains(joined, svc) {
 			t.Errorf("o serviço %s não foi recarregado; comandos: %s", svc, joined)
 		}
@@ -1443,12 +1119,12 @@ func TestFaltaDeDnsRootDataNaoImpedeOApplyComUnboundJaInstalado(t *testing.T) {
 // não responde uma consulta — pior do que não instalar.
 func TestDnsRootDataContinuaObrigatorioQuandoOLinkguardInstalaOUnbound(t *testing.T) {
 	e := &recExec{
-		missingPkgs:     map[string]bool{keaPackage: true, unboundPackage: true, dnsRootDataPackage: true},
+		missingPkgs:     map[string]bool{unboundPackage: true, dnsRootDataPackage: true},
 		installFailsFor: map[string]bool{dnsRootDataPackage: true},
 	}
 	s := newTestSvc(t, e)
 
-	_, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	_, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err == nil {
 		t.Fatal("instalar o unbound sem o dns-root-data tinha que abortar o apply")
 	}
@@ -1465,57 +1141,20 @@ func TestDnsRootDataContinuaObrigatorioQuandoOLinkguardInstalaOUnbound(t *testin
 // funcionando, os três pacotes entram e o apply segue.
 func TestMaquinaPeladaInstalaOsTresPacotesESegue(t *testing.T) {
 	e := &recExec{missingPkgs: map[string]bool{
-		keaPackage: true, unboundPackage: true, dnsRootDataPackage: true,
+		unboundPackage: true, dnsRootDataPackage: true,
 	}}
 	s := newTestSvc(t, e)
 
-	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil, nil, "")
+	res, err := s.ReloadConfigs(context.Background(), netsvc.DefaultConfig(), nil)
 	if err != nil {
 		t.Fatalf("ReloadConfigs: %v", err)
 	}
-	for _, pkg := range []string{keaPackage, unboundPackage, dnsRootDataPackage} {
+	for _, pkg := range []string{unboundPackage, dnsRootDataPackage} {
 		if !slices.Contains(res.Installed, pkg) {
 			t.Errorf("%s tinha que constar como instalado nesta passada; installed=%v", pkg, res.Installed)
 		}
 	}
 	if len(res.Warnings) != 0 {
 		t.Errorf("nada faltou; não podia haver aviso: %v", res.Warnings)
-	}
-}
-
-// TestInterfaceInexistenteNaoFalhaOApplyDoDNS garante que, se a interface de LAN
-// configurada (ou default) não existir nesta máquina (ex: VM de nuvem ou máquina
-// nova), o Kea é ignorado com aviso, mas o DNS é aplicado com sucesso sem travar
-// os chamadores dependentes (como a reconciliação da VPN WireGuard).
-func TestInterfaceInexistenteNaoFalhaOApplyDoDNS(t *testing.T) {
-	e := &recExec{}
-	s := newTestSvc(t, e)
-
-	cfg := netsvc.DefaultConfig()
-	cfg.Interface = "naoexiste0"
-
-	res, err := s.ReloadConfigs(context.Background(), cfg, nil, nil, "")
-	if err != nil {
-		t.Fatalf("ReloadConfigs falhou com interface inexistente: %v", err)
-	}
-	if len(res.Warnings) == 0 {
-		t.Fatal("esperava aviso sobre interface inexistente, obtive nenhum")
-	}
-	encontrouAviso := false
-	for _, w := range res.Warnings {
-		if strings.Contains(w, "naoexiste0") {
-			encontrouAviso = true
-			break
-		}
-	}
-	if !encontrouAviso {
-		t.Errorf("aviso não menciona a interface inexistente: %v", res.Warnings)
-	}
-	// O unbound foi escrito e o Kea não
-	if _, err := os.Stat(s.unboundConf); err != nil {
-		t.Errorf("unbound.conf deveria ter sido escrito: %v", err)
-	}
-	if _, err := os.Stat(s.keaConf); err == nil {
-		t.Errorf("kea.conf não deveria ter sido escrito para interface inexistente")
 	}
 }

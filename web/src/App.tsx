@@ -17,7 +17,6 @@ import InterfaceEdit from './pages/InterfaceEdit';
 import InterfaceReview from './pages/InterfaceReview';
 import Admin from './pages/Admin';
 import Hosts from './pages/Hosts';
-import Dhcp from './pages/Dhcp';
 import Dns from './pages/Dns';
 import Changelog from './pages/Changelog';
 import Traffic from './pages/Traffic';
@@ -52,7 +51,6 @@ function AppRoutes() {
           <Route path="firewall" element={<Firewall />} />
           <Route path="vpn" element={<Vpn />} />
           <Route path="hosts" element={<Hosts />} />
-          <Route path="dhcp" element={<Dhcp />} />
           <Route path="dns" element={<Dns />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="logs" element={<Logs />} />

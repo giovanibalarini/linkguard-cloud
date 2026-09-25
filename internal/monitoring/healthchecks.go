@@ -238,11 +238,11 @@ const (
 // continua sendo alerta — é o caso que importa, porque aí as regras não
 // foram carregadas.
 //
-// E o mesmo raciocínio cobre os outros dois vigiados (kea-dhcp4-server e
-// unbound, que são daemons de verdade): eles são instalados SOB DEMANDA,
-// quando o admin liga DHCP/DNS no painel. Numa máquina onde ele nunca ligou,
-// a unidade nem existe (`LoadState=not-found`) e o vigia dizia "Serviço
-// offline: kea-dhcp4-server". Ausência não é queda.
+// E o mesmo raciocínio cobre o outro vigiado (o unbound, que é daemon de
+// verdade): ele é instalado SOB DEMANDA, quando o admin liga o DNS no painel.
+// Numa máquina onde ele nunca ligou, a unidade nem existe
+// (`LoadState=not-found`) e o vigia dizia "Serviço offline: unbound".
+// Ausência não é queda.
 //
 // O nome do serviço é validado contra serviceNameRe antes de chegar ao shell
 // (defense-in-depth).

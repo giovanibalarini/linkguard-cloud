@@ -22,7 +22,7 @@
 //     reported.
 //
 // Scope is deliberately narrow: only the base, only at startup. The optional
-// packages (kea-dhcp4-server, unbound, chrony, smartmontools) stay on-demand,
+// packages (unbound, wireguard-tools, qrencode) stay on-demand,
 // installed when the admin turns the corresponding feature on — installing
 // them at boot would take over services the admin never asked for.
 package bootstrapdeps
@@ -53,7 +53,7 @@ var BasePackages = []string{"nftables", "iproute2", "iptables", "iputils-ping"}
 // TestEveryBasePackageHasAConsequence guards this map against drifting from
 // BasePackages.
 //
-// The on-demand entries below (kea-dhcp4-server, unbound, chrony) are not in
+// The on-demand entries below (unbound, wireguard-tools, qrencode) are not in
 // BasePackages and are never installed at boot — they are brought in by
 // EnsureInstalled when the admin turns the corresponding feature on. Their
 // consequence text lives in the same map because the question the admin asks
@@ -65,12 +65,10 @@ var consequences = map[string]string{
 	"iptables":     "sem ele as regras legadas (compatibilidade e port forward antigo) não podem ser lidas nem aplicadas",
 	"iputils-ping": "sem ele não há sonda de latência/perda: todo link WAN fica sem diagnóstico e o failover deixa de detectar queda",
 
-	"kea-dhcp4-server": "sem ele não existe servidor DHCP: os hosts da LAN não recebem IP, gateway nem DNS automaticamente, e as reservas por MAC não valem",
-	"unbound":          "sem ele não existe resolvedor DNS local: a LAN fica sem o DNS do próprio firewall, e o bloqueio de domínios e o log de consultas deixam de valer",
-	"dns-root-data":    "sem ele o unbound nem sobe: falta a âncora DNSSEC da raiz (/var/lib/unbound/root.key) e o resolvedor aborta na inicialização, deixando a LAN sem DNS",
-	"chrony":           "sem ele o relógio da máquina não sincroniza por NTP: logs, certificados e o próprio agendamento ficam sujeitos a desvio de horário",
-	"wireguard-tools":  "sem ele a VPN WireGuard não pode criar a interface nem aplicar os peers configurados no painel",
-	"qrencode":         "sem ele o painel não consegue gerar o QR code one-time para importar a configuração WireGuard no celular",
+	"unbound":         "sem ele não existe resolvedor DNS local: a VPN fica sem DNS, e o bloqueio de domínios, o log de consultas e o mapa endereço → nome deixam de valer",
+	"dns-root-data":   "sem ele o unbound nem sobe: falta a âncora DNSSEC da raiz (/var/lib/unbound/root.key) e o resolvedor aborta na inicialização, deixando a VPN sem DNS",
+	"wireguard-tools": "sem ele a VPN WireGuard não pode criar a interface nem aplicar os peers configurados no painel",
+	"qrencode":        "sem ele o painel não consegue gerar o QR code one-time para importar a configuração WireGuard no celular",
 }
 
 // Alerter is the panel-facing side of Ensure. Kept as a local interface (same

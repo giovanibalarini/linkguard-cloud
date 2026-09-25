@@ -40,7 +40,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosttraffic"
 	"github.com/giovanibalarini/linkguard-cloud/internal/iptables"
-	"github.com/giovanibalarini/linkguard-cloud/internal/keaunbound"
 	"github.com/giovanibalarini/linkguard-cloud/internal/linkquota"
 	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/metrics"
@@ -58,14 +57,15 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/system"
 	"github.com/giovanibalarini/linkguard-cloud/internal/tlscert"
 	"github.com/giovanibalarini/linkguard-cloud/internal/tsdb"
+	"github.com/giovanibalarini/linkguard-cloud/internal/unbound"
 	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
 )
 
 var version = "dev"
 
 // pkgInstallTimeout is the deadline for a single apt-get run. Sized for a
-// package download over a bad link, not for a local command: kea + unbound +
-// dns-root-data are ~10 MB, and the measurement that motivated this was a
+// package download over a bad link, not for a local command: unbound +
+// dns-root-data or wireguard-tools over a slow mirror, and the measurement that motivated this was a
 // first apply taking ~40s on a healthy office link — with a 30s executor
 // underneath it.
 //
@@ -353,7 +353,7 @@ type services struct {
 	nftSvc       *nftables.Service
 	frSvc        *firewallrules.Service
 	balancerSvc  *balancer.Service
-	keaSvc       *keaunbound.Service
+	unboundSvc   *unbound.Service
 	netSvc       netsvc.Provider
 	trafficSvc   *hosttraffic.Service
 	fluxosSvc    *hostflows.Servico
@@ -521,20 +521,20 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// deriva por TestMainWiresThePersistGuard.
 	nftSvc.SetPersistGuard(frSvc.UnconfirmedChangePending)
 	balancerSvc := balancer.NewService(db, exec, linkSvc, alertSvc)
-	keaSvc := keaunbound.NewService(exec)
-	// O caminho sob demanda (o admin liga DHCP/DNS no painel) instala
-	// kea + unbound + dns-root-data. Sem isto ele herdava o executor de 30s
+	unboundSvc := unbound.NewService(exec)
+	// O caminho sob demanda (o admin liga o DNS no painel) instala
+	// unbound + dns-root-data. Sem isto ele herdava o executor de 30s
 	// e, ao estourar, mentia dizendo que não conseguiu instalar enquanto o
 	// apt terminava a instalação com sucesso.
-	keaSvc.SetInstallExecutor(pkgExec)
+	unboundSvc.SetInstallExecutor(pkgExec)
 	// O resolv.conf sozinho não prova nada: se a busca do NSS não chegar ao
 	// módulo dns, ele fica correto e irrelevante (issue #195). Quem mede isso é
 	// o vigia monitoring.Collector.checkCaminhoNSS, a cada tique — e não este
 	// serviço, que reconcilia o arquivo uma vez por processo. Alerta que só
 	// nasce e morre no boot deixa o painel vermelho até o próximo reboot.
-	var netSvc netsvc.Provider = keaSvc
+	var netSvc netsvc.Provider = unboundSvc
 	trafficSvc := hosttraffic.NewService(exec)
-	hostSvc := hosts.NewService(exec, db, nftSvc, netSvc)
+	hostSvc := hosts.NewService(exec, db, nftSvc)
 	netifSvc := netif.NewService(exec, db, linkSvc)
 	netifSvc.SetAlertService(alertSvc)
 	// Regra que cita uma interface inexistente carrega no nft SEM ERRO e nunca
@@ -602,14 +602,10 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		}, nil
 	})
 	nftSvc.SetAdminAccessSource(func() (nftables.AdminAccess, error) {
-		// redeConfigurada e NÃO o DefaultConfig: ver o comentário lá. Semeando
-		// com o default, toda caixa que nunca configurou o netsvc nascia com
-		// 192.168.3.0/24 aqui dentro — na lista que existe justamente para o
-		// admin não se trancar para fora.
-		var redes []string
-		if cidr := redeConfigurada(db); cidr != "" {
-			redes = append(redes, cidr)
-		}
+		// As sub-redes das placas, como a fabric informa. Nunca um default
+		// cravado: essa lista existe justamente para o admin não se trancar
+		// para fora, e uma rede de terceiro aqui dentro seria buraco.
+		redes := redesDasPlacas(plat)
 		// A porta do painel NÃO é fixa: 8080 é o default do binário, 9997 o do
 		// .deb, e quem põe proxy usa outra. Fixá-la aqui deixaria o anti-lockout
 		// mudo justamente em quem não usa o padrão.
@@ -697,7 +693,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// duplicated into nftables or netsvc persistence, so boot and retries are
 	// idempotent and a disabled tunnel removes both projections.
 	nftSvc.SetWireGuardInputSource(wgSvc.InputPort)
-	keaSvc.SetDNSBindingSource(wgSvc.DNSBinding)
+	unboundSvc.SetDNSBindingSource(wgSvc.DNSBinding)
 	rrdSvc.SetUsageSink(quotaSvc)
 
 	// Optional AI advisory layer (BYOK): disabled by default (ai.LoadConfig's
@@ -839,7 +835,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		nftSvc:           nftSvc,
 		frSvc:            frSvc,
 		balancerSvc:      balancerSvc,
-		keaSvc:           keaSvc,
+		unboundSvc:       unboundSvc,
 		netSvc:           netSvc,
 		trafficSvc:       trafficSvc,
 		fluxosSvc:        fluxosSvc,
@@ -962,7 +958,7 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	pkgExec := s.pkgExec
 	frSvc, nftSvc := s.frSvc, s.nftSvc
 	linkSvc, routeSvc, balancerSvc := s.linkSvc, s.routeSvc, s.balancerSvc
-	trafficSvc, keaSvc, alertSvc := s.trafficSvc, s.keaSvc, s.alertSvc
+	trafficSvc, unboundSvc, alertSvc := s.trafficSvc, s.unboundSvc, s.alertSvc
 	monitor, metricsCollector, rrdSvc := s.monitor, s.metricsCollector, s.rrdSvc
 	quotaSvc := s.quotaSvc
 	qosSvc := s.qosSvc
@@ -1134,8 +1130,8 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 
 			// A configuração de unbound só é reaplicada quando a VPN já foi
 			// configurada alguma vez. Isso restaura/adiciona o listener quando
-			// ativa e o remove quando desativa, sem instalar Kea/unbound numa
-			// caixa que nunca usou a VPN nem os serviços de rede.
+			// ativa e o remove quando desativa, sem instalar o unbound numa
+			// caixa que nunca usou a VPN.
 			if wireGuardConfigured && wireGuardReady {
 				if err := server.ReconcileVPNDNS(ctx); err != nil {
 					wgSvc.RecordIntegrationError(err)
@@ -1228,14 +1224,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			} else if err := s.nftSvc.FlushDomainStructures(ctx); err != nil {
 				domainBootReady = false
 				slog.Warn("não foi possível esvaziar as estruturas de alvo por domínio no boot", "err", err)
-			}
-
-			// Controle de fuga de DNS (#124), reconciliado no boot (#153). Era
-			// a única feature de firewall fora desta lista: o estado dela mora
-			// no banco e a tela lê de lá, então os toggles ficavam marcados
-			// mesmo quando as chains não existiam no kernel.
-			if err := handlers.ReconcileDNSGuardOnBoot(ctx, db, nftSvc); err != nil {
-				slog.Warn("não foi possível reconciliar o controle de fuga de DNS no boot", "err", err)
 			}
 
 			// Proteção de entrada das WANs (#119). Reconciliada em todo boot
@@ -1402,13 +1390,9 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 		// computed; without it /proc/net/nf_conntrack has no byte counters.
 		trafficSvc.EnsureAccounting()
 
-		// Relax /etc/kea's directory permissions so DHCP config validation/apply
-		// doesn't fail under AppArmor (see EnsureKeaDirReadable's doc comment).
-		keaSvc.EnsureKeaDirReadable()
-
 		// Point /etc/resolv.conf at the local unbound and stop dhclient from
 		// undoing it on lease renewal (see EnsureResolvConf's doc comment).
-		keaSvc.EnsureResolvConf(ctx)
+		unboundSvc.EnsureResolvConf(ctx)
 	}
 
 	// O painel e o monitor de failover sobem PRIMEIRO; a base e o

@@ -136,7 +136,7 @@ func reload(ctx context.Context, exec firewall.Executor, path string) error {
 // atomic because it's the same filesystem, the first such pattern in this
 // codebase) and reloads systemd-networkd. A no-op write in dry-run mode,
 // matching the convention every other Provider in this codebase follows
-// (see internal/keaunbound.ReloadConfigs). Apply itself never deletes a
+// (see internal/unbound.ReloadConfigs). Apply itself never deletes a
 // file — see Remove for that.
 //
 // Fase 2 never changes an interface's type, so `networkctl reload` always
@@ -226,7 +226,7 @@ func Apply(ctx context.Context, exec firewall.Executor, f ConfigFile) error {
 	// os.Rename preserva o modo da origem — sem isto o arquivo final ficaria
 	// legível só pelo dono. Config de endereçamento de interface não é
 	// segredo; seguimos a convenção 0644 do resto do codebase (ex.:
-	// internal/nftables, internal/keaunbound, internal/hosttraffic,
+	// internal/nftables, internal/unbound, internal/hosttraffic,
 	// internal/routes).
 	if err := os.Chmod(tmpPath, 0o644); err != nil {
 		os.Remove(tmpPath)

@@ -16,7 +16,6 @@ const INPUT_REAL = [
   'iif lo counter accept',
   'icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } counter accept',
   'tcp dport { 22, 18099 } counter accept',
-  'udp dport 67 ip saddr { 192.168.3.0/24 } counter accept',
   'udp dport 53 ip saddr { 192.168.3.0/24 } counter accept',
   'tcp dport 53 ip saddr { 192.168.3.0/24 } counter accept',
 ];
@@ -101,7 +100,7 @@ const FORWARD_REAL = [
 
   const TODAS_AS_KEYS = [
     'established', 'related', 'dnat', 'loopback', 'icmpv6',
-    'admin', 'dhcpServed', 'dnsServed', 'dhcpClient',
+    'admin', 'dnsServed', 'dhcpClient',
   ];
   for (const k of TODAS_AS_KEYS) {
     check(temChave(`fw.posture.survival.${k}.what`), `falta fw.posture.survival.${k}.what no strings.yaml`);

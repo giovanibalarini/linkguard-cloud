@@ -47,7 +47,6 @@ export type SurvivalKey =
   | 'loopback'
   | 'icmpv6'
   | 'admin'
-  | 'dhcpServed'
   | 'dnsServed'
   | 'dhcpClient';
 
@@ -62,7 +61,6 @@ const MATCHERS: { casa: RegExp; key: SurvivalKey }[] = [
   { casa: /^iif lo/, key: 'loopback' },
   { casa: /icmpv6/, key: 'icmpv6' },
   { casa: /^tcp dport \{?\s*\d+/, key: 'admin' },
-  { casa: /dport 67/, key: 'dhcpServed' },
   { casa: /dport 53/, key: 'dnsServed' },
   { casa: /dport 68/, key: 'dhcpClient' },
 ];

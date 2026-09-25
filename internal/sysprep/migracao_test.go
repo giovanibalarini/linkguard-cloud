@@ -157,6 +157,34 @@ func TestOPostinstLigaOServicoMigrado(t *testing.T) {
 	}
 }
 
+// O linkguard-fw servia DHCP pelo kea, e a caixa de produção da OCI tem o
+// kea-dhcp4-server ativo. A versão cloud não serve DHCP: o que sobrasse de pé
+// seria um servidor DHCP sem dono na VCN.
+func TestOPostinstDesligaOKeaDaCaixaMigrada(t *testing.T) {
+	m := novaMigracao(t)
+	escreve(t, filepath.Join(m.newData, ".migrado-do-linkguard-fw"), "")
+	escreve(t, filepath.Join(m.newConf, "config.json"), "{}")
+
+	out := m.run(t, "postinst", "configure")
+
+	if c := m.chamadas(t); !strings.Contains(c, "disable --now kea-dhcp4-server") {
+		t.Errorf("o kea da caixa migrada ficou de pé; chamadas: %q\n%s", c, out)
+	}
+}
+
+// Numa instalação que não veio do linkguard-fw o pacote não tem por que mexer
+// em serviço alheio.
+func TestOPostinstNaoMexeNoKeaSemMigracao(t *testing.T) {
+	m := novaMigracao(t)
+	escreve(t, filepath.Join(m.newConf, "config.json"), "{}")
+
+	m.run(t, "postinst", "configure")
+
+	if c := m.chamadas(t); strings.Contains(c, "kea") {
+		t.Errorf("mexeu no kea sem haver migração; chamadas: %q", c)
+	}
+}
+
 func TestOPacoteSubstituiOLinkguardFw(t *testing.T) {
 	mk, err := os.ReadFile(filepath.Join(repoRoot(t), "Makefile"))
 	if err != nil {

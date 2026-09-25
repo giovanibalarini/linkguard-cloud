@@ -80,6 +80,14 @@ CONFIG
       # senão a caixa fica com as regras de pé e ninguém reconciliando.
       if [ -f "${DATA_DIR}/.migrado-do-linkguard-fw" ]; then
         systemctl enable linkguard-cloud 2>/dev/null || true
+        # O linkguard-fw servia DHCP pelo kea; a versão cloud não serve (na
+        # VCN quem entrega endereço é a Oracle). Deixá-lo de pé seria um
+        # servidor DHCP sem dono respondendo na rede da conta. Desligar e não
+        # desinstalar: o dpkg está com a trava do apt agora, e a config dele
+        # fica em /etc/kea para quem quiser voltar ao linkguard-fw.
+        if systemctl disable --now kea-dhcp4-server 2>/dev/null; then
+          echo "[INFO] Migrado do linkguard-fw: kea-dhcp4-server parado e desabilitado (a versão cloud não serve DHCP)."
+        fi
         rm -f "${DATA_DIR}/.migrado-do-linkguard-fw"
         echo "[INFO] Migrado do linkguard-fw: serviço linkguard-cloud habilitado."
       fi

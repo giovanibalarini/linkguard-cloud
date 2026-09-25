@@ -169,15 +169,6 @@ type HostMetadata struct {
 
 // ─── DHCPReservation ─────────────────────────────────────────────────────────
 
-// DHCPReservation is a static DHCP lease (stable IP for a MAC).
-type DHCPReservation struct {
-	MAC       string    `json:"mac"`
-	IP        string    `json:"ip"`
-	Hostname  string    `json:"hostname"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
 // ─── TrafficSample ──────────────────────────────────────────────────────────
 
 // TrafficSample stores per-interface traffic rates for a specific archive step.

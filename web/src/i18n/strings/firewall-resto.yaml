@@ -12,7 +12,7 @@
 # ruleset, table inet linkguard), nomes de chain (mark_hosts), protocolos
 # (tcp, udp, icmp), caminhos (/etc/nftables.conf), comandos
 # (systemctl restart linkguard-cloud), nomes próprios (LinkGuard, WAN1, WAN2,
-# docker, libvirt), siglas (SSH, DNS, DHCP, MAC, NTP, IP) e unidades (KB).
+# docker, libvirt), siglas (SSH, DNS, DHCP, MAC, IP) e unidades (KB).
 
 # ─── Página do Firewall / cabeçalho ─────────────────────────────────────────
 fwx.title:
@@ -122,8 +122,8 @@ fwx.pf.anyIface:
   pt: "qualquer"
   en: "any"
 fwx.pf.tip:
-  pt: "Dica: reserve um IP fixo para o aparelho no DHCP antes, para o encaminhamento não \"mudar de dono\"."
-  en: "Tip: reserve a fixed IP for the device in DHCP first, so the forward does not end up pointing at a different machine."
+  pt: "Dica: na Oracle o IP privado da máquina é fixo enquanto a placa de rede existir — é ele que vai no destino."
+  en: "Tip: in Oracle a machine's private IP stays fixed as long as its network card exists — that is the one that goes in the destination."
 
 # ─── Pré-visualização da linha nft ──────────────────────────────────────────
 fwx.preview.rendering:

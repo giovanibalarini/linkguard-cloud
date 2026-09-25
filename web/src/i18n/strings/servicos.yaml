@@ -1,14 +1,14 @@
-# Área "servicos": DHCP, DNS (+ log de consultas), NTP e Hosts da rede.
+# Área "servicos": DNS (+ log de consultas) e Hosts da rede.
 #
 # Todas as chaves daqui começam com "svc.". Chaves genéricas de botão
 # (Salvar/Cancelar/Carregando) NÃO são redefinidas aqui — vêm de common.yaml.
 #
-# Não traduzir: nomes próprios (LinkGuard, Kea, unbound, chrony, Debian,
-# Pi-hole), siglas técnicas (DHCP, DNS, NTP, MAC, CIDR, LAN, VLAN, NXDOMAIN,
-# I/O), termos do protocolo (lease, stratum, offset, upstream/forwarder) e
-# valores de exemplo (aa:bb:cc:dd:ee:ff, 1.1.1.1).
+# Não traduzir: nomes próprios (LinkGuard, unbound, Debian, Pi-hole), siglas
+# técnicas (DNS, VPN, MAC, CIDR, LAN, VLAN, NXDOMAIN, I/O), termos do
+# protocolo (upstream/forwarder) e valores de exemplo (aa:bb:cc:dd:ee:ff,
+# 1.1.1.1).
 
-# ─── comuns às três telas de serviço ───────────────────────────────────────
+# ─── comuns às telas de serviço ───────────────────────────────────────
 svc.common.applyNow:
   pt: "Aplicar agora"
   en: "Apply now"
@@ -43,113 +43,18 @@ svc.common.tryAgain:
   pt: "Tentar novamente"
   en: "Try again"
 
-# ─── DHCP e DNS compartilham o mesmo apply (instala kea/unbound) ───────────
+# ─── apply do DNS (pode instalar o unbound) ───────────────────────────────
 svc.netsvc.applyTimeout:
-  pt: "A aplicação está demorando mais que o normal — provavelmente o LinkGuard está instalando os pacotes de DHCP/DNS. Ela continua em segundo plano: atualize a página em alguns minutos para ver o resultado."
-  en: "The apply is taking longer than usual — LinkGuard is probably installing the DHCP/DNS packages. It keeps running in the background: reload the page in a few minutes to see the result."
+  pt: "A aplicação está demorando mais que o normal — provavelmente o LinkGuard está instalando o unbound. Ela continua em segundo plano: atualize a página em alguns minutos para ver o resultado."
+  en: "The apply is taking longer than usual — LinkGuard is probably installing unbound. It keeps running in the background: reload the page in a few minutes to see the result."
 svc.netsvc.applying:
-  pt: "Aplicando… Se os pacotes de DHCP/DNS (kea, unbound) ainda não estiverem instalados, o LinkGuard os instala agora — isso pode levar alguns minutos na primeira vez."
-  en: "Applying… If the DHCP/DNS packages (kea, unbound) are not installed yet, LinkGuard installs them now — that can take a few minutes the first time."
-
-# ─── DHCP ──────────────────────────────────────────────────────────────────
-svc.dhcp.subtitle:
-  pt: "Servidor DHCP {backend} — config, reservas e leases"
-  en: "DHCP server {backend} — config, reservations and leases"
-svc.dhcp.autoApplyHint:
-  pt: "Salvar reservas ou config já aplica automaticamente (sem reiniciar o serviço)."
-  en: "Saving reservations or config applies automatically (without restarting the service)."
-svc.dhcp.msg.configSaved:
-  pt: "Config DHCP salva — aplicando automaticamente."
-  en: "DHCP config saved — applying automatically."
-svc.dhcp.msg.resSaved:
-  pt: "Reserva salva — aplicando automaticamente."
-  en: "Reservation saved — applying automatically."
-svc.dhcp.msg.resRemoved:
-  pt: "Reserva removida — aplicando automaticamente."
-  en: "Reservation removed — applying automatically."
-svc.dhcp.confirmDelRes:
-  pt: "Remover a reserva de {ip} ({mac})?"
-  en: "Remove the reservation for {ip} ({mac})?"
-svc.dhcp.expired:
-  pt: "expirado"
-  en: "expired"
-svc.dhcp.section.config:
-  pt: "Configuração"
-  en: "Configuration"
-svc.dhcp.field.interface:
-  pt: "Interface (LAN)"
-  en: "Interface (LAN)"
-svc.dhcp.field.subnet:
-  pt: "Sub-rede (CIDR)"
-  en: "Subnet (CIDR)"
-svc.dhcp.field.gateway:
-  pt: "Gateway"
-  en: "Gateway"
-svc.dhcp.field.rangeStart:
-  pt: "Início do range"
-  en: "Range start"
-svc.dhcp.field.rangeEnd:
-  pt: "Fim do range"
-  en: "Range end"
-svc.dhcp.field.leaseHours:
-  pt: "Lease (horas)"
-  en: "Lease (hours)"
-svc.dhcp.field.dnsToClients:
-  pt: "DNS para os clientes (separados por vírgula)"
-  en: "DNS handed to clients (comma-separated)"
-svc.dhcp.section.reservations:
-  pt: "Reservas (IP fixo por MAC)"
-  en: "Reservations (fixed IP per MAC)"
-svc.dhcp.res.new:
-  pt: "Nova reserva"
-  en: "New reservation"
-svc.dhcp.res.edit:
-  pt: "Editar reserva"
-  en: "Edit reservation"
-svc.dhcp.res.remove:
-  pt: "Remover reserva"
-  en: "Remove reservation"
-svc.dhcp.res.empty:
-  pt: "Nenhuma reserva. Reservas dão IP estável por MAC (conserta o pin de WAN)."
-  en: "No reservations. A reservation gives a device a stable IP by MAC, which is what keeps WAN pinning from breaking."
-svc.dhcp.col.hostname:
-  pt: "Hostname"
-  en: "Hostname"
-svc.dhcp.col.ip:
-  pt: "IP"
-  en: "IP"
-svc.dhcp.col.mac:
-  pt: "MAC"
-  en: "MAC"
-svc.dhcp.col.actions:
-  pt: "Ações"
-  en: "Actions"
-svc.dhcp.col.expiresIn:
-  pt: "Expira em"
-  en: "Expires in"
-svc.dhcp.section.leases:
-  pt: "Leases ativos ({n})"
-  en: "Active leases ({n})"
-svc.dhcp.leases.empty:
-  pt: "Nenhum lease ativo (o servidor DHCP pode ainda não estar ativo)."
-  en: "No active leases (the DHCP server may not be running yet)."
-svc.dhcp.field.mac:
-  pt: "MAC *"
-  en: "MAC *"
-svc.dhcp.field.ip:
-  pt: "IP *"
-  en: "IP *"
-svc.dhcp.field.hostname:
-  pt: "Hostname"
-  en: "Hostname"
-svc.dhcp.placeholder.hostname:
-  pt: "opcional"
-  en: "optional"
+  pt: "Aplicando… Se o unbound ainda não estiver instalado, o LinkGuard o instala agora — isso pode levar alguns minutos na primeira vez."
+  en: "Applying… If unbound is not installed yet, LinkGuard installs it now — that can take a few minutes the first time."
 
 # ─── DNS ───────────────────────────────────────────────────────────────────
 svc.dns.subtitle:
-  pt: "Resolver {backend} — upstreams, log e filtro"
-  en: "Resolver {backend} — upstreams, logging and filtering"
+  pt: "O resolver de quem está na VPN — encaminhadores, log e filtro"
+  en: "The resolver for whoever is on the VPN — forwarders, logging and filtering"
 svc.dns.autoApplyHint:
   pt: "Salvar config ou filtro já aplica automaticamente (sem reiniciar o serviço)."
   en: "Saving the config or the filter applies automatically (without restarting the service)."
@@ -373,27 +278,6 @@ svc.hosts.history.error:
 # O aviso não é disclaimer jurídico: é o que impede a tela de vender como
 # controle o que é apenas redução de contorno. Sem ele, a feature vira a mesma
 # confiança falsa que existe para corrigir.
-svc.dns.field.leak:
-  pt: "Impedir que aparelhos ignorem este resolver"
-  en: "Stop devices from bypassing this resolver"
-svc.dns.leak.explain:
-  pt: "A blocklist acima só vale para quem usa o resolver desta máquina. Um aparelho com 8.8.8.8 configurado à mão a ignora por completo."
-  en: "The blocklist above only applies to devices using this machine's resolver. A device with 8.8.8.8 set by hand ignores it entirely."
-svc.dns.check.forceLocal:
-  pt: "Redirecionar consultas da LAN para este resolver (transparente)"
-  en: "Redirect LAN queries to this resolver (transparent)"
-svc.dns.check.blockDot:
-  pt: "Recusar DNS sobre TLS (porta 853)"
-  en: "Refuse DNS over TLS (port 853)"
-svc.dns.field.except:
-  pt: "Aparelhos isentos (IPs separados por vírgula)"
-  en: "Exempt devices (comma-separated IPs)"
-svc.dns.except.hint:
-  pt: "Para quem roda resolver próprio na rede de propósito."
-  en: "For devices deliberately running their own resolver."
-svc.dns.leak.warning:
-  pt: "Isto reduz o contorno, não elimina: DoH em servidor não listado, com IP fixo, sai como HTTPS comum na porta 443 e continua passando. O controle que não se contorna é bloquear o destino no firewall, não o DNS."
-  en: "This reduces bypassing, it does not eliminate it: DoH to an unlisted server on a fixed IP leaves as ordinary HTTPS on port 443 and still gets through. The control that cannot be bypassed is blocking the destination in the firewall, not DNS."
 
 # ─── Mapa endereço → nome (issue #116) ───────────────────────────────────────
 # O log de consultas guarda o que foi PERGUNTADO; isto guarda o que foi

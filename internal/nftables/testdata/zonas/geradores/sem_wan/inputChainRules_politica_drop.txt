@@ -21,17 +21,15 @@
     nft   icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } counter accept
  4. argv  "tcp" "dport" "{ 22, 9997 }" "counter" "accept"
     nft   tcp dport { 22, 9997 } counter accept
- 5. argv  "udp" "dport" "67" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
-    nft   udp dport 67 ip saddr { 192.168.3.0/24 } counter accept
- 6. argv  "udp" "dport" "53" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
+ 5. argv  "udp" "dport" "53" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
     nft   udp dport 53 ip saddr { 192.168.3.0/24 } counter accept
- 7. argv  "tcp" "dport" "53" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
+ 6. argv  "tcp" "dport" "53" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
     nft   tcp dport 53 ip saddr { 192.168.3.0/24 } counter accept
- 8. argv  "udp" "dport" "68" "counter" "accept"
+ 7. argv  "udp" "dport" "68" "counter" "accept"
     nft   udp dport 68 counter accept
- 9. argv  "udp" "dport" "123" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
+ 8. argv  "udp" "dport" "123" "ip" "saddr" "{ 192.168.3.0/24 }" "counter" "accept"
     nft   udp dport 123 ip saddr { 192.168.3.0/24 } counter accept
-10. argv  "udp" "dport" "123" "counter" "drop"
+ 9. argv  "udp" "dport" "123" "counter" "drop"
     nft   udp dport 123 counter drop
-11. argv  "ip" "saddr" "192.168.3.0/24" "counter" "jump" "grp_6f1c2d3e4a5b"
+10. argv  "ip" "saddr" "192.168.3.0/24" "counter" "jump" "grp_6f1c2d3e4a5b"
     nft   ip saddr 192.168.3.0/24 counter jump grp_6f1c2d3e4a5b

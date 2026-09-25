@@ -70,7 +70,7 @@ build-dev:
 # — o serviço sobe e o próprio LinkGuard garante a base no primeiro boot
 # (internal/bootstrapdeps), que é a premissa do produto: instalar o LinkGuard
 # é entregar a máquina a ele.
-DEB_RECOMMENDS := nftables, iproute2, iptables, iputils-ping, kea-dhcp4-server, unbound, dns-root-data
+DEB_RECOMMENDS := nftables, iproute2, iptables, iputils-ping, unbound, dns-root-data
 
 # Parâmetros do deb-from-binary. Sobrescritos pelo workflow de release, que
 # cross-compila os dois arcos antes de empacotar.

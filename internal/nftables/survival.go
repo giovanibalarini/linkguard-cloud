@@ -113,12 +113,11 @@ func SurvivalRules(a AdminAccess) [][]string {
 		rules = append(rules, []string{"tcp", "dport", set, "counter", "accept"})
 	}
 
-	// DHCP e DNS servidos à LAN. Sem estas, os aparelhos param de pegar IP e de
-	// resolver nomes — e o admin culpa a internet, não o firewall.
+	// DNS servido às redes locais. Sem estas, quem está atrás do firewall para
+	// de resolver nomes — e o admin culpa a internet, não o firewall.
 	if nets := sanitizeNetworks(a.LANNetworks); len(nets) > 0 {
 		set := networkSet(nets)
 		rules = append(rules,
-			[]string{"udp", "dport", "67", "ip", "saddr", set, "counter", "accept"},
 			[]string{"udp", "dport", "53", "ip", "saddr", set, "counter", "accept"},
 			[]string{"tcp", "dport", "53", "ip", "saddr", set, "counter", "accept"},
 		)

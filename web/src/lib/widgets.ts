@@ -62,7 +62,7 @@ export const WIDGET_CATALOG: WidgetSpec[] = [
   {
     name: 'system_health',
     title: 'Saúde do sistema',
-    description: 'Os vigias: firewall, DHCP, DNS, horário, disco e logs.',
+    description: 'Os vigias: firewall, DNS, horário, disco e logs.',
     permission: 'monitoring.read',
     defaultW: 4,
     defaultH: 2,

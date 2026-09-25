@@ -14,16 +14,13 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/netif/networkd"
-	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const interfaceAliasSettingKey = "interface_aliases" // same key as internal/api/handlers/system.go — do not duplicate the mechanism, only this small read
-const netsvcConfigSettingKey = "netsvc_config"       // same key as internal/api/handlers/netsvc.go
 
 // Service builds the live interface inventory: kernel state (via `ip -j`)
-// merged with configured Role (from links.Service and the DHCP/DNS LAN
-// interface) and stored aliases, plus (Fase 2) the preview/apply/confirm/
+// merged with configured Role (from links.Service) and stored aliases, plus (Fase 2) the preview/apply/confirm/
 // rollback orchestration for editing physical interface addressing.
 type Service struct {
 	exec       firewall.Executor
@@ -133,8 +130,8 @@ func (s *Service) Identify(ctx context.Context, name string, seconds int) error 
 }
 
 // roleSets returns the interface names that count as WAN (any interface
-// referenced by a configured Link) and LAN (the interface netsvc.Config
-// serves DHCP/DNS on), plus the gateway each configured Link already knows
+// referenced by a configured Link) and LAN (none on the cloud gateway since
+// DHCP left: the private network belongs to the VCN), plus the gateway each configured Link already knows
 // (used by the balancer to build its routes) keyed by interface name. Role
 // is a label — see spec §5.1 — so a lookup miss is not an error, it just
 // leaves the interface Unassigned / the gateway empty.
@@ -152,13 +149,6 @@ func (s *Service) roleSets() (wan, lan map[string]bool, gateway map[string]strin
 		}
 	}
 
-	cfg := netsvc.DefaultConfig()
-	if raw, err := s.db.GetSetting(netsvcConfigSettingKey); err == nil && raw != "" {
-		_ = json.Unmarshal([]byte(raw), &cfg)
-	}
-	if cfg.Interface != "" {
-		lan[cfg.Interface] = true
-	}
 	return wan, lan, gateway
 }
 

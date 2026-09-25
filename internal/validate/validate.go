@@ -21,7 +21,8 @@ import (
 	"strings"
 )
 
-// Validadores estritos para valores renderizados em configs de unbound/Kea.
+// Validadores estritos para valores renderizados em config de unbound e em
+// comandos `ip` e `nft`.
 var (
 	reMACCanonico = regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`)
 	// reDNSDomain is intentionally lenient about structure — single-label names
@@ -54,9 +55,9 @@ func Domain(d string) bool {
 // A barra é que barrava "../etc", não o "..".
 //
 // O dano direto era limitado: ".." não é nome de interface válido no Linux, e
-// internal/keaunbound se defende por conta própria. Mas o valor é interpolado
+// internal/unbound se defende por conta própria. Mas o valor é interpolado
 // por concatenação de string em configuração lida por um daemon ROOT
-// (unbound.conf, kea-dhcp4.conf) e em comandos `ip` e `nft`, e um validador
+// (unidades do networkd) e em comandos `ip` e `nft`, e um validador
 // que aceita travessia de diretório como nome é uma base ruim para todo mundo
 // que confia nele — inclusive para o próximo chamador, que não vai reler a
 // regex antes de usar.

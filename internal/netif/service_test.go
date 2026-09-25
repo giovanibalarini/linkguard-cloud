@@ -17,7 +17,7 @@ import (
 
 // fakeExec is a minimal firewall.Executor test double that returns canned
 // output per command, mirroring the pattern already used in
-// internal/keaunbound/keaunbound_test.go's recExec.
+// internal/unbound/unbound_test.go's recExec.
 type fakeExec struct {
 	linkJSON      string
 	addrJSON      string

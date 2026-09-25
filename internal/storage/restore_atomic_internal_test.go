@@ -28,21 +28,17 @@ func TestApplyRestoreWritesEverythingOnSuccess(t *testing.T) {
 	db := openRestoreTestDB(t)
 
 	c, err := db.ApplyRestore(RestorePayload{
-		Settings:     map[string]string{"ntp_config": `{"serve_lan":true}`, "retention": "30d"},
-		Reservations: []DHCPReservation{{MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.10", Hostname: "impressora"}},
-		Blocklist:    []string{"anuncios.example", "rastreio.example"},
+		Settings:  map[string]string{"retention": "30d", "monitoring": `{"enabled":true}`},
+		Blocklist: []string{"anuncios.example", "rastreio.example"},
 	})
 	if err != nil {
 		t.Fatalf("ApplyRestore: %v", err)
 	}
-	if c.Settings != 2 || c.Reservations != 1 || c.Blocklist != 2 {
+	if c.Settings != 2 || c.Blocklist != 2 {
 		t.Fatalf("contagens erradas: %+v", c)
 	}
 	if got := countRows(t, db, "settings"); got < 2 {
 		t.Errorf("settings gravadas: %d", got)
-	}
-	if got := countRows(t, db, "dhcp_reservations"); got != 1 {
-		t.Errorf("reservas gravadas: %d", got)
 	}
 	if got := countRows(t, db, "dns_blocklist"); got != 2 {
 		t.Errorf("domínios gravados: %d", got)
@@ -53,8 +49,8 @@ func TestApplyRestoreWritesEverythingOnSuccess(t *testing.T) {
 // exatamente como estava. Antes eram três laços com o erro engolido e HTTP 200
 // no fim — metade da configuração restaurada e sucesso reportado.
 //
-// A falha é forçada tirando a tabela dns_blocklist do caminho: settings e
-// reservas gravam primeiro, e o INSERT do blocklist quebra com "no such table".
+// A falha é forçada tirando a tabela dns_blocklist do caminho: as settings
+// gravam primeiro, e o INSERT do blocklist quebra com "no such table".
 // É determinístico, e quebra DEPOIS de a transação já ter escrito — que é
 // exatamente a situação que o defeito produzia. (Um MAC vazio não serve: no
 // SQLite string vazia não viola NOT NULL.)
@@ -67,9 +63,8 @@ func TestApplyRestoreLeavesNothingBehindWhenItFailsHalfway(t *testing.T) {
 	}
 
 	_, err := db.ApplyRestore(RestorePayload{
-		Settings:     map[string]string{"chave_que_nao_pode_sobrar": "valor"},
-		Reservations: []DHCPReservation{{MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.10"}},
-		Blocklist:    []string{"quebra.example"},
+		Settings:  map[string]string{"chave_que_nao_pode_sobrar": "valor"},
+		Blocklist: []string{"quebra.example"},
 	})
 	if err == nil {
 		t.Fatal("esperava erro na restauração")
@@ -85,8 +80,5 @@ func TestApplyRestoreLeavesNothingBehindWhenItFailsHalfway(t *testing.T) {
 	}
 	if got := countRows(t, db, "settings"); got != settingsAntes {
 		t.Errorf("a tabela settings mudou de tamanho: %d → %d", settingsAntes, got)
-	}
-	if got := countRows(t, db, "dhcp_reservations"); got != 0 {
-		t.Errorf("a reserva válida gravada antes da falha sobreviveu: %d", got)
 	}
 }

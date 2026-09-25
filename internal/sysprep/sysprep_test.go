@@ -112,8 +112,8 @@ func TestNftablesConfNasceComCabecalhoValido(t *testing.T) {
 // pacote: Prepare não pode mexer no que já existe.
 func TestPrepareNaoMexeNoQueJaExiste(t *testing.T) {
 	root := t.TempDir()
-	kea := filepath.Join(root, "/etc/kea")
-	if err := os.MkdirAll(kea, 0o750); err != nil {
+	confd := filepath.Join(root, "/etc/unbound/unbound.conf.d")
+	if err := os.MkdirAll(confd, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	conf := filepath.Join(root, NftablesConfPath)
@@ -128,9 +128,9 @@ func TestPrepareNaoMexeNoQueJaExiste(t *testing.T) {
 		t.Fatalf("Prepare: %v", err)
 	}
 
-	st, _ := os.Stat(kea)
+	st, _ := os.Stat(confd)
 	if st.Mode().Perm() != 0o750 {
-		t.Errorf("/etc/kea teve o modo trocado para %o", st.Mode().Perm())
+		t.Errorf("/etc/unbound/unbound.conf.d teve o modo trocado para %o", st.Mode().Perm())
 	}
 	b, _ := os.ReadFile(conf)
 	if string(b) != "table inet linkguard {}\n" {
@@ -155,10 +155,9 @@ func TestPrepareEIdempotente(t *testing.T) {
 
 func TestCovers(t *testing.T) {
 	cases := map[string]bool{
-		"/etc/nftables.conf":      true,
-		"/etc/kea":                true,
-		"/etc/kea/kea-dhcp4.conf": true,
-		"/etc/unbound":            true, // criado a caminho do conf.d
+		"/etc/nftables.conf": true,
+		"/etc/kea":           false, // a versão cloud não serve DHCP
+		"/etc/unbound":       true,  // criado a caminho do conf.d
 		"/etc/unbound/unbound.conf.d/linkguard.conf": true,
 		"/var/lib/linkguard-cloud":                   true,
 		"/etc/resolv.conf":                           false,
@@ -182,11 +181,11 @@ func TestSandboxHintSoExplicaOSandboxQuandoEArmadilha(t *testing.T) {
 
 	// Disco cheio não é a armadilha: mandar reiniciar o serviço aqui seria
 	// mandar o admin repetir um erro que vai acontecer igual.
-	other := SandboxHint("/etc/kea", syscall.ENOSPC)
+	other := SandboxHint("/etc/wireguard", syscall.ENOSPC)
 	if strings.Contains(other, "systemctl restart linkguard-cloud") {
 		t.Errorf("erro que não é a armadilha não pode mandar reiniciar:\n%s", other)
 	}
-	if !strings.Contains(other, "/etc/kea") {
+	if !strings.Contains(other, "/etc/wireguard") {
 		t.Errorf("o motivo cru tem que dizer o caminho:\n%s", other)
 	}
 }

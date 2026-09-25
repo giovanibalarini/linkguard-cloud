@@ -643,8 +643,8 @@ cfg.backup.help.title:
   pt: "Backup"
   en: "Backup"
 cfg.backup.help.body:
-  pt: "Salva num arquivo todas as suas configurações (links, firewall, DHCP/DNS, balanceamento, notificações...). Útil antes de mexer em algo ou para migrar de máquina. O arquivo é sempre cifrado com a senha configurada abaixo."
-  en: "Saves every setting you have to a file (links, firewall, DHCP/DNS, load balancing, notifications). Handy before changing something or when moving to another machine. The file is always encrypted with the passphrase set below."
+  pt: "Salva num arquivo todas as suas configurações (firewall, VPN, DNS, notificações...). Útil antes de mexer em algo ou para migrar de máquina. O arquivo é sempre cifrado com a senha configurada abaixo."
+  en: "Saves every setting you have to a file (firewall, VPN, DNS, notifications). Handy before changing something or when moving to another machine. The file is always encrypted with the passphrase set below."
 cfg.backup.schedule.off:
   pt: "Desligado"
   en: "Off"
@@ -703,11 +703,11 @@ cfg.backup.needPassFirst:
   pt: "Configure uma senha de backup primeiro"
   en: "Set a backup passphrase first"
 cfg.backup.restore.summary:
-  pt: "Restaurado: {settings} configs, {reservations} reservas, {blocklist} domínios."
-  en: "Restored: {settings} settings, {reservations} reservations, {blocklist} domains."
+  pt: "Restaurado: {settings} configs, {blocklist} domínios."
+  en: "Restored: {settings} settings, {blocklist} domains."
 cfg.backup.restore.reapply:
-  pt: "Reaplique DHCP/DNS e Firewall onde necessário."
-  en: "Re-apply DHCP/DNS and Firewall where needed."
+  pt: "Reaplique DNS e Firewall onde necessário."
+  en: "Re-apply DNS and Firewall where needed."
 cfg.backup.restore.secretsTitle:
   pt: "Reconfigure estas credenciais:"
   en: "Reconfigure these credentials:"
@@ -730,14 +730,14 @@ cfg.backup.restoreFromFile:
   pt: "Restaurar de arquivo"
   en: "Restore from file"
 cfg.backup.scope:
-  pt: "A restauração aplica configurações, reservas de DHCP e blocklist de DNS. "
-  en: "A restore applies settings, DHCP reservations and the DNS blocklist. It does "
+  pt: "A restauração aplica configurações e a blocklist de DNS. "
+  en: "A restore applies settings and the DNS blocklist. It does "
 cfg.backup.scope.strong:
   pt: "Não"
   en: "not"
 cfg.backup.scope.tail:
-  pt: " altera usuários/papéis nem os links WAN ativos — então não há risco de te trancar para fora. Depois de restaurar, reaplique DHCP/DNS e Firewall."
-  en: " touch users/roles or the live WAN links, so it cannot lock you out of the panel. After restoring, re-apply DHCP/DNS and Firewall."
+  pt: " altera usuários/papéis nem os links WAN ativos — então não há risco de te trancar para fora. Depois de restaurar, reaplique DNS e Firewall."
+  en: " touch users/roles or the live WAN links, so it cannot lock you out of the panel. After restoring, re-apply DNS and Firewall."
 cfg.backup.restore.confirmTitle:
   pt: "Confirmar restauração?"
   en: "Confirm restore?"

@@ -4,14 +4,14 @@
 // POR QUE ISTO EXISTE. Para bloquear o notebook de alguém, o admin precisava
 // descobrir o IP por fora (na tela de Hosts, ou no roteador), copiar, voltar e
 // digitar. O produto já conhece esse aparelho pelo nome — ele aparece na tela
-// de Hosts, tem apelido e reserva de DHCP —, e mesmo assim pedia o endereço.
+// de Hosts, tem apelido —, e mesmo assim pedia o endereço.
 //
-// Este módulo é só a TRADUÇÃO: recebe o que as telas de Hosts, DHCP e Links
+// Este módulo é só a TRADUÇÃO: recebe o que as telas de Hosts e Links
 // devolvem e produz uma lista única, agrupada, com o endereço que a regra vai
 // usar de verdade. Nada de I/O aqui — quem busca é o componente, e é isso que
 // deixa esta parte coberta por asserção.
 
-export type TargetKind = 'host' | 'reserva' | 'rede' | 'wan' | 'manual';
+export type TargetKind = 'host' | 'rede' | 'wan' | 'manual';
 
 export interface Target {
   /** Chave estável para o React e para comparar seleção. */
@@ -31,7 +31,6 @@ export interface HostLike {
   mac: string; ip: string; hostname: string; alias: string;
   blocked?: boolean; last_seen?: string;
 }
-export interface ReservationLike { mac: string; ip: string; hostname: string }
 export interface LinkLike { id: string; name: string; interface: string; ip_address?: string }
 
 /**
@@ -62,8 +61,6 @@ export function onlineRecently(lastSeen: string | undefined, agora: number): boo
  *
  *  - host SEM IP fica de fora: uma regra precisa de endereço, e oferecer um
  *    item que não dá para usar é pior do que não oferecer;
- *  - reserva cujo IP já aparece como host é FUNDIDA no host, não repetida — a
- *    mesma máquina em duas linhas faria o admin achar que são dois aparelhos;
  *  - a LAN inteira entra como rede, porque "bloquear tudo menos X" é um caso
  *    comum e ninguém deveria digitar o CIDR de cabeça;
  *  - os links WAN entram porque "saindo pela Fibra" é como o admin pensa, e
@@ -71,57 +68,21 @@ export function onlineRecently(lastSeen: string | undefined, agora: number): boo
  */
 export function buildTargets(
   hosts: HostLike[],
-  reservas: ReservationLike[],
   links: LinkLike[],
   lanCidr: string,
   agora: number,
 ): Target[] {
   const out: Target[] = [];
-  const ipsDeHosts = new Set<string>();
-
-  // A reserva é indexada ANTES, por IP e por MAC, porque ela costuma ter o nome
-  // que o host não tem.
-  //
-  // Isto foi encontrado olhando a tela com dados reais: a maioria dos aparelhos
-  // de uma LAN não anuncia hostname e nunca recebeu apelido, então a lista
-  // aparecia como uma coluna de endereços MAC — exatamente o que este seletor
-  // existe para evitar. E o nome estava ali do lado, na reserva de DHCP, que a
-  // fusão por IP jogava fora.
-  const nomeDaReserva = new Map<string, string>();
-  for (const r of reservas || []) {
-    const nome = (r.hostname || '').trim();
-    if (!nome) continue;
-    if ((r.ip || '').trim()) nomeDaReserva.set((r.ip || '').trim(), nome);
-    if ((r.mac || '').trim()) nomeDaReserva.set((r.mac || '').trim().toLowerCase(), nome);
-  }
-
   for (const h of hosts || []) {
     const ip = (h.ip || '').trim();
     if (!ip) continue;
-    ipsDeHosts.add(ip);
-    const proprio = (h.alias || '').trim() || (h.hostname || '').trim();
-    const daReserva = nomeDaReserva.get(ip) || nomeDaReserva.get((h.mac || '').trim().toLowerCase());
     out.push({
       id: `host:${h.mac || ip}`,
       kind: 'host',
-      // O que o admin escreveu vem primeiro (apelido), depois o que o aparelho
-      // diz de si, depois o nome da reserva — e só então o MAC.
-      label: proprio || daReserva || h.mac,
+      label: hostName(h),
       hint: ip,
       value: ip,
       online: onlineRecently(h.last_seen, agora),
-    });
-  }
-
-  for (const r of reservas || []) {
-    const ip = (r.ip || '').trim();
-    if (!ip || ipsDeHosts.has(ip)) continue;
-    out.push({
-      id: `reserva:${r.mac || ip}`,
-      kind: 'reserva',
-      label: (r.hostname || '').trim() || r.mac,
-      hint: `${ip} · reserva fixa`,
-      value: ip,
     });
   }
 
@@ -154,13 +115,12 @@ export function buildTargets(
 /** Rótulo do grupo na lista, na ordem em que os grupos aparecem. */
 export const KIND_LABEL: Record<TargetKind, string> = {
   host: 'Aparelhos na rede',
-  reserva: 'Reservas de DHCP',
   rede: 'Redes',
   wan: 'Links WAN',
   manual: 'Endereço digitado',
 };
 
-export const KIND_ORDER: TargetKind[] = ['host', 'reserva', 'rede', 'wan', 'manual'];
+export const KIND_ORDER: TargetKind[] = ['host', 'rede', 'wan', 'manual'];
 
 /**
  * searchTargets filtra pela busca, casando por nome E por endereço.

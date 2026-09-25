@@ -9,7 +9,7 @@ import type { ErrorInfo, ReactNode } from 'react';
  *
  * Sem isto, um único componente que lance derruba a árvore inteira e o
  * navegador fica com uma página em branco — e este painel é o único caminho de
- * clique para confirmar/reverter regra, self-update, DHCP/DNS e interfaces.
+ * clique para confirmar/reverter regra, self-update, DNS e interfaces.
  * Tela branca num firewall é o administrador sem acesso à própria máquina.
  *
  * Duas decisões deliberadas neste arquivo:

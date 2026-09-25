@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Wand2, ChevronRight, ChevronDown, Ban, Gauge, Pin, ShieldOff, Network, Lock, ArrowRightLeft,
+  Wand2, ChevronRight, ChevronDown, Ban, Gauge, ShieldOff, Network, Lock, ArrowRightLeft,
 } from 'lucide-react';
 import Panel from './ui/Panel';
 import { useI18n } from '../i18n';
@@ -30,7 +30,6 @@ interface Recipe {
 const recipes: Recipe[] = [
   { id: 'block-site', icon: Ban, to: '/dns', passos: 4 },
   { id: 'top-talkers', icon: Gauge, to: '/hosts', passos: 3 },
-  { id: 'reserve-ip', icon: Pin, to: '/dhcp', passos: 4 },
   { id: 'port-forward', icon: ArrowRightLeft, to: '/firewall', passos: 4 },
   { id: 'block-device', icon: ShieldOff, to: '/hosts', passos: 4 },
   { id: 'balance-wan', icon: Network, to: '/links', passos: 3 },

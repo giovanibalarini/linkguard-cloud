@@ -136,23 +136,27 @@ func TestSurvivalNaoAmarraInterface(t *testing.T) {
 	}
 }
 
-// TestSurvivalDHCPeDNSSoComRedeConfigurada: sem rede declarada, aceitar DHCP e
-// DNS de qualquer origem abriria o resolver e o servidor de DHCP para a WAN.
-func TestSurvivalDHCPeDNSSoComRedeConfigurada(t *testing.T) {
+// TestSurvivalDNSSoComRedeConfigurada: sem rede declarada, aceitar DNS de
+// qualquer origem abriria o resolver para a WAN.
+func TestSurvivalDNSSoComRedeConfigurada(t *testing.T) {
 	semRede := SurvivalRules(AdminAccess{PanelPort: 9997})
-	if contem(semRede, "dport 53") || contem(semRede, "dport 67") {
-		t.Error("emitiu DNS/DHCP sem rede configurada — abriria o resolver para a WAN")
+	if contem(semRede, "dport 53") {
+		t.Error("emitiu DNS sem rede configurada — abriria o resolver para a WAN")
 	}
 
 	comRede := SurvivalRules(AdminAccess{PanelPort: 9997, LANNetworks: []string{"192.168.3.0/24"}})
 	for _, esperado := range []string{
-		"udp dport 67 ip saddr { 192.168.3.0/24 }",
 		"udp dport 53 ip saddr { 192.168.3.0/24 }",
 		"tcp dport 53 ip saddr { 192.168.3.0/24 }",
 	} {
 		if !contem(comRede, esperado) {
 			t.Errorf("faltou %q", esperado)
 		}
+	}
+	// A versão cloud não serve DHCP: a rede é da Oracle. A porta 67 aberta
+	// seria uma porta sem dono.
+	if contem(comRede, "dport 67") {
+		t.Error("abriu a porta do servidor de DHCP, que a versão cloud não tem")
 	}
 }
 

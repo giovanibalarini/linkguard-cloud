@@ -93,7 +93,7 @@ func TestBuildServicesWiresWireGuardIntoUnbound(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveWireGuardConfig: %v", err)
 	}
-	files, err := s.keaSvc.GenerateConfigs(netsvc.DefaultConfig(), nil, nil, "")
+	files, err := s.unboundSvc.GenerateConfigs(netsvc.DefaultConfig(), nil)
 	if err != nil {
 		t.Fatalf("GenerateConfigs: %v", err)
 	}

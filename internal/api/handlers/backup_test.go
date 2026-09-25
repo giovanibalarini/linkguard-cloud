@@ -70,7 +70,7 @@ func multipartRestoreBody(t *testing.T, encrypted []byte, passphrase string) (*b
 // recognizes through the same checks the live API applies before an admin's
 // edit ever reaches the DB, and must write nothing at all when any of them
 // fails — a crafted or corrupted backup must not be able to reach
-// unbound.conf/kea-dhcp4.conf with unvalidated content by going around the
+// unbound.conf with unvalidated content by going around the
 // handlers entirely. Regression tests for
 // .superpowers/sdd/input-validation-audit.md finding #1.
 
@@ -129,9 +129,9 @@ const testPassphrase = "senha-de-teste-123456"
 // validNetsvcConfigJSON is a clean, fully-valid netsvc_config settings blob
 // — the baseline every "rejected restore must write nothing" test restores
 // first, so there's known-good state to prove survives untouched.
-const validNetsvcConfigJSON = `{"backend":"kea-unbound","interface":"br10","subnet_cidr":"192.168.3.0/24","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3","lease_hours":12,"dns_to_clients":["192.168.3.3"],"upstreams":[],"log_queries":false,"domain_suffix":"lan"}`
+const validNetsvcConfigJSON = `{"upstreams":["1.1.1.1","9.9.9.9"],"log_queries":false,"dnstap_enabled":false}`
 
-func TestRestoreRejectsInvalidCIDRInNetsvcConfigAndWritesNothing(t *testing.T) {
+func TestRestoreRejectsInvalidUpstreamInNetsvcConfigAndWritesNothing(t *testing.T) {
 	h, sec := newBackupTestHandler(t)
 	if err := sec.Set(backup.PassphraseSecretName, testPassphrase); err != nil {
 		t.Fatalf("sec.Set: %v", err)
@@ -146,43 +146,13 @@ func TestRestoreRejectsInvalidCIDRInNetsvcConfigAndWritesNothing(t *testing.T) {
 
 	malicious := baseline
 	malicious.Settings = map[string]string{
-		"netsvc_config": `{"backend":"kea-unbound","interface":"br10","subnet_cidr":"not-a-cidr","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3"}`,
+		// An upstream lands in unbound.conf's forward-zone by string
+		// concatenation; anything that isn't a bare IP must be refused.
+		"netsvc_config": `{"upstreams":["1.1.1.1\nforward-addr: 6.6.6.6"],"log_queries":false}`,
 	}
 	rw := doRestore(t, h, malicious, testPassphrase)
 	if rw.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid subnet_cidr in a restored backup, got %d: %s", rw.Code, rw.Body.String())
-	}
-
-	after := snapshotDB(t, h, testPassphrase)
-	if !reflect.DeepEqual(before.Settings, after.Settings) {
-		t.Fatalf("settings changed after a restore that should have been rejected:\nbefore=%v\nafter=%v", before.Settings, after.Settings)
-	}
-}
-
-func TestRestoreRejectsInvalidInterfaceInNetsvcConfigAndWritesNothing(t *testing.T) {
-	h, sec := newBackupTestHandler(t)
-	if err := sec.Set(backup.PassphraseSecretName, testPassphrase); err != nil {
-		t.Fatalf("sec.Set: %v", err)
-	}
-
-	baseline := backup.BackupData{Version: "test-version", Kind: "linkguard-fw-backup",
-		Settings: map[string]string{"netsvc_config": validNetsvcConfigJSON}}
-	if rw := doRestore(t, h, baseline, testPassphrase); rw.Code != http.StatusOK {
-		t.Fatalf("baseline restore: expected 200, got %d: %s", rw.Code, rw.Body.String())
-	}
-	before := snapshotDB(t, h, testPassphrase)
-
-	malicious := baseline
-	malicious.Settings = map[string]string{
-		// A newline in "interface" would land in kea-dhcp4.conf's
-		// interfaces-config by string concatenation elsewhere in the config
-		// pipeline; an interface name this long/invalid is also outright
-		// rejected by validate.Iface.
-		"netsvc_config": `{"backend":"kea-unbound","interface":"this-interface-name-is-way-too-long-for-linux","subnet_cidr":"192.168.3.0/24","range_start":"192.168.3.10","range_end":"192.168.3.100","gateway":"192.168.3.3"}`,
-	}
-	rw := doRestore(t, h, malicious, testPassphrase)
-	if rw.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid interface in a restored backup, got %d: %s", rw.Code, rw.Body.String())
+		t.Fatalf("expected 400 for invalid upstream in a restored backup, got %d: %s", rw.Code, rw.Body.String())
 	}
 
 	after := snapshotDB(t, h, testPassphrase)
