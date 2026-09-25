@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import WanBalancing from '../components/WanBalancing';
 import DomainTargets from '../components/DomainTargets';
-import LinkDdns from '../components/LinkDdns';
 import LinkQuota from '../components/LinkQuota';
 import LinkQosPanel from '../components/LinkQosPanel';
 import { useAuth } from '../context/AuthContext';
@@ -409,7 +408,6 @@ export default function Links() {
 
       {!loading && links.length > 0 && <LinkQuota canEdit={can('links.write')} />}
 
-      {!loading && links.length > 0 && <LinkDdns canEdit={can('links.write')} />}
 
       {!loading && links.map((link) => (
         <LinkQosPanel

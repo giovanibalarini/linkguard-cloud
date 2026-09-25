@@ -554,10 +554,10 @@ func TestCreditarVeOEnderecoNaEstruturaErrada(t *testing.T) {
 // como tapar.
 //
 // Utilizavel filtra por CATEGORIA, e todo endereço de que a caixa depende é de
-// categoria PÚBLICA por construção: o da WAN é público (o pacote ddns existe
-// para publicá-lo), o gateway de um uplink /30 é público, e com prefixo
+// categoria PÚBLICA por construção: o da WAN é público (é o IP que a conta
+// expõe), o gateway de um uplink /30 é público, e com prefixo
 // delegado os hosts da LAN têm endereço global v6 — a família em que
-// ddns.IsPrivate não tem nada a dizer.
+// enderecoPrivado não tem nada a dizer.
 //
 // Sem a lista de protegidos, um domínio hostil responde com o IP da WAN1 e ele
 // entra em dom_wan com a marca da WAN2, ou em dom_blocked com prazo de uma

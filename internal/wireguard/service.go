@@ -371,7 +371,7 @@ func (s *Service) resolveEndpoint(c Config) (string, error) {
 		}
 	}
 	if !validEndpointHost(host) {
-		return "", fmt.Errorf("configure um hostname/IP público ou selecione um link com DDNS habilitado")
+		return "", fmt.Errorf("configure o endereço público da VPN (hostname ou IP)")
 	}
 	return host, nil
 }

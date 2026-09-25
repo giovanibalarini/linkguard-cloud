@@ -321,18 +321,12 @@ vpn.config.address:
 vpn.config.port:
   pt: "Porta UDP"
   en: "UDP port"
-vpn.config.ddnsLink:
-  pt: "Link WAN com DDNS"
-  en: "WAN link with DDNS"
-vpn.config.noDDNS:
-  pt: "Nenhum: usar o endereço público abaixo"
-  en: "None: use the public address below"
 vpn.config.explicitEndpoint:
-  pt: "Endereço público (hostname ou IP)"
-  en: "Public address (hostname or IP)"
+  pt: "Endereço público da VPN (hostname ou IP)"
+  en: "VPN public address (hostname or IP)"
 vpn.config.endpointHint:
-  pt: "É o endereço que vai nas configurações entregues. Se houver um link com DDNS escolhido, ele tem prioridade."
-  en: "This is the address written into delivered configurations. If a DDNS link is chosen, it takes priority."
+  pt: "É o endereço que vai nas configurações entregues. Na Oracle, use o IP público reservado da máquina: ele não aparece em nenhuma placa, então o produto não consegue descobri-lo sozinho."
+  en: "This is the address written into delivered configurations. On Oracle, use the machine's reserved public IP: it sits on no interface, so the product cannot discover it on its own."
 vpn.config.save:
   pt: "Salvar e aplicar"
   en: "Save and apply"

@@ -11,13 +11,6 @@ import PeerAccessModal from '../components/vpn/PeerAccessModal';
 import PeerList from '../components/vpn/PeerList';
 import { apiError, type VPNConfig, type VPNEnrollment, type VPNOverview, type VPNPeer } from '../components/vpn/vpnTypes';
 
-interface DDNSOption {
-  link_id: string;
-  link_name: string;
-  enabled: boolean;
-  hostname: string;
-}
-
 const defaultConfig: VPNConfig = {
   enabled: false,
   listen_port: 51820,
@@ -41,7 +34,6 @@ export default function Vpn() {
 
   const [overview, setOverview] = useState<VPNOverview | null>(null);
   const [draft, setDraft] = useState<VPNConfig>(defaultConfig);
-  const [ddns, setDDNS] = useState<DDNSOption[]>([]);
   const [hostGroups, setHostGroups] = useState<HostGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,10 +55,6 @@ export default function Vpn() {
         setOverview(vpnRes.data);
         setDraft(vpnRes.data.config);
         setHostGroups(groupsRes.data ?? []);
-      }
-      if (canWrite) {
-        const { data } = await client.get<DDNSOption[]>('/api/ddns');
-        setDDNS((data ?? []).filter((row) => row.enabled && row.hostname));
       }
     } catch (e) {
       setMessage({ kind: 'error', text: apiError(e, t('vpn.error.load')) });
@@ -223,15 +211,8 @@ export default function Vpn() {
                   <input type="number" min={1} max={65535} className="input w-full" value={draft.listen_port} onChange={(e) => setDraft({ ...draft, listen_port: Number(e.target.value) })} />
                 </label>
                 <label>
-                  <span className="label">{t('vpn.config.ddnsLink')}</span>
-                  <select className="input w-full" value={draft.endpoint_link_id} onChange={(e) => setDraft({ ...draft, endpoint_link_id: e.target.value })}>
-                    <option value="">{t('vpn.config.noDDNS')}</option>
-                    {ddns.map((row) => <option key={row.link_id} value={row.link_id}>{row.link_name} — {row.hostname}</option>)}
-                  </select>
-                </label>
-                <label>
                   <span className="label">{t('vpn.config.explicitEndpoint')}</span>
-                  <input className="input w-full" placeholder="vpn.example.com" value={draft.endpoint_host} onChange={(e) => setDraft({ ...draft, endpoint_host: e.target.value })} />
+                  <input className="input w-full" placeholder="159.112.185.238 ou vpn.exemplo.com" value={draft.endpoint_host} onChange={(e) => setDraft({ ...draft, endpoint_host: e.target.value })} />
                 </label>
               </div>
               <p className="text-xs text-gray-500">{t('vpn.config.endpointHint')}</p>

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,7 +29,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
 	"github.com/giovanibalarini/linkguard-cloud/internal/comportamento"
 	"github.com/giovanibalarini/linkguard-cloud/internal/config"
-	"github.com/giovanibalarini/linkguard-cloud/internal/ddns"
 	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
 	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
 	"github.com/giovanibalarini/linkguard-cloud/internal/domtargets"
@@ -400,7 +398,6 @@ type services struct {
 	quotaSvc     *linkquota.Service
 	qosSvc       *qos.Service
 	hostQuotaSvc *hostquota.Service
-	ddnsSvc      *ddns.Service
 	wgSvc        *wireguard.Service
 	aiClient     *ai.Client
 
@@ -721,33 +718,11 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	hostQuotaSvc := hostquota.NewService(db, alertSvc)
 	hostSampler.SetUsageSink(hostQuotaSvc)
 
-	// DNS dinâmico por link (#129). A descoberta do endereço usa a MESMA
-	// leitura de `ip addr` que o balanceador — duas leituras com parsers
-	// diferentes divergiriam no primeiro formato inesperado, e o sintoma seria
-	// o nome apontando para lugar nenhum.
-	ddnsSvc := ddns.NewService(db, secretsSvc, func(ctx context.Context, iface string) string {
-		return balancer.InterfaceIPv4(ctx, exec, iface)
-	})
-	// WireGuard owns its desired state and secrets; the selected WAN only
-	// contributes a public DDNS hostname to the one-time client config. The
-	// explicit host is the safe local fallback when no usable DDNS entry exists.
+	// WireGuard owns its desired state and secrets. The client config points at
+	// the public address the admin informs: in the cloud it is the reserved IP,
+	// which exists on no interface and so cannot be discovered here.
 	wgSvc := wireguard.NewService(db, secretsSvc, exec)
 	wgSvc.SetInstallExecutor(pkgExec)
-	wgSvc.SetEndpointResolver(func(linkID, explicitHost string) (string, error) {
-		if strings.TrimSpace(linkID) != "" {
-			configs, err := ddnsSvc.Configs()
-			if err != nil {
-				return "", err
-			}
-			if selected, ok := configs[linkID]; ok && selected.Enabled && strings.TrimSpace(selected.Hostname) != "" {
-				return strings.TrimSpace(selected.Hostname), nil
-			}
-		}
-		if explicitHost = strings.TrimSpace(explicitHost); explicitHost != "" {
-			return explicitHost, nil
-		}
-		return "", fmt.Errorf("o link selecionado não tem DDNS habilitado e nenhum endpoint explícito foi informado")
-	})
 	// These callbacks are read at every reconcile. No WireGuard state is
 	// duplicated into nftables or netsvc persistence, so boot and retries are
 	// idempotent and a disabled tunnel removes both projections.
@@ -868,7 +843,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		Uplink:    func() handlers.UplinkView { return uplinkParaTela(db, plat) },
 		WireGuard: wgSvc,
 		QoS:       qosSvc,
-	}, db, exec, linkSvc, iptSvc, routeSvc, failoverSvc, balancerSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, quotaSvc, ddnsSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
+	}, db, exec, linkSvc, iptSvc, routeSvc, failoverSvc, balancerSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, quotaSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
 
 	interval := time.Duration(cfg.MonitorInterval) * time.Second
 	// The link health probe runs on its own (faster) cadence, decoupled from the
@@ -906,7 +881,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		quotaSvc:         quotaSvc,
 		qosSvc:           qosSvc,
 		hostQuotaSvc:     hostQuotaSvc,
-		ddnsSvc:          ddnsSvc,
 		wgSvc:            wgSvc,
 		aiClient:         aiClient,
 		promReg:          promReg,
@@ -1023,7 +997,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	quotaSvc := s.quotaSvc
 	qosSvc := s.qosSvc
 	hostQuotaSvc := s.hostQuotaSvc
-	ddnsSvc := s.ddnsSvc
 	wgSvc, server := s.wgSvc, s.server
 	hostSampler := s.hostSampler
 	backupSched, journalSched, updatesSched := s.backupSched, s.journalSched, s.updatesSched
@@ -1586,8 +1559,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			}
 		}
 	}()
-
-	go ddnsSvc.Run(ctx)
 
 	// O coordenador publica a intenção ainda atrás do gate de boot. Assim a API
 	// já mostra tudo como boot_pending e o alimentador só recebe ensaio até as

@@ -70,7 +70,7 @@ func TestNewKeepsQosServiceFromConfig(t *testing.T) {
 	authSvc := auth.NewService(nil, "test-secret", nil)
 	s := New(Config{QoS: service, WebFS: fstest.MapFS{}},
 		nil, exec, nil, nil, nil, nil, nil, nil, authSvc, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	if s.qosSvc != service {
 		t.Fatalf("Server.qosSvc = %p, want configured service %p", s.qosSvc, service)
 	}

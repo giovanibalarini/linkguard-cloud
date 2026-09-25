@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/ddns"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
@@ -364,9 +363,9 @@ func NormalizarDominio(s string) (string, bool) {
 }
 
 // prefixosProibidos4 é o espaço v4 que NÃO pode virar regra e que
-// ddns.IsPrivate não cobre.
+// enderecoPrivado não cobre.
 //
-// ddns.IsPrivate resolve loopback, link-local, RFC1918, fc00::/7, não
+// enderecoPrivado resolve loopback, link-local, RFC1918, fc00::/7, não
 // especificado e CGNAT — que é o que ele foi escrito para resolver. Cada linha
 // abaixo existe porque a alternativa é o produto escrever no kernel um endereço
 // que um terceiro escolheu:
@@ -435,7 +434,7 @@ var (
 // WAN. Um terceiro escolhendo o que o nosso firewall faz.
 //
 // O QUE ELE NÃO PEGA, e por isso protegido() existe: endereço PÚBLICO que é
-// nosso. O da WAN é público por construção — o pacote ddns existe justamente
+// nosso. O da WAN é público por construção — num gateway de nuvem ele é o IP público
 // para publicá-lo — e o GUA da LAN, com prefixo delegado, também.
 //
 // Endereço v4 embutido em v6 (::ffff:1.2.3.4) é RECUSADO em vez de
@@ -448,7 +447,7 @@ func Utilizavel(a netip.Addr) bool {
 	if a.IsMulticast() || a.IsInterfaceLocalMulticast() {
 		return false
 	}
-	if ddns.IsPrivate(a) {
+	if enderecoPrivado(a) {
 		return false
 	}
 	if a.Is4() {
@@ -475,7 +474,7 @@ func Utilizavel(a netip.Addr) bool {
 // É A SEGUNDA METADE DO FILTRO, e a que Utilizavel não tem como fazer: todo
 // endereço de que a caixa depende é de categoria PÚBLICA, por construção.
 //
-//   - O endereço da WAN é público — o pacote ddns existe para publicá-lo. Um
+//   - O endereço da WAN é público — é o IP que a conta expõe. Um
 //     domínio hostil que responde com ele põe o IP do próprio link em dom_wan
 //     com a marca da outra WAN, ou em dom_blocked com prazo de uma hora.
 //   - Em PPPoE e em uplink com /30 ou /29 público, o GATEWAY é público. Com
@@ -483,7 +482,7 @@ func Utilizavel(a netip.Addr) bool {
 //     uplink por causa de uma resposta de DNS de terceiro.
 //   - Com prefixo delegado, os hosts da LAN têm GUA. É literalmente o ataque
 //     que o cabeçalho deste arquivo diz impedir, na família em que
-//     ddns.IsPrivate não tem nada a dizer.
+//     enderecoPrivado não tem nada a dizer.
 //
 // A lista é de PREFIXOS e não de endereços: as redes a que a caixa está
 // diretamente ligada contam inteiras, senão o vizinho da LAN fica de fora e o
@@ -1391,3 +1390,20 @@ func (i *Indice) Linhas() []LinhaDominio {
 	sort.Slice(out, func(x, y int) bool { return out[x].Alvo.Dominio < out[y].Alvo.Dominio })
 	return out
 }
+
+// enderecoPrivado diz se o endereço não é roteável na internet: loopback,
+// link-local, RFC1918, fc00::/7, não especificado e o espaço de CGNAT
+// (100.64.0.0/10). Morava no pacote de DDNS, que saiu da versão de nuvem.
+func enderecoPrivado(a netip.Addr) bool {
+	if !a.IsValid() {
+		return true
+	}
+	if a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsPrivate() || a.IsUnspecified() {
+		return true
+	}
+	return prefixoCGNAT.Contains(a)
+}
+
+// prefixoCGNAT é montado uma vez: enderecoPrivado roda para todo endereço de
+// toda resposta de DNS, o caminho mais quente do produto.
+var prefixoCGNAT = netip.MustParsePrefix("100.64.0.0/10")

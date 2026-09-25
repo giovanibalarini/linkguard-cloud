@@ -13,7 +13,7 @@ import (
 // esta caixa depende passa por esse filtro sem esbarrar em nada, porque todos
 // são de categoria PÚBLICA por construção:
 //
-//   - o endereço da WAN é público, e o pacote ddns existe justamente para
+//   - o endereço da WAN é público, e o gateway existe justamente para
 //     publicá-lo;
 //   - em PPPoE e em uplink com /30 ou /29 público, o gateway é público;
 //   - com prefixo delegado, os hosts da LAN têm endereço global v6.
