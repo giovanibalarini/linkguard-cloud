@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/giovanibalarini/linkguard-cloud/internal/blocklog"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
@@ -13,9 +14,10 @@ import (
 
 // FirewallHandler implementa os handlers da API nova do firewall por zonas (/api/firewall/*).
 type FirewallHandler struct {
-	db  *storage.DB
-	fr  *firewallrules.Service
-	nft *nftables.Service
+	db       *storage.DB
+	fr       *firewallrules.Service
+	nft      *nftables.Service
+	blocklog *blocklog.Service
 }
 
 // NewFirewallHandler instancia o handler do firewall por zonas.
@@ -25,6 +27,12 @@ func NewFirewallHandler(db *storage.DB, fr *firewallrules.Service, nft *nftables
 		fr:  fr,
 		nft: nft,
 	}
+}
+
+// WithBlockLog configura o serviço de blocklog no FirewallHandler.
+func (h *FirewallHandler) WithBlockLog(bl *blocklog.Service) *FirewallHandler {
+	h.blocklog = bl
+	return h
 }
 
 func (h *FirewallHandler) pendingView(p *storage.PendingChange) *pendingView {

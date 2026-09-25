@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/blocklog"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
@@ -33,6 +34,13 @@ func (e *fwTestExec) ExecuteRead(_ context.Context, cmd string, args ...string) 
 	full := cmd + " " + strings.Join(args, " ")
 	if strings.Contains(full, "-j list table") {
 		return `{"nftables": []}`, nil
+	}
+	if strings.Contains(full, "journalctl") {
+		data, err := os.ReadFile("../../blocklog/testdata/journal_zonas.txt")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
 	}
 	return "table inet linkguard {\n}\n", nil
 }
@@ -77,7 +85,7 @@ func setupFirewallTestRouter(t *testing.T) (*storage.DB, *FirewallHandler, *fire
 	_ = db.CreateUser(userW, "hash", []string{roleW.ID})
 
 	authSvc := auth.NewService(db, "test-secret-key-1234567890", nil)
-	fwH := NewFirewallHandler(db, frSvc, nftSvc)
+	fwH := NewFirewallHandler(db, frSvc, nftSvc).WithBlockLog(blocklog.NewService(exec))
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -91,6 +99,7 @@ func setupFirewallTestRouter(t *testing.T) (*storage.DB, *FirewallHandler, *fire
 
 	require := authSvc.Require
 	r.With(require(auth.PermFirewallRead)).Get("/api/firewall/estado", fwH.GetEstado)
+	r.With(require(auth.PermFirewallRead)).Get("/api/firewall/registro", fwH.GetRegistro)
 	r.With(require(auth.PermFirewallWrite)).Post("/api/firewall/conversao/entendi", fwH.EntendiConversao)
 	r.With(require(auth.PermFirewallRead)).Get("/api/firewall/ajustes", fwH.GetAjustes)
 	r.With(require(auth.PermFirewallWrite)).Put("/api/firewall/ajustes", fwH.PutAjustes)
@@ -517,5 +526,101 @@ func TestFirewallDuplicarEReordenar(t *testing.T) {
 	}
 	if !foundR1 || !foundR2 {
 		t.Errorf("regras r1 e r2 devem existir na zona internet")
+	}
+}
+
+func TestFirewallRegistroResolveRegras(t *testing.T) {
+	db, _, _, userR, _, router := setupFirewallTestRouter(t)
+
+	// Salva na configuração aplicada uma regra que corresponda ao 12hex "1a2b3c4d5e6f"
+	cfg := fwmodel.Config{
+		Formato: 1,
+		Regras: []fwmodel.Regra{
+			{
+				ID:        "1a2b3c4d-5e6f-4000-8000-000000000000",
+				Zona:      fwmodel.ZonaInternet,
+				Acao:      fwmodel.AcaoAccept,
+				Descricao: "Liberar DNS criptografado",
+			},
+		},
+	}
+	if err := db.SalvarAplicadaERevisao(cfg, "admin", "inicial", "boot", time.Now()); err != nil {
+		t.Fatalf("SalvarAplicadaERevisao: %v", err)
+	}
+
+	res := doReq(router, http.MethodGet, "/api/firewall/registro", userR.ID, "")
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /registro: %d: %s", res.Code, res.Body.String())
+	}
+
+	var resp struct {
+		Entradas []RegistroEntryView `json:"entradas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.Entradas) != 7 {
+		t.Fatalf("esperava 7 entradas, obteve %d", len(resp.Entradas))
+	}
+
+	var achouRegra, achouDestinos, achouPadrao, achouLegado bool
+	for _, e := range resp.Entradas {
+		if e.Tipo == "regra" && e.Chave == "1a2b3c4d5e6f" {
+			achouRegra = true
+			if e.Descricao != "Liberar DNS criptografado" {
+				t.Errorf("descrição da regra esperava 'Liberar DNS criptografado', obteve %q", e.Descricao)
+			}
+			if e.Zona != "internet" {
+				t.Errorf("zona esperada 'internet', obteve %q", e.Zona)
+			}
+			if e.Acao != "accept" {
+				t.Errorf("ação esperada 'accept', obteve %q", e.Acao)
+			}
+		}
+		if e.Tipo == "travada" && e.Chave == "destinos" {
+			achouDestinos = true
+			if e.DescChave != "fw.travada.destinos_bloqueados" {
+				t.Errorf("desc_chave esperada 'fw.travada.destinos_bloqueados', obteve %q", e.DescChave)
+			}
+		}
+		if e.Tipo == "padrao" && e.Chave == "vpn:fwd" {
+			achouPadrao = true
+			if e.DescChave != "fw.padrao.vpn_fwd" {
+				t.Errorf("desc_chave esperada 'fw.padrao.vpn_fwd', obteve %q", e.DescChave)
+			}
+		}
+		if e.Tipo == "legado" && e.Chave == "host" {
+			achouLegado = true
+			if e.DescChave != "fw.travada.hosts_bloqueados" {
+				t.Errorf("desc_chave esperada 'fw.travada.hosts_bloqueados', obteve %q", e.DescChave)
+			}
+		}
+	}
+
+	if !achouRegra {
+		t.Error("entrada por regra não encontrada")
+	}
+	if !achouDestinos {
+		t.Error("entrada travada destinos não encontrada")
+	}
+	if !achouPadrao {
+		t.Error("entrada padrão vpn:fwd não encontrada")
+	}
+	if !achouLegado {
+		t.Error("entrada legada host não encontrada")
+	}
+
+	// Filtro por q
+	res = doReq(router, http.MethodGet, "/api/firewall/registro?q=1a2b3c4d5e6f", userR.ID, "")
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /registro?q=...: %d", res.Code)
+	}
+	var respFiltro struct {
+		Entradas []RegistroEntryView `json:"entradas"`
+	}
+	_ = json.Unmarshal(res.Body.Bytes(), &respFiltro)
+	if len(respFiltro.Entradas) != 1 || respFiltro.Entradas[0].Chave != "1a2b3c4d5e6f" {
+		t.Errorf("esperava 1 entrada filtrada por 12hex, obteve: %+v", respFiltro.Entradas)
 	}
 }

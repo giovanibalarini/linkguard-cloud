@@ -1,0 +1,9 @@
+2026-09-25T14:10:00-0300 linkguard kernel: Initializing cgroup subsys cpuset
+2026-09-25T14:10:01-0300 linkguard kernel: lg:blk:host IN=enp5s0 OUT= MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=192.168.1.100 DST=10.0.0.1 LEN=60 TTL=64 PROTO=TCP SPT=54321 DPT=80
+2026-09-25T14:10:02-0300 linkguard kernel: lg:blk:dest IN=enp5s0 OUT= MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=10.0.1.50 DST=203.0.113.5 LEN=40 TTL=63 PROTO=TCP SPT=49152 DPT=443
+2026-09-25T14:10:03-0300 linkguard kernel: audit: type=1400 apparmor="STATUS"
+2026-09-25T14:10:04-0300 linkguard kernel: lg:r:1a2b3c4d5e6f IN=enp5s0 OUT=enp6s0 MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=10.0.1.20 DST=1.1.1.1 LEN=52 TTL=63 PROTO=TCP SPT=40000 DPT=853
+2026-09-25T14:10:05-0300 linkguard kernel: lg:s:destinos IN=enp5s0 OUT= MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=10.0.1.25 DST=198.51.100.20 LEN=48 TTL=63 PROTO=UDP SPT=5353 DPT=53
+2026-09-25T14:10:06-0300 linkguard kernel: lg:s:hosts IN=enp5s0 OUT= MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=10.0.1.99 DST=10.0.0.1 LEN=64 TTL=64 PROTO=ICMP
+2026-09-25T14:10:07-0300 linkguard kernel: lg:d:internet:in IN=enp5s0 OUT= MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=198.51.100.99 DST=10.0.0.1 LEN=60 TTL=50 PROTO=TCP SPT=33211 DPT=23
+2026-09-25T14:10:08-0300 linkguard kernel: lg:d:vpn:fwd IN=linkguard OUT=enp5s0 MAC= SRC=10.7.0.5 DST=10.0.2.100 LEN=60 TTL=63 PROTO=TCP SPT=55555 DPT=3389

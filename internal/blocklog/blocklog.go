@@ -19,13 +19,14 @@ import (
 	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
-	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
-// Entry é um descarte, reduzido ao que responde a pergunta do admin.
+// Entry é um descarte ou registro de tráfego, reduzido ao que responde a pergunta do admin.
 type Entry struct {
 	Time  string `json:"time"`
-	Kind  string `json:"kind"` // host | dest
+	Kind  string `json:"kind"`  // host | dest | regra | travada | padrao
+	Chave string `json:"chave"` // 12hex | identificador da travada | zona:in/fwd | host | dest
+	Tipo  string `json:"tipo"`  // regra | travada | padrao | legado
 	In    string `json:"in"`
 	Out   string `json:"out"`
 	Src   string `json:"src"`
@@ -60,15 +61,11 @@ func (s *Service) Recent(ctx context.Context, limit int, filtro string) ([]Entry
 	return Parse(out, limit, filtro), nil
 }
 
-// Parse extrai os descartes de uma saída de journal. Exportada para o teste
-// exercitar o formato real sem precisar de um kernel que esteja bloqueando
-// alguma coisa.
+// Parse extrai os descartes e registros de uma saída de journal.
+// Reconhece prefixos por regra (lg:r:<12hex>), travadas (lg:s:<chave>),
+// padrões (lg:d:<zona>:<in|fwd>) e legados (lg:blk:host, lg:blk:dest).
 func Parse(saida string, limit int, filtro string) []Entry {
 	filtro = strings.ToLower(strings.TrimSpace(filtro))
-	prefixos := map[string]string{
-		nftables.BlockLogPrefixHost: "host",
-		nftables.BlockLogPrefixDest: "dest",
-	}
 
 	var out []Entry
 	linhas := strings.Split(saida, "\n")
@@ -77,19 +74,14 @@ func Parse(saida string, limit int, filtro string) []Entry {
 	// ordenar.
 	for i := len(linhas) - 1; i >= 0 && len(out) < limit; i-- {
 		linha := linhas[i]
-		var kind string
-		var resto string
-		for p, k := range prefixos {
-			if idx := strings.Index(linha, p); idx >= 0 {
-				kind, resto = k, linha[idx+len(p):]
-				break
-			}
-		}
-		if kind == "" {
+		tipo, chave, kind, resto, ok := extrairPrefixo(linha)
+		if !ok {
 			continue
 		}
 		e := entryDe(resto)
 		e.Kind = kind
+		e.Chave = chave
+		e.Tipo = tipo
 		e.Time = horaDe(linha)
 		if filtro != "" && !casaFiltro(e, filtro) {
 			continue
@@ -97,6 +89,40 @@ func Parse(saida string, limit int, filtro string) []Entry {
 		out = append(out, e)
 	}
 	return out
+}
+
+func extrairPrefixo(linha string) (tipo, chave, kind, resto string, ok bool) {
+	idx := strings.Index(linha, "lg:")
+	if idx < 0 {
+		return "", "", "", "", false
+	}
+	sub := linha[idx:]
+	spaceIdx := strings.Index(sub, " ")
+	if spaceIdx < 0 {
+		return "", "", "", "", false
+	}
+	token := sub[:spaceIdx]
+	resto = sub[spaceIdx+1:]
+
+	if token == "lg:blk:host" {
+		return "legado", "host", "host", resto, true
+	}
+	if token == "lg:blk:dest" {
+		return "legado", "dest", "dest", resto, true
+	}
+	if strings.HasPrefix(token, "lg:r:") {
+		hex := strings.TrimPrefix(token, "lg:r:")
+		return "regra", hex, "regra", resto, true
+	}
+	if strings.HasPrefix(token, "lg:s:") {
+		ch := strings.TrimPrefix(token, "lg:s:")
+		return "travada", ch, ch, resto, true
+	}
+	if strings.HasPrefix(token, "lg:d:") {
+		ch := strings.TrimPrefix(token, "lg:d:")
+		return "padrao", ch, "padrao", resto, true
+	}
+	return "", "", "", "", false
 }
 
 // entryDe lê os pares CHAVE=valor que o kernel escreve.
@@ -143,7 +169,7 @@ func horaDe(linha string) string {
 }
 
 func casaFiltro(e Entry, filtro string) bool {
-	for _, v := range []string{e.Src, e.Dst, e.In, e.Out, e.Proto, e.DPort} {
+	for _, v := range []string{e.Src, e.Dst, e.In, e.Out, e.Proto, e.DPort, e.SPort, e.Chave, e.Kind, e.Tipo} {
 		if strings.Contains(strings.ToLower(v), filtro) {
 			return true
 		}

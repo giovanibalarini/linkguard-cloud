@@ -430,8 +430,9 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		r.With(require(auth.PermFirewallWrite)).Delete("/api/portforward", pfH.Delete)
 
 		// Firewall por zonas (/api/firewall/*)
-		fwH := handlers.NewFirewallHandler(s.db, s.frSvc, s.nftSvc)
+		fwH := handlers.NewFirewallHandler(s.db, s.frSvc, s.nftSvc).WithBlockLog(blocklog.NewService(s.exec))
 		r.With(require(auth.PermFirewallRead)).Get("/api/firewall/estado", fwH.GetEstado)
+		r.With(require(auth.PermFirewallRead)).Get("/api/firewall/registro", fwH.GetRegistro)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/firewall/conversao/entendi", fwH.EntendiConversao)
 		r.With(require(auth.PermFirewallRead)).Get("/api/firewall/ajustes", fwH.GetAjustes)
 		r.With(require(auth.PermFirewallWrite)).Put("/api/firewall/ajustes", fwH.PutAjustes)

@@ -1,6 +1,7 @@
 package blocklog
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -101,5 +102,65 @@ func TestParseLinhaTruncadaNaoInventaCampo(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Time, "15:04:02") {
 		t.Errorf("hora perdida: %+v", got[0])
+	}
+}
+
+func TestParsePrefixosZonas(t *testing.T) {
+	data, err := os.ReadFile("testdata/journal_zonas.txt")
+	if err != nil {
+		t.Fatalf("ler testdata/journal_zonas.txt: %v", err)
+	}
+
+	entries := Parse(string(data), 100, "")
+	if len(entries) != 7 {
+		t.Fatalf("esperava 7 entradas, obteve %d", len(entries))
+	}
+
+	// Ordem decrescente de tempo: a última linha do arquivo vem primeiro
+	vpnFwd := entries[0]
+	if vpnFwd.Tipo != "padrao" || vpnFwd.Chave != "vpn:fwd" || vpnFwd.Kind != "padrao" || vpnFwd.DPort != "3389" {
+		t.Errorf("entrada vpn:fwd incorreta: %+v", vpnFwd)
+	}
+
+	inetIn := entries[1]
+	if inetIn.Tipo != "padrao" || inetIn.Chave != "internet:in" || inetIn.Kind != "padrao" || inetIn.DPort != "23" {
+		t.Errorf("entrada internet:in incorreta: %+v", inetIn)
+	}
+
+	hosts := entries[2]
+	if hosts.Tipo != "travada" || hosts.Chave != "hosts" || hosts.Kind != "hosts" {
+		t.Errorf("entrada hosts incorreta: %+v", hosts)
+	}
+
+	destinos := entries[3]
+	if destinos.Tipo != "travada" || destinos.Chave != "destinos" || destinos.Kind != "destinos" {
+		t.Errorf("entrada destinos incorreta: %+v", destinos)
+	}
+
+	regra := entries[4]
+	if regra.Tipo != "regra" || regra.Chave != "1a2b3c4d5e6f" || regra.Kind != "regra" || regra.DPort != "853" {
+		t.Errorf("entrada por regra incorreta: %+v", regra)
+	}
+
+	blkDest := entries[5]
+	if blkDest.Tipo != "legado" || blkDest.Chave != "dest" || blkDest.Kind != "dest" {
+		t.Errorf("entrada legada dest incorreta: %+v", blkDest)
+	}
+
+	blkHost := entries[6]
+	if blkHost.Tipo != "legado" || blkHost.Chave != "host" || blkHost.Kind != "host" {
+		t.Errorf("entrada legada host incorreta: %+v", blkHost)
+	}
+
+	// Filtro por chave da regra
+	filtradoRegra := Parse(string(data), 100, "1a2b3c4d5e6f")
+	if len(filtradoRegra) != 1 || filtradoRegra[0].Chave != "1a2b3c4d5e6f" {
+		t.Errorf("filtro por 12hex da regra falhou: %+v", filtradoRegra)
+	}
+
+	// Filtro por tipo "travada"
+	filtradoTravada := Parse(string(data), 100, "travada")
+	if len(filtradoTravada) != 2 {
+		t.Errorf("filtro por travada esperava 2 entradas, obteve %d", len(filtradoTravada))
 	}
 }
