@@ -34,7 +34,7 @@ func TestDomainRoutingProductionWiringAndBootOrder(t *testing.T) {
 	for _, prerequisite := range [][]byte{
 		[]byte("nftSvc.EnsureDomainStructures(ctx)"),
 		[]byte("nftSvc.FlushDomainStructures(ctx)"),
-		[]byte("frSvc.Reconcile(ctx)"),
+		[]byte("frSvc.RenderizarNoBoot(ctx)"),
 	} {
 		position := bytes.Index(source, prerequisite)
 		if position < 0 || prepare < 0 || position > prepare {
@@ -68,7 +68,7 @@ func TestOBootApagaAHerancaDoMultiWANEntreOBootstrapEAReconciliacao(t *testing.T
 	}
 	bootstrap := bytes.Index(source, []byte("nftSvc.EnsureTable(ctx"))
 	limpeza := bytes.Index(source, []byte("nftSvc.RemoverHerancaMultiWAN(ctx)"))
-	reconcilia := bytes.Index(source, []byte("frSvc.Reconcile(ctx)"))
+	reconcilia := bytes.Index(source, []byte("frSvc.RenderizarNoBoot(ctx)"))
 	if bootstrap < 0 || limpeza < 0 || reconcilia < 0 {
 		t.Fatalf("fiação ausente: bootstrap=%d limpeza=%d reconcilia=%d", bootstrap, limpeza, reconcilia)
 	}

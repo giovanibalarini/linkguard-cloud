@@ -262,11 +262,8 @@ func WANInputRules(z Zone, access AdminAccess, gerenciaFechada, contencaoLigada 
 // põe proxy usa outra. Fixá-la aqui deixaria justamente quem não usa o padrão
 // trancado do lado de fora, que é o cenário que esta função existe para
 // impedir. Mesma razão registrada em SurvivalRules.
-// portasDeGerenciaLista é a MESMA decisão de portasDeGerencia, em número em vez
-// de texto — a tela precisa da lista para dizer quais portas estão abertas, e
-// duas listas que pudessem discordar seriam a divergência silenciosa que a fase
-// 3 existe para fechar.
-func portasDeGerenciaLista(a AdminAccess) []int {
+// PortasDeGerenciaLista calcula a lista ordenada e sem repetição de portas de gerência.
+func PortasDeGerenciaLista(a AdminAccess) []int {
 	portas := append([]int(nil), a.SSHPorts...)
 	if len(portas) == 0 {
 		portas = []int{22}
@@ -286,6 +283,10 @@ func portasDeGerenciaLista(a AdminAccess) []int {
 		out = append(out, p)
 	}
 	return out
+}
+
+func portasDeGerenciaLista(a AdminAccess) []int {
+	return PortasDeGerenciaLista(a)
 }
 
 func portasDeGerencia(a AdminAccess) string {

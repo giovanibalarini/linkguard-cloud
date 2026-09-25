@@ -48,26 +48,12 @@ func detectPlatformOnBoot(db *storage.DB) platform.Snapshot {
 // sai pela mesma interface. Só têm efeito ali: fora do hairpin o eixo das
 // regras é a interface, e a lista é ignorada.
 //
-// DUAS FONTES, NESTA ORDEM, E NENHUMA TABELA NOVA:
-//
-//  1. netsvc.Config.SubnetCIDR — a sub-rede que o admin configurou pela tela.
-//     É lida exatamente assim em buildServices para montar AdminAccess, e em
-//     internal/netif para o roleSets. Quando existe, é a resposta certa.
-//
-//  2. platform.Facts.OCI.VNICs[].SubnetCIDR — de graça, já dentro do
-//     instantâneo que o boot carregou. É o que faz o produto FUNCIONAR DE
-//     PRIMEIRA numa VM recém-criada: ali netsvc_config está vazio, ninguém
-//     abriu tela nenhuma, e o CIDR da sub-rede da VCN já está no banco antes
-//     do primeiro pacote. Sem isto, a caixa nova subiria sem saber o que é
-//     "dentro" e as chains nasceriam vazias esperando alguém configurar.
-//
-// As duas entram: numa VM com a LAN configurada por cima da sub-rede da nuvem,
-// as duas respostas são verdadeiras ao mesmo tempo. sanitizeNetworks, do lado
-// do nftables, descarta duplicata, CIDR inválido, curinga e IPv6.
+// A rede privada é a da VCN, informada pela fabric da plataforma
+// (platform.Facts.OCI.VNICs[].SubnetCIDR) e disponível no instantâneo carregado
+// no boot. É o que faz o produto funcionar de primeira numa VM recém-criada:
+// a caixa sobe sabendo o que é a rede interna da VCN.
 func redesLocais(db *storage.DB, plat platform.Snapshot) []string {
-	// Quem responde é a plataforma. Até 25/09/2026 entrava aqui também a LAN
-	// configurada na tela de DHCP; o DHCP saiu da versão de nuvem, e a rede
-	// privada é a da VCN, que a fabric informa.
+	// Quem responde é a plataforma: a rede privada é a da VCN, que a fabric informa.
 	redes := redesDasPlacas(plat)
 
 	// NUM GATEWAY DE TRÂNSITO, "DENTRO" É O ESPAÇO PRIVADO INTEIRO — não a

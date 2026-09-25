@@ -349,82 +349,7 @@ func TestUnwiredPersistGuardLetsTheUnconfirmedRuleReachTheBootFile(t *testing.T)
 	}
 }
 
-// TestWiredInputChainSourcesFeedBothHalvesAtRuntime executa o círculo que
-// TestMainWiresTheInputChainSources só vê como uma chamada no texto.
-//
-// A chain input tem um renderizador só desde a Fase C2: quem reconcilia o NTP
-// sabe o estado do NTP e precisa dos grupos; quem reconcilia os grupos sabe os
-// grupos e precisa do estado do NTP. As duas passadas abaixo entram por pontas
-// OPOSTAS e cada uma tem que sair com as DUAS metades na chain — é assim que
-// se mede que a fonte injetada foi mesmo consultada, e não que a chamada
-// existe no arquivo.
-//
-// O que a falha significa na máquina: salvar um grupo apaga a proteção do
-// serviço de hora da chain input viva, ou ligar o NTP apaga os jumps dos
-// grupos do admin — nos dois casos sem nada mudar na tela.
-func TestWiredInputChainSourcesFeedBothHalvesAtRuntime(t *testing.T) {
-	ctx := context.Background()
-	p := newBootPair(t, true)
 
-	chain := seedInputScopeGroup(t, p.db)
-
-	// Ponta 1: o caminho de reserva do boot (ReconcileNTPInput, chamado quando a
-	// reconciliação dos grupos falha) tem que sair com os grupos do banco —
-	// groupsSource ligado a frSvc.StoredGroups, consultado em runtime. A versão
-	// de nuvem não serve hora, então ele entra sempre com "não serve".
-	p.exec.forget()
-	if err := p.nft.ReconcileNTPInput(ctx, nil, false); err != nil {
-		t.Fatalf("ReconcileNTPInput: %v", err)
-	}
-	ntpPass := inputChainCommands(p.exec.calls())
-	if !containsSubstr(ntpPass, "jump "+chain) {
-		t.Errorf("o caminho de reserva do boot reconstruiu a chain input SEM o jump do grupo de escopo input (%s): ele apagaria os grupos do admin do firewall vivo.\ncomandos: %v", chain, ntpPass)
-	}
-
-	// Ponta 2: quem entra pelos grupos também reconstrói a chain input, com o
-	// próprio jump.
-	p.exec.forget()
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	groupPass := inputChainCommands(p.exec.calls())
-	if !containsSubstr(groupPass, "jump "+chain) {
-		t.Fatalf("pré-condição: a passada dos grupos tinha que emitir o jump do próprio grupo.\ncomandos: %v", groupPass)
-	}
-}
-
-// TestUnwiredInputChainSourcesLoseEachOtherAtRuntime é o CONTROLE do teste
-// acima, pelas mesmas razões do controle da guarda: sem a ligação, cada ponta
-// escreve a chain input só com a metade que ela conhece.
-//
-// As duas metades falham de formas diferentes de propósito, e as duas estão
-// aqui: sem fonte de grupos, a chain sai só com o NTP (m3 da revisão deixou
-// esse lado como aviso, porque a fonte pode legitimamente não existir num
-// binário sem banco); sem fonte de NTP, a reconciliação dos grupos ABORTA a
-// chain input em vez de reescrevê-la sem as linhas de udp/123 — fail-closed,
-// que é o certo, e o teste prende essa diferença para que ninguém a "uniformize"
-// sem perceber o que perde.
-func TestUnwiredInputChainSourcesLoseEachOtherAtRuntime(t *testing.T) {
-	ctx := context.Background()
-	p := newBootPair(t, false)
-	chain := seedInputScopeGroup(t, p.db)
-	seedNTPServing(t, p.db)
-
-	if err := p.nft.ReconcileNTPInput(ctx, []string{"192.168.3.0/24"}, true); err != nil {
-		t.Fatalf("ReconcileNTPInput sem fonte ligada: %v", err)
-	}
-	if pass := inputChainCommands(p.exec.calls()); containsSubstr(pass, "jump "+chain) {
-		t.Fatal("controle quebrado: sem SetInputChainSources a passada do NTP não teria como conhecer os grupos do banco. Se ela passou a conhecê-los, reveja o teste da ligação — ele pode estar verde por outro motivo")
-	}
-
-	p.exec.forget()
-	if err := p.fr.Reconcile(ctx); err == nil {
-		t.Error("sem fonte de NTP ligada, a reconciliação dos grupos tem que ABORTAR a chain input (fail-closed) em vez de reescrevê-la sem a proteção do serviço de hora")
-	}
-	if pass := inputChainCommands(p.exec.calls()); len(pass) > 0 {
-		t.Errorf("a chain input não podia ter sido tocada nessa passada: %v", pass)
-	}
-}
 
 // seedInputScopeGroup cria no banco um grupo de escopo input ativado, como o
 // CRUD real cria, e devolve o nome da chain dele.
@@ -505,8 +430,7 @@ func TestTheRuntimeWiringIsTheOneMainUses(t *testing.T) {
 		t.Fatalf("parsear main.go: %v", err)
 	}
 
-	var guardArg, groupsArg ast.Expr
-	var ntpArgName string
+	var guardArg ast.Expr
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, isCall := n.(*ast.CallExpr)
 		if !isCall {
@@ -524,13 +448,6 @@ func TestTheRuntimeWiringIsTheOneMainUses(t *testing.T) {
 			if len(call.Args) == 1 && guardArg == nil {
 				guardArg = call.Args[0]
 			}
-		case "SetInputChainSources":
-			if len(call.Args) == 2 && groupsArg == nil {
-				groupsArg = call.Args[0]
-				if id, isIdent := call.Args[1].(*ast.Ident); isIdent {
-					ntpArgName = id.Name
-				}
-			}
 		}
 		return true
 	})
@@ -540,15 +457,6 @@ func TestTheRuntimeWiringIsTheOneMainUses(t *testing.T) {
 	}
 	if !isSelectorOn(guardArg, "frSvc", "UnconfirmedChangePending") {
 		t.Errorf("a guarda do Persist tem que ser frSvc.UnconfirmedChangePending — a fonte que consulta a janela de confirmação no banco. Qualquer outra coisa faz o /etc/nftables.conf voltar a receber a regra de escopo input não confirmada, e os testes de runtime deste arquivo passariam a medir uma composição que a produção não usa")
-	}
-	if groupsArg == nil {
-		t.Fatal("não achei `nftSvc.SetInputChainSources(<grupos>, <ntp>)` em main.go -- se a forma mudou, este teste e os testes de runtime deste arquivo precisam mudar junto")
-	}
-	if !isSelectorOn(groupsArg, "frSvc", "StoredGroups") {
-		t.Errorf("a fonte de grupos da chain input tem que ser frSvc.StoredGroups: é ela que traz os grupos de escopo input do banco, e é ela que os testes de runtime deste arquivo ligam")
-	}
-	if ntpArgName == "" {
-		t.Fatal("o segundo argumento de SetInputChainSources tem que ser a fonte do estado do NTP nomeada em main.go -- se a forma mudou, este teste precisa mudar junto")
 	}
 }
 

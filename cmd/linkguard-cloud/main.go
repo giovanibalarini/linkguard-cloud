@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -378,12 +379,6 @@ type services struct {
 	domainRouting *domainrouting.Coordinator
 	sondaSaida    *saida.Sonda
 
-	// ntpInputState é a MESMA fonte que foi entregue a
-	// nftSvc.SetInputChainSources, guardada aqui porque a reconciliação de
-	// boot (em startBackground) também precisa dela — e as duas discordarem
-	// sobre o que está configurado é o que a Fase C2 existe para impedir.
-	ntpInputState func() ([]string, bool, error)
-
 	// interval é a cadência do coletor de métricas.
 	interval time.Duration
 }
@@ -476,24 +471,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// para alcançar o operador onde ele estiver, não só para deixar a faixa
 	// vermelha na tela do firewall.
 	frSvc.SetAlerter(alertSvc)
-	// A chain input tem um renderizador só (Fase C2): ela é reconstruída
-	// inteira, com a proteção do NTP E os jumps dos grupos de escopo input,
-	// venha a passada de onde vier. Quem reconcilia o NTP sabe o estado do
-	// NTP e precisa dos grupos; quem reconcilia os grupos sabe os grupos e
-	// precisa do estado do NTP — estas duas funções são o que fecha esse
-	// círculo sem internal/nftables importar internal/storage.
-	//
-	// Ligado aqui, junto da construção, e não perto de um dos reconciles: sem
-	// isto, salvar um grupo apagaria a proteção do NTP da chain input.
-	// TestMainWiresTheInputChainSources guarda essa ligação contra deriva.
-	//
-	// O erro de leitura viaja junto e NÃO vira "servir NTP está desligado" —
-	// ver ntpInputStateFrom.
-	// A versão de nuvem não serve hora para a rede: a Oracle entrega em
-	// 169.254.169.254. A fonte de NTP da chain input segue ligada, sempre
-	// desligada, até o redesenho do firewall tirar o NTP de dentro do nftables.
-	ntpInputState := func() ([]string, bool, error) { return nil, false, nil }
-	nftSvc.SetInputChainSources(frSvc.StoredGroups, ntpInputState)
 	// E a guarda do /etc/nftables.conf (I-1 da revisão final da Fase C2):
 	// enquanto houver uma mudança aguardando confirmação, o ruleset vivo NÃO vai
 	// para o arquivo que o nftables.service carrega no boot — senão uma queda de
@@ -563,12 +540,13 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// configurada pela tela depois do boot, e o eixo tem de acompanhar sem
 	// reiniciar nada — mesma disciplina das outras fontes acima.
 	nftSvc.SetZoneFactsSource(func() (nftables.ZoneFacts, error) {
+		localNets := append(redesLocais(db, plat), frSvc.RedesVCNExtrasAplicadas()...)
 		return nftables.ZoneFacts{
 			// Capable() e não o campo Capabilities: um instantâneo vazio ou de
 			// plataforma desconhecida devolve o conjunto PERMISSIVO, isto é,
 			// RoutedTransit true, isto é, o eixo de interface de sempre.
 			Hairpin:   !plat.Capable().RoutedTransit,
-			LocalNets: redesLocais(db, plat),
+			LocalNets: localNets,
 			// A MTU do CAMINHO externo, quando a plataforma a afirma — e 0,
 			// que é "não sei", em todo o resto. É o número que o ajuste de MSS
 			// usa numa VM de nuvem, onde `rt mtu` leria a MTU que a placa
@@ -678,6 +656,62 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// idempotent and a disabled tunnel removes both projections.
 	nftSvc.SetWireGuardInputSource(wgSvc.InputPort)
 	unboundSvc.SetDNSBindingSource(wgSvc.DNSBinding)
+
+	frSvc.SetFonteInsumos(func(ctx context.Context) (nftables.Insumos, error) {
+		wgEnabled, wgPort, err := wgSvc.InputPort()
+		if err != nil {
+			return nftables.Insumos{}, err
+		}
+		var redeVPN string
+		if _, net, enabled, err := wgSvc.DNSBinding(); err == nil && enabled {
+			redeVPN = net
+		}
+		var portaWG int
+		var ifaceVPN string
+		var pessoas []nftables.PessoaVPN
+		if wgEnabled {
+			portaWG = wgPort
+			ifaceVPN = wireguard.InterfaceName
+			if peers, err := db.ListWireGuardPeers(); err == nil {
+				for _, p := range peers {
+					addr := strings.TrimSuffix(p.Address, "/32")
+					usuario := p.Username
+					if usuario == "" {
+						usuario = p.UserID
+					}
+					pessoas = append(pessoas, nftables.PessoaVPN{
+						UserID:   p.UserID,
+						Usuario:  usuario,
+						Endereco: addr,
+						Total:    p.AccessMode == "full",
+						Aliases:  p.AllowedHostGroups,
+						Portas:   p.AllowedPorts,
+					})
+				}
+			}
+		}
+
+		existentes, err := nftSvc.ObjetosExistentes(ctx)
+		if err != nil {
+			return nftables.Insumos{}, err
+		}
+
+		portasGerencia := nftables.PortasDeGerenciaLista(nftables.AdminAccess{
+			PanelPort:  cfg.Port,
+			SSHPorts:   system.SSHPorts(ctx, exec),
+			ExtraPorts: cfg.ExtraPorts,
+		})
+
+		return nftables.Insumos{
+			RedesVCN:       redesLocais(db, plat),
+			RedeVPN:        redeVPN,
+			PortaWireGuard: portaWG,
+			InterfaceVPN:   ifaceVPN,
+			PortasGerencia: portasGerencia,
+			Pessoas:        pessoas,
+			Existentes:     existentes,
+		}, nil
+	})
 
 	// Optional AI advisory layer (BYOK): disabled by default (ai.LoadConfig's
 	// Enabled defaults to false), and swallows its own failures.
@@ -822,7 +856,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		journalSched:     journalSched,
 		updatesSched:     updatesSched,
 		server:           server,
-		ntpInputState:    ntpInputState,
 		interval:         interval,
 		dnstapSvc:        dnstapSvc,
 		domSvc:           domSvc,
@@ -860,7 +893,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	backupSched, journalSched, updatesSched := s.backupSched, s.journalSched, s.updatesSched
 	aiClient := s.aiClient
 	domainRouting := s.domainRouting
-	ntpInputState := s.ntpInputState
 	interval := s.interval
 
 	// bootPendingChecked prende a verificação de boot do confirmar-ou-reverte
@@ -1100,118 +1132,26 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			slog.Warn("não foi possível esvaziar as estruturas de alvo por domínio no boot", "err", err)
 		}
 
-		// Proteção de entrada das WANs (#119). Reconciliada em todo boot
-		// pela mesma razão da contabilidade: EnsureTable é no-op em máquina
-		// já provisionada, então sem isto uma instalação existente nunca
-		// ganharia a proteção.
-		if err := nftSvc.ReconcileInputProtection(ctx); err != nil {
-			slog.Warn("não foi possível reconciliar a proteção de entrada das WANs no boot", "err", err)
+		// 10. Converter regras legadas uma única vez
+		var redeVPN string
+		if _, net, enabled, err := wgSvc.DNSBinding(); err == nil && enabled {
+			redeVPN = net
 		}
-
-		// EnsureSystemGroups vem PRIMEIRO, antes de qualquer coisa que
-		// reconcilie, e a ordem é o ponto: ele cria, uma única vez, as
-		// duas linhas de grupo que representam os bloqueios (hosts e
-		// destinos) nas posições 0 e 1, empurrando os grupos do admin
-		// para depois. É a lista de grupos que passa a decidir se os
-		// bloqueios existem na chain forward — e as duas migrações
-		// abaixo reconciliam por dentro, então rodá-las antes desta
-		// abriria uma janela em que a forward é reconstruída com a lista
-		// ainda sem os bloqueios. A defesa de firewallrules recusa
-		// exatamente esse estado (ver ensureSystemGroupsPresent): com a
-		// ordem invertida, as duas migrações do boot de upgrade
-		// falhariam em vez de migrar.
-		//
-		// Não depende de nenhuma das duas: só lê a própria trava e
-		// insere as duas linhas, deslocando as posições existentes.
-		// TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile
-		// guarda essa ordem contra deriva.
-		//
-		// Um erro aqui não derruba o boot: os grupos não são criados, e
-		// tudo que reconcilia a seguir se recusa a reconstruir a forward
-		// (o firewall segue valendo com a última forward aplicada, que
-		// tem os bloqueios dentro), com apply-status não-ok e alerta
-		// crítico. A próxima inicialização tenta de novo.
-		if err := frSvc.EnsureSystemGroups(ctx); err != nil {
+		fatosConversao := firewallrules.FatosConversao{
+			RedesVCN:     redesLocais(db, s.plat),
+			RedeVPN:      redeVPN,
+			InterfaceVPN: wireguard.InterfaceName,
+			PlacasWAN:    enabledWANs,
+		}
+		if err := frSvc.ConverterLegadoUmaVez(ctx, fatosConversao); err != nil {
 			domainBootReady = false
-			slog.Warn("não foi possível criar os grupos do sistema (hosts e destinos bloqueados)", "err", err)
+			slog.Warn("não foi possível converter as regras legadas no boot", "err", err)
 		}
 
-		// Phase B (firewall page redesign spec §4.1): the admin's own rules
-		// now live in the DB, not just inside nft. On a box upgrading from
-		// Phase A, ImportOnce brings whatever is in the live user_rules
-		// chain into the DB exactly once (guarded by a settings flag, never
-		// by "is the table empty" — see its doc comment for why that
-		// distinction matters), preserving order; a fresh install has
-		// nothing to import and just sets the guard.
-		//
-		// MigrateRulesIntoDefaultGroup runs right after: it adopts whatever
-		// rules are still ungrouped — including whatever ImportOnce just
-		// brought in — into the "Minhas regras" group, once, guarded the
-		// same way. The order between these two is not arbitrary: inverting
-		// them would make a box still on Phase A (nothing in the DB yet,
-		// the real rules only living in the legacy user_rules chain) run
-		// the group migration against an empty rule set, then have
-		// ImportOnce bring the rules in afterwards as orphans nobody ever
-		// adopts into a group.
-		//
-		// Reconcile (Fase C1) is what actually renders the forward chain
-		// (blocks, then the group jumps) and every grp_ chain from the DB —
-		// see its doc comment. It is called unconditionally last, on every
-		// boot, same as the other reconciles above. This is not redundant
-		// with the two calls above even though both of them also reconcile
-		// internally when they do real work (MigrateRulesIntoDefaultGroup
-		// must, to safely retire the legacy user_rules chain — see its doc
-		// comment): on a box with nothing to migrate, that function returns
-		// without reconciling at all, which would leave the forward chain
-		// stuck on whatever was last written to /etc/nftables.conf.
-		if err := frSvc.ImportOnce(ctx); err != nil {
-			slog.Warn("não foi possível importar as regras existentes de user_rules para o banco", "err", err)
-		}
-		if err := frSvc.MigrateRulesIntoDefaultGroup(ctx); err != nil {
-			slog.Warn("não foi possível migrar as regras soltas para o grupo padrão", "err", err)
-		}
-		if err := frSvc.Reconcile(ctx); err != nil {
+		// 11. Renderizar e aplicar ruleset por zonas no boot
+		if err := frSvc.RenderizarNoBoot(ctx); err != nil {
 			domainBootReady = false
-			slog.Warn("não foi possível reconciliar os grupos de regras (chain forward) a partir do banco no boot", "err", err)
-
-			// m1 da revisão da Fase C2: frSvc.Reconcile → nftSvc.ReconcileGroups
-			// já reconstrói a chain input INTEIRA (passo 3b, ver o doc-comment
-			// de ReconcileGroups) a partir da mesma fonte de estado do NTP que
-			// ntpInputState lê abaixo — no caminho feliz, chamar
-			// nftSvc.ReconcileNTPInput de novo aqui só duplicava o trabalho.
-			// Duplicar não é de graça: cada reconstrução da chain input abre uma
-			// janela entre o `flush chain` e o `add rule` do bloqueio de udp/123
-			// em que ela fica vazia com `policy accept` — NTP de qualquer origem
-			// passaria nesse instante —, e dobrar a chamada dobra essa janela por
-			// boot, além de duplicar o Persist() em /etc/nftables.conf.
-			//
-			// O valor que sobra é estreito mas real: se frSvc.Reconcile FALHOU
-			// (por exemplo abortou em ensureSystemGroupsPresent, antes mesmo de
-			// chamar ReconcileGroups), a chain input pode não ter sido tocada por
-			// ele nesta passada — e é só este `if` que ainda garante que a
-			// proteção do NTP suba no boot. Por isso a chamada fica presa a este
-			// ramo de erro em vez de rodar solta como antes.
-			// TestNTPInputIsReconciledAfterTheGroupChainsExist guarda isto.
-			//
-			// A ordem continua sendo o ponto (I-4 da revisão da Fase C2): desde a
-			// Fase C2 a chain input carrega também um `jump` por grupo de escopo
-			// input, e quem CRIA as chains grp_ é o passo 1 de ReconcileGroups,
-			// chamado (com sucesso ou não) dentro de frSvc.Reconcile acima. Numa
-			// máquina cujo ruleset foi recriado do zero por EnsureTable
-			// (recuperação de desastre, como em 2026-08-10) e cujo banco tenha um
-			// grupo de escopo input, emitir o jump antes disso falha com "No such
-			// file or directory": a passada seguinte conserta, mas o log de boot
-			// fica com um erro que não é erro — e log de boot de firewall é lido
-			// em emergência.
-			//
-			// Erro de LEITURA não vira reconciliação: reconstruir a chain com
-			// "servir NTP: desligado" que na verdade é "não consegui ler"
-			// apagaria a proteção do serviço de hora do firewall vivo (I-1).
-			if networks, serving, err := ntpInputState(); err != nil {
-				slog.Warn("não foi possível ler a configuração de NTP no boot; a chain input não foi tocada nesta passada", "err", err)
-			} else if err := nftSvc.ReconcileNTPInput(ctx, networks, serving); err != nil {
-				slog.Warn("não foi possível reconciliar a chain de proteção do NTP no boot", "err", err)
-			}
+			slog.Warn("não foi possível renderizar e aplicar as regras por zonas no boot", "err", err)
 		}
 
 		// Só agora sets/map e grupos estão coerentes. Uma falha em qualquer

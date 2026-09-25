@@ -94,9 +94,6 @@ func buildBootstrapRuleset(wanInterfaces []string, facts ZoneFacts) string {
 	b.WriteString("table inet linkguard {\n")
 	b.WriteString("\tset blocklist {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t}\n\n")
 	b.WriteString("\tset blocked_hosts {\n\t\ttype ipv4_addr\n\t}\n\n")
-	// O mesmo host, pela identidade que não tem família (#119, fase 2). Ver o
-	// comentário de BlockedMACSet.
-	b.WriteString("\tset blocked_macs {\n\t\ttype ether_addr\n\t}\n\n")
 	// As três estruturas de alvo por domínio (#123). Nascem VAZIAS e ninguém
 	// olha para elas ainda: enquanto nenhuma chain as consultar, encher e
 	// esvaziar não muda pacote nenhum. Estão aqui para que instalação nova e
@@ -105,36 +102,9 @@ func buildBootstrapRuleset(wanInterfaces []string, facts ZoneFacts) string {
 	b.WriteString("\tset dom_blocked {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t\ttimeout 1h\n\t\tsize 8192\n\t}\n\n")
 	b.WriteString("\tset dom_blocked6 {\n\t\ttype ipv6_addr\n\t\tflags timeout\n\t\ttimeout 1h\n\t\tsize 8192\n\t}\n\n")
 	b.WriteString("\tmap dom_wan {\n\t\ttype ipv4_addr : mark\n\t\tflags timeout\n\t\ttimeout 1h\n\t\tsize 8192\n\t}\n\n")
-	b.WriteString("\tchain user_rules {\n\t}\n\n")
-	// forward's rules carry `counter` from the very first boot — it is
-	// reconciled on every subsequent boot by ReconcileGroups, and a fresh
-	// install must never diverge from an upgraded box's post-reconcile state.
-	//
-	// The `counter jump user_rules` line below is the one exception, and it
-	// is deliberate: it is what the production box has had since June 2026,
-	// so a fresh install starts from the same ruleset an upgraded one does.
-	// The first ReconcileGroups is what replaces it with the group jumps.
 	b.WriteString("\tchain forward {\n")
 	b.WriteString("\t\ttype filter hook forward priority filter; policy accept;\n")
-	b.WriteString("\t\tcounter jump user_rules\n")
-	// As quatro linhas de bloqueio vêm de administrativeBlockRules
-	// (groups.go) — a mesma fonte que forwardChainRules usa para os dois
-	// grupos do sistema — em vez de uma segunda cópia literal aqui. Ver o
-	// doc-comment de administrativeBlockRules para por que isso importa.
-	// Sem log no bootstrap: instalação nova nasce com o registro desligado, e
-	// a primeira reconciliação aplica a escolha do admin.
-	for _, tokens := range administrativeBlockRules(false) {
-		fmt.Fprintf(&b, "\t\t%s\n", strings.Join(tokens, " "))
-	}
 	b.WriteString("\t}\n\n")
-	// The first `hook input` chain in the project (2026-08-11, "serve NTP to
-	// the LAN"). Empty and policy accept on a fresh install, exactly like an
-	// upgraded box's chain after ReconcileNTPInput with serving=false — a
-	// fresh box and an upgraded box must never diverge. NEVER policy drop:
-	// see reconcileInputChain's doc comment (internal/nftables/reconcile.go)
-	// for why. Desde a Fase C2 o conteúdo dela vem de inputChainRules — a
-	// proteção do NTP mais os jumps dos grupos de escopo input —, e continua
-	// nascendo vazia aqui: quem a preenche é a primeira reconciliação.
 	b.WriteString("\tchain input {\n")
 	b.WriteString("\t\ttype filter hook input priority filter; policy accept;\n")
 	b.WriteString("\t}\n\n")

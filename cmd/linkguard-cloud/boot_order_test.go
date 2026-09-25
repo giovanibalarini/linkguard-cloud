@@ -9,26 +9,10 @@ import (
 	"testing"
 )
 
-// TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile é um guarda de
-// deriva sobre a ORDEM da sequência de boot deste arquivo, e não é estética.
-//
-// ImportOnce e MigrateRulesIntoDefaultGroup chamam Reconcile por dentro. A
-// partir do momento em que a chain forward passa a ser montada a partir da
-// lista de grupos, reconciliar antes de os dois grupos do sistema existirem
-// renderizaria uma forward SEM os bloqueios — e é o pior tipo de falha,
-// porque não pareceria falha nenhuma: pareceria um admin que simplesmente
-// não bloqueou nada. A defesa de firewallrules recusa exatamente esse
-// estado, então, com a ordem invertida, o boot de um upgrade passa a
-// registrar erro nas duas migrações em vez de migrar.
-//
-// EnsureSystemGroups não depende de nenhuma das duas (só lê a própria trava
-// e insere as duas linhas, deslocando as posições existentes), então rodar
-// primeiro não custa nada — e é o que garante que TODA reconciliação do boot
-// já enxergue os bloqueios na lista.
-//
-// A verificação é feita sobre a árvore sintática, e não por busca de texto,
-// para não depender de comentários que citem os mesmos nomes.
-func TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile(t *testing.T) {
+// TestConverterLegadoUmaVezRunsBeforeRenderizarNoBoot é um guarda de
+// deriva sobre a ordem de execução do boot: a conversão das regras legadas
+// precisa rodar antes da primeira renderização por zonas.
+func TestConverterLegadoUmaVezRunsBeforeRenderizarNoBoot(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("não foi possível localizar o arquivo de teste")
@@ -41,8 +25,6 @@ func TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile(t *testing.T) {
 		t.Fatalf("parsear main.go: %v", err)
 	}
 
-	// Primeira ocorrência de cada chamada, em offset de byte (a ordem léxica
-	// dentro do mesmo bloco sequencial é a ordem de execução).
 	pos := map[string]int{}
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, isCall := n.(*ast.CallExpr)
@@ -63,35 +45,18 @@ func TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile(t *testing.T) {
 		return true
 	})
 
-	for _, name := range []string{"EnsureSystemGroups", "ImportOnce", "MigrateRulesIntoDefaultGroup", "Reconcile"} {
+	for _, name := range []string{"ConverterLegadoUmaVez", "RenderizarNoBoot"} {
 		if _, found := pos[name]; !found {
 			t.Fatalf("o boot não chama mais frSvc.%s -- se a sequência mudou de forma, este guarda precisa mudar junto", name)
 		}
 	}
-	for _, later := range []string{"ImportOnce", "MigrateRulesIntoDefaultGroup", "Reconcile"} {
-		if pos["EnsureSystemGroups"] > pos[later] {
-			t.Errorf("frSvc.EnsureSystemGroups tem que vir ANTES de frSvc.%s: as duas migrações reconciliam por dentro, e reconciliar sem os grupos do sistema na lista é uma chain forward sem os bloqueios", later)
-		}
+	if pos["ConverterLegadoUmaVez"] > pos["RenderizarNoBoot"] {
+		t.Errorf("frSvc.ConverterLegadoUmaVez tem que vir ANTES de frSvc.RenderizarNoBoot: a conversão precisa preparar as regras antes da primeira renderização")
 	}
 }
 
-// TestMainWiresTheInputChainSources guarda a ligação de que a chain input
-// depende, e que nenhum teste de pacote consegue enxergar.
-//
-// Desde a Fase C2 a chain input é reconstruída INTEIRA a cada passada, por um
-// renderizador só: as regras de proteção do NTP mais os jumps dos grupos de
-// escopo input. Quem reconcilia o NTP sabe o estado do NTP e precisa dos
-// grupos; quem reconcilia os grupos sabe os grupos e precisa do estado do
-// NTP. nftables.SetInputChainSources é o que entrega a metade que falta em
-// cada caso — e o único lugar que pode ligá-la é este main, porque
-// internal/nftables não pode importar internal/storage.
-//
-// Sem essa chamada nada quebra visivelmente: os testes continuam verdes, o
-// boot continua subindo, e o efeito é salvar um grupo apagar da chain input a
-// proteção do serviço de hora (ou ligar o NTP apagar os grupos do admin) —
-// exatamente o tipo de falha silenciosa que a Fase C2 existe para fechar. Daí
-// o guarda de deriva, sobre a árvore sintática e não por busca de texto.
-func TestMainWiresTheInputChainSources(t *testing.T) {
+// TestMainWiresFonteInsumos guarda a ligação de que a renderização por zonas depende.
+func TestMainWiresFonteInsumos(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("não foi possível localizar o arquivo de teste")
@@ -120,13 +85,11 @@ func TestMainWiresTheInputChainSources(t *testing.T) {
 			return true
 		}
 		switch {
-		case recv.Name == "nftSvc" && sel.Sel.Name == "SetInputChainSources":
+		case recv.Name == "frSvc" && sel.Sel.Name == "SetFonteInsumos":
 			if wired == -1 {
 				wired = int(call.Pos())
 			}
-		case recv.Name == "nftSvc" && sel.Sel.Name == "ReconcileNTPInput",
-			recv.Name == "nftSvc" && sel.Sel.Name == "ReconcileGroups",
-			recv.Name == "frSvc" && sel.Sel.Name == "Reconcile":
+		case recv.Name == "frSvc" && sel.Sel.Name == "RenderizarNoBoot":
 			if firstReconcile == -1 || int(call.Pos()) < firstReconcile {
 				firstReconcile = int(call.Pos())
 			}
@@ -135,109 +98,13 @@ func TestMainWiresTheInputChainSources(t *testing.T) {
 	})
 
 	if wired == -1 {
-		t.Fatal("o boot não liga mais nftSvc.SetInputChainSources: salvar um grupo passa a apagar a proteção do NTP da chain input, e reconciliar o NTP passa a apagar os grupos de escopo input")
+		t.Fatal("o boot não liga mais frSvc.SetFonteInsumos")
 	}
 	if firstReconcile == -1 {
-		t.Fatal("o boot não reconcilia mais a chain input por nenhum caminho -- se a sequência mudou de forma, este guarda precisa mudar junto")
+		t.Fatal("o boot não chama mais frSvc.RenderizarNoBoot")
 	}
 	if wired > firstReconcile {
-		t.Errorf("nftSvc.SetInputChainSources tem que ser ligado ANTES da primeira reconciliação do boot: a primeira passada reconstruiria a chain input com metade do conteúdo")
-	}
-}
-
-// ─── Correções da revisão da Fase C2 ─────────────────────────────────────
-
-// I-4. A chain input passou a carregar também um `jump` por grupo de escopo
-// input, e quem CRIA as chains grp_ é o passo 1 de ReconcileGroups — alcançado
-// no boot por frSvc.Reconcile. Numa máquina cujo ruleset foi recriado do zero
-// por EnsureTable (recuperação de desastre, como em 2026-08-10) e cujo banco
-// tenha um grupo de escopo input, reconciliar a input ANTES disso emite um
-// jump para uma chain que ainda não existe: o nft recusa com "No such file or
-// directory" e o boot registra um aviso alarmante. A passada seguinte conserta
-// sozinha — então o custo não é o firewall, é o log de boot de um firewall de
-// produção sendo lido na próxima emergência com um erro que não é erro.
-//
-// m1 da revisão: nftSvc.ReconcileNTPInput deixou de rodar solto depois de
-// frSvc.Reconcile e passou a ficar preso ao ramo de erro dele (frSvc.Reconcile
-// → ReconcileGroups já reconstrói a chain input inteira no caminho feliz; ver
-// o comentário em main.go). A garantia de ordem original — a input nunca é
-// reconciliada por este caminho antes de as chains grp_ existirem — continua
-// tendo que valer, então o teste mantém a checagem de posição. Mas agora
-// também verifica a condição: a chamada tem que estar DENTRO do bloco
-// `if err := frSvc.Reconcile(ctx); err != nil { ... }`, nunca solta depois
-// dele — um retrocesso para a chamada incondicional reabriria a duplicação de
-// reconciliação que m1 fechou (duas janelas de chain-input-vazia por boot,
-// dois Persist) sem que nenhum outro teste deste pacote perceba, já que os
-// testes de unidade de internal/nftables não enxergam a sequência de main.go.
-//
-// Guarda de deriva sobre a árvore sintática, como os dois acima.
-func TestNTPInputIsReconciledAfterTheGroupChainsExist(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("não foi possível localizar o arquivo de teste")
-	}
-	srcPath := filepath.Join(filepath.Dir(thisFile), "main.go")
-
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, srcPath, nil, 0)
-	if err != nil {
-		t.Fatalf("parsear main.go: %v", err)
-	}
-
-	reconcileGroups, reconcileNTP := -1, -1
-	var errBranch *ast.BlockStmt // corpo do `if err := frSvc.Reconcile(ctx); err != nil { ... }`
-	ast.Inspect(file, func(n ast.Node) bool {
-		// Localiza o próprio `if` cujo Init chama frSvc.Reconcile, para saber
-		// os limites do bloco de erro dele -- não basta achar a chamada solta,
-		// porque o que muda de comportamento aqui é justamente estar dentro ou
-		// fora deste bloco.
-		if ifStmt, isIf := n.(*ast.IfStmt); isIf {
-			if assign, isAssign := ifStmt.Init.(*ast.AssignStmt); isAssign && len(assign.Rhs) == 1 {
-				if call, isCall := assign.Rhs[0].(*ast.CallExpr); isCall {
-					if sel, isSel := call.Fun.(*ast.SelectorExpr); isSel {
-						if recv, isIdent := sel.X.(*ast.Ident); isIdent && recv.Name == "frSvc" && sel.Sel.Name == "Reconcile" {
-							if reconcileGroups == -1 {
-								reconcileGroups = int(call.Pos())
-							}
-							if errBranch == nil {
-								errBranch = ifStmt.Body
-							}
-						}
-					}
-				}
-			}
-		}
-
-		call, isCall := n.(*ast.CallExpr)
-		if !isCall {
-			return true
-		}
-		sel, isSel := call.Fun.(*ast.SelectorExpr)
-		if !isSel {
-			return true
-		}
-		recv, isIdent := sel.X.(*ast.Ident)
-		if !isIdent {
-			return true
-		}
-		if recv.Name == "nftSvc" && sel.Sel.Name == "ReconcileNTPInput" && reconcileNTP == -1 {
-			reconcileNTP = int(call.Pos())
-		}
-		return true
-	})
-
-	if reconcileGroups == -1 || reconcileNTP == -1 {
-		t.Fatalf("o boot não chama mais frSvc.Reconcile (%d) e/ou nftSvc.ReconcileNTPInput (%d) -- se a sequência mudou de forma, este guarda precisa mudar junto",
-			reconcileGroups, reconcileNTP)
-	}
-	if reconcileNTP < reconcileGroups {
-		t.Errorf("nftSvc.ReconcileNTPInput tem que vir DEPOIS de frSvc.Reconcile: as chains grp_ que os jumps de escopo input alcançam são criadas lá, e emitir o jump antes disso enche o log de boot de erro que não é erro")
-	}
-	if errBranch == nil {
-		t.Fatal("não encontrei o bloco `if err := frSvc.Reconcile(ctx); err != nil { ... }` em main.go -- se a forma mudou, este guarda precisa mudar junto (m1 da revisão)")
-	}
-	if !(int(errBranch.Pos()) <= reconcileNTP && reconcileNTP <= int(errBranch.End())) {
-		t.Errorf("nftSvc.ReconcileNTPInput tem que estar DENTRO do bloco de erro de frSvc.Reconcile, não solto depois dele: frSvc.Reconcile já reconstrói a chain input no caminho feliz (m1 da revisão) -- chamar de novo fora do ramo de erro volta a duplicar a reconciliação e a janela de chain-input-vazia por boot")
+		t.Errorf("frSvc.SetFonteInsumos tem que ser ligado ANTES da primeira renderização do boot")
 	}
 }
 
@@ -284,15 +151,11 @@ func TestPendingChangeIsRevertedBeforeAnyReconcileOnBoot(t *testing.T) {
 	// Só o que APLICA firewall entra na lista. frSvc.WatchPending não entra:
 	// é a goroutine do timer, e ela não aplica nada por si.
 	applies := map[string]bool{
-		"frSvc.EnsureSystemGroups":           true,
-		"frSvc.ImportOnce":                   true,
-		"frSvc.MigrateRulesIntoDefaultGroup": true,
-		"frSvc.Reconcile":                    true,
+		"frSvc.ConverterLegadoUmaVez":        true,
+		"frSvc.RenderizarNoBoot":             true,
 		"nftSvc.Restore":                     true,
 		"nftSvc.ReconcileMasquerade":         true,
 		"nftSvc.ReconcileStructuralChains":   true,
-		"nftSvc.ReconcileNTPInput":           true,
-		"nftSvc.ReconcileGroups":             true,
 	}
 
 	revert := -1
@@ -558,9 +421,8 @@ func TestMainWiresThePersistGuard(t *testing.T) {
 			if wired == -1 {
 				wired = int(call.Pos())
 			}
-		case recv.Name == "nftSvc" && sel.Sel.Name == "ReconcileNTPInput",
-			recv.Name == "nftSvc" && sel.Sel.Name == "ReconcileGroups",
-			recv.Name == "frSvc" && sel.Sel.Name == "Reconcile":
+		case recv.Name == "frSvc" && sel.Sel.Name == "RenderizarNoBoot",
+			recv.Name == "nftSvc" && sel.Sel.Name == "ReconcileMasquerade":
 			if firstReconcile == -1 || int(call.Pos()) < firstReconcile {
 				firstReconcile = int(call.Pos())
 			}

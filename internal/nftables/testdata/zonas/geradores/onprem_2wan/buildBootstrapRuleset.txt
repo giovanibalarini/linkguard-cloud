@@ -19,10 +19,6 @@
 | 		type ipv4_addr
 | 	}
 | 
-| 	set blocked_macs {
-| 		type ether_addr
-| 	}
-| 
 | 	set dom_blocked {
 | 		type ipv4_addr
 | 		flags timeout
@@ -44,19 +40,8 @@
 | 		size 8192
 | 	}
 | 
-| 	chain user_rules {
-| 	}
-| 
 | 	chain forward {
 | 		type filter hook forward priority filter; policy accept;
-| 		counter jump user_rules
-| 		ip saddr @blocked_hosts counter drop
-| 		ip daddr @blocked_hosts counter drop
-| 		ether saddr @blocked_macs counter drop
-| 		ip daddr @blocklist counter drop
-| 		ip saddr @blocklist counter drop
-| 		ip daddr @dom_blocked counter drop
-| 		ip6 daddr @dom_blocked6 counter drop
 | 	}
 | 
 | 	chain input {

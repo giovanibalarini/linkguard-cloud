@@ -167,12 +167,8 @@ func TestBuildBootstrapRulesetContainsCoreStructure(t *testing.T) {
 		"table inet linkguard {",
 		"set blocklist {",
 		"set blocked_hosts {",
-		"chain user_rules {",
 		"chain forward {",
 		"type filter hook forward priority filter",
-		"jump user_rules",
-		"ip saddr @blocked_hosts",
-		"ip daddr @blocklist",
 		"chain input {",
 		"type filter hook input priority filter",
 		"chain postrouting {",
@@ -207,46 +203,24 @@ func TestBuildBootstrapRulesetInputChainPolicyIsAccept(t *testing.T) {
 	}
 }
 
-// TestBuildBootstrapRulesetForwardCarriesCounter is the fresh-install
-// regression test for the design spec's §6 caution: the canonical definition
-// the forward is reconciled to carries `counter` on every rule — without it,
-// Phase A's whole point (surfacing those counts on the panel) would have
-// nothing to show on a freshly bootstrapped box.
-func TestBuildBootstrapRulesetForwardCarriesCounter(t *testing.T) {
+// TestBuildBootstrapRulesetForwardChainPolicyIsAccept: forward chain must be empty
+// with policy accept on bootstrap, to be filled by zone rendering on boot.
+func TestBuildBootstrapRulesetForwardChainPolicyIsAccept(t *testing.T) {
 	rs := buildBootstrapRuleset([]string{"enp5s0"}, ZoneFacts{})
-	for _, want := range []string{
-		"counter jump user_rules",
-		"ip saddr @blocked_hosts counter drop",
-		"ip daddr @blocked_hosts counter drop",
-		"ether saddr @blocked_macs counter drop",
-		"ip daddr @blocklist counter drop",
-		"ip saddr @blocklist counter drop",
-	} {
-		if !strings.Contains(rs, want) {
-			t.Errorf("bootstrap ruleset missing %q:\n%s", want, rs)
-		}
+	i := strings.Index(rs, "chain forward {")
+	if i < 0 {
+		t.Fatal("bootstrap ruleset missing chain forward")
 	}
-}
-
-// Amarra as duas representações das quatro linhas de bloqueio: o texto que
-// buildBootstrapRuleset escreve (para um install do zero) e os token sets que
-// forwardChainRules produz para os dois grupos do sistema (para uma
-// reconciliação normal, com os grupos já migrados). As duas já leem de
-// administrativeBlockRules (groups.go), então isto hoje é redundante com essa
-// unificação — mas é a rede de segurança que m-4 pediu: se algum dia alguém
-// voltar a duplicar a fonte de um lado só, este teste pega a divergência sem
-// precisar saber que administrativeBlockRules existe.
-func TestBootstrapForwardBlocksMatchForwardChainRulesForSystemGroups(t *testing.T) {
-	rs := buildBootstrapRuleset(nil, ZoneFacts{})
-	groups := []StoredGroup{
-		{ID: "h", Kind: GroupKindBlockedHosts, ChainName: SystemChainBlockedHosts, Enabled: true, Position: 0},
-		{ID: "l", Kind: GroupKindBlocklist, ChainName: SystemChainBlocklist, Enabled: true, Position: 1},
+	end := strings.Index(rs[i:], "}")
+	if end < 0 {
+		t.Fatal("could not find end of chain forward block")
 	}
-	for _, toks := range forwardChainRules(groups, false) {
-		line := strings.Join(toks, " ")
-		if !strings.Contains(rs, line) {
-			t.Errorf("bootstrap ruleset diverge de forwardChainRules para os grupos do sistema: falta %q\n%s", line, rs)
-		}
+	block := rs[i : i+end]
+	if !strings.Contains(block, "policy accept") {
+		t.Errorf("forward chain must declare policy accept:\n%s", block)
+	}
+	if strings.Contains(block, "policy drop") {
+		t.Errorf("forward chain must NEVER declare policy drop:\n%s", block)
 	}
 }
 
