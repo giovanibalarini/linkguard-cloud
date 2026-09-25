@@ -773,9 +773,6 @@ export interface MonitoringConfig {
   enabled: boolean;
   services: string[];
   disk_threshold_pct: number;
-  smart_reallocated_threshold: number;
-  smart_temp_threshold_c: number;
-  boot_time_threshold_sec: number;
   journal_verify_interval_days: number;
 }
 

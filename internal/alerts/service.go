@@ -41,15 +41,10 @@ const (
 	// comandos que criariam a regra falhando a cada boot com o erro descartado.
 	TypeSteerInativo = "steer_inativo"
 
-	TypeNTPUnsynced       = "ntp_unsynced"
-	TypeNTPSynced         = "ntp_synced"
-	TypeDiskSMARTFail     = "disk_smart_fail"
-	TypeDiskSMARTOK       = "disk_smart_ok"
-	TypeDiskSMARTDegraded = "disk_smart_degraded"
-	TypeDiskSMARTHot      = "disk_smart_hot"
-	TypeSlowBoot          = "slow_boot"
-	TypeJournalCorrupt    = "journal_corrupt"
-	TypeJournalOK         = "journal_ok"
+	TypeNTPUnsynced    = "ntp_unsynced"
+	TypeNTPSynced      = "ntp_synced"
+	TypeJournalCorrupt = "journal_corrupt"
+	TypeJournalOK      = "journal_ok"
 
 	TypeFirewallNATDrift       = "firewall_nat_drift"
 	TypeFirewallNATOK          = "firewall_nat_ok"
@@ -171,9 +166,7 @@ type Notifier interface {
 // since nothing observes a "rule_error fixed" transition.
 //
 // Also absent, and for the same underlying reason (no AutoResolve call
-// anywhere resolves them): TypeSlowBoot ("a slow boot can't un-happen, only
-// the next reboot can be fast" — see SlowBoot's doc comment), TypeFailover,
-// and TypeAppDown. TypeGatewayDown and TypeRouteChanged are unused
+// anywhere resolves them): TypeFailover and TypeAppDown. TypeGatewayDown and TypeRouteChanged are unused
 // constants — nothing in this codebase raises them at all.
 //
 // TestStateAlertTypesMatchAutoResolveCallSites guards this list against
@@ -188,9 +181,6 @@ var stateAlertTypes = []string{
 	TypeHighMemory,
 	TypeBackupFailed,
 	TypeNTPUnsynced,
-	TypeDiskSMARTFail,
-	TypeDiskSMARTDegraded,
-	TypeDiskSMARTHot,
 	TypeJournalCorrupt,
 	TypeFirewallNATDrift,
 	TypeWANInterfaceMissing,
@@ -721,62 +711,6 @@ func (s *Service) NTPSynced() error {
 		"O relógio do sistema voltou a sincronizar via NTP.", "")
 }
 
-// DiskSMARTFail raises a critical alert when the disk's own S.M.A.R.T.
-// self-assessment reports failure — the strongest signal this package
-// raises, since the drive firmware itself is reporting trouble.
-func (s *Service) DiskSMARTFail() error {
-	return s.Create(TypeDiskSMARTFail, SeverityCritical, "Disco: falha no SMART",
-		"O disco reporta falha no autodiagnóstico SMART — considere substituí-lo.", "")
-}
-
-// DiskSMARTOK clears DiskSMARTFail and notifies recovery.
-func (s *Service) DiskSMARTOK() error {
-	s.AutoResolve(TypeDiskSMARTFail, "")
-	return s.createRecovery(TypeDiskSMARTOK, "Disco: SMART normalizado",
-		"O disco voltou a passar no autodiagnóstico SMART.", "")
-}
-
-// DiskSMARTDegraded raises a warning when the disk's reallocated-sector count
-// crosses the configured threshold — an earlier, softer signal than
-// DiskSMARTFail. Signature matches Collector.checkResource's `high`
-// callback.
-func (s *Service) DiskSMARTDegraded(count float64) error {
-	return s.Create(TypeDiskSMARTDegraded, SeverityWarning, "Disco: setores realocados",
-		fmt.Sprintf("O disco reporta %.0f setor(es) realocado(s) via SMART.", count), "")
-}
-
-// DiskSMARTNormal clears DiskSMARTDegraded and notifies recovery. Signature
-// matches Collector.checkResource's `normal` callback.
-func (s *Service) DiskSMARTNormal(count float64) error {
-	s.AutoResolve(TypeDiskSMARTDegraded, "")
-	return s.createRecovery(TypeDiskSMARTDegraded, "Disco: setores realocados normalizados",
-		fmt.Sprintf("Contagem de setores realocados voltou a %.0f.", count), "")
-}
-
-// DiskSMARTHot raises a warning when disk temperature crosses the configured
-// threshold. Signature matches Collector.checkResource's `high` callback.
-func (s *Service) DiskSMARTHot(tempC float64) error {
-	return s.Create(TypeDiskSMARTHot, SeverityWarning, "Disco: temperatura alta",
-		fmt.Sprintf("Temperatura do disco em %.0f°C.", tempC), "")
-}
-
-// DiskSMARTCool clears DiskSMARTHot and notifies recovery. Signature matches
-// Collector.checkResource's `normal` callback.
-func (s *Service) DiskSMARTCool(tempC float64) error {
-	s.AutoResolve(TypeDiskSMARTHot, "")
-	return s.createRecovery(TypeDiskSMARTHot, "Disco: temperatura normalizada",
-		fmt.Sprintf("Temperatura do disco voltou a %.0f°C.", tempC), "")
-}
-
-// SlowBoot raises a one-time warning when the box takes longer than the
-// configured threshold to reach its first monitoring tick. There is no
-// recovery counterpart: a slow boot can't un-happen, only the next reboot
-// can be fast.
-func (s *Service) SlowBoot(seconds float64) error {
-	return s.Create(TypeSlowBoot, SeverityWarning, "Boot lento",
-		fmt.Sprintf("O sistema levou %.0fs para o LinkGuard ficar pronto neste boot.", seconds), "")
-}
-
 // JournalCorrupt raises a warning when a periodic `journalctl --verify` finds
 // corruption — degrades observability, not an operational outage, hence
 // Warning.
@@ -1062,7 +996,7 @@ func (s *Service) FirewallSystemGroupsOK() {
 // ele reencontra um firewall diferente do que deixou sem nada que explique a
 // diferença: a pior forma de um firewall se comportar.
 //
-// Deliberadamente FORA de stateAlertTypes, pela mesma razão de TypeSlowBoot:
+// Deliberadamente FORA de stateAlertTypes, pela mesma razão de TypeFailover:
 // não é uma condição em curso que alguma recuperação fecha — uma reversão que
 // aconteceu não pode desacontecer. O operador resolve o alerta quando tiver
 // lido, como faz com o de boot lento.

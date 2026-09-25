@@ -26,11 +26,10 @@ type Collector struct {
 	rec       tsdb.Recorder
 	startTime time.Time
 
-	healthMu    sync.Mutex
-	health      map[string]*itemState
-	nowFn       func() int64
-	bootChecked bool                   // guards checkBootTime (Task 5) so it fires at most once per process
-	bootIDFn    func() (string, error) // returns the kernel's current boot_id; overridable in tests
+	healthMu sync.Mutex
+	health   map[string]*itemState
+	nowFn    func() int64
+	bootIDFn func() (string, error) // returns the kernel's current boot_id; overridable in tests
 
 	bootPersist BootPersistSource // nil until SetBootPersistSource; see checkBootPersist
 	// wanSource é a lista efetiva de WANs desta máquina — as cadastradas ou,
@@ -127,22 +126,12 @@ func (c *Collector) collect() {
 			c.checkResource("resource:mem", "Memória", sys.MemPercent, 90, c.alertSvc.HighMemory, c.alertSvc.MemoryNormal)
 			c.checkResource("resource:disk", "Disco", sys.DiskPercent, cfg.DiskThresholdPct, c.alertSvc.DiskFull, c.alertSvc.DiskCleared)
 			c.checkNTP()
-			c.checkSMART(cfg)
 			c.checkWANInterfaces()
 			c.checkFirewallNAT()
 			c.checkDNSResolver()
 			c.checkCaminhoNSS()
 			c.checkBootPersist()
 		}
-
-		// Boot-time is measured once per process lifetime (see
-		// checkBootTime's own doc comment) — deliberately called
-		// unconditionally, NOT inside `if cfg.Enabled`, because gating it
-		// would let a later re-enable of monitoring fire the alert using a
-		// stale (much larger) uptime reading instead of the real boot
-		// duration. checkBootTime itself still respects cfg.Enabled before
-		// raising the alert.
-		c.checkBootTime(sys.UptimeSeconds, cfg)
 	}
 
 	if cfg.Enabled {

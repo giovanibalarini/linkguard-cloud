@@ -11,8 +11,6 @@ const LABEL_KEY: Record<string, string> = {
   'kea-dhcp4-server': 'mon.health.label.dhcp',
   'unbound': 'mon.health.label.dns',
   'ntp-sync': 'mon.health.label.ntpSync',
-  'smart-health': 'mon.health.label.smart',
-  'boot-time': 'mon.health.label.bootTime',
   'journal-integrity': 'mon.health.label.journalIntegrity',
   'firewall-nat': 'mon.health.label.firewallNat',
   'firewall-boot-persist': 'mon.health.label.firewallBootPersist',

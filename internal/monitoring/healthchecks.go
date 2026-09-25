@@ -2,23 +2,11 @@ package monitoring
 
 import (
 	"context"
-	"log/slog"
 	"regexp"
 	"strings"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/disksmart"
-	"github.com/giovanibalarini/linkguard-cloud/internal/system"
 	"github.com/giovanibalarini/linkguard-cloud/internal/timesync"
 )
-
-// bootLastKnownIDSettingKey persists the kernel boot_id observed the last
-// time checkBootTime actually measured a boot, so a later process restart
-// (same kernel boot, e.g. from a package upgrade's `systemctl restart`) can
-// recognize itself as "not a new boot" instead of re-measuring
-// /proc/uptime — which only grows across restarts and would falsely look
-// like a slow boot every time (mirrors journalLastVerifySettingKey's
-// pattern in journalcheck.go).
-const bootLastKnownIDSettingKey = "boot_last_known_id"
 
 type transition int
 
@@ -320,122 +308,5 @@ func (c *Collector) checkNTP() {
 		_ = c.alertSvc.NTPUnsynced()
 	case transUp:
 		_ = c.alertSvc.NTPSynced()
-	}
-}
-
-// checkSMART reads the root disk's SMART status once and applies three
-// checks from that single reading: overall health (boolean, via observe()
-// directly), reallocated sector count and temperature (both threshold-based,
-// routed through the existing checkResource — same "lower is healthier"
-// polarity as CPU/mem/disk). A read failure (tool missing, disk not found)
-// is treated as "unknown for this tick" and skipped entirely, rather than
-// raising a false SMART-fail alert — see the design spec's Casos de borda.
-func (c *Collector) checkSMART(cfg Config) {
-	ctx := context.Background()
-	device, err := disksmart.DetectRootDisk(ctx, c.exec)
-	if err != nil {
-		slog.Warn("smart: could not detect root disk", "err", err)
-		return
-	}
-	report, err := disksmart.Read(ctx, c.exec, device)
-	if err != nil {
-		slog.Warn("smart: read failed", "device", device, "err", err)
-		return
-	}
-
-	now := c.nowFn()
-	tr := c.observe("smart:health", report.Passed, now)
-	c.ensureMeta("smart:health", "smart-health", "resource")
-	switch tr {
-	case transDown:
-		_ = c.alertSvc.DiskSMARTFail()
-	case transUp:
-		_ = c.alertSvc.DiskSMARTOK()
-	}
-
-	if c.rec != nil {
-		c.rec.Gauge("smart.reallocated", "", float64(report.ReallocatedSectors))
-		c.rec.Gauge("smart.temp_c", "", float64(report.TemperatureC))
-	}
-
-	// checkResource's polarity is `pct < thresholdPct` (strictly less-than).
-	// SMARTReallocatedThreshold defaults to 0 meaning "any reallocated sector
-	// at all is a problem" — passing threshold+1 turns the strict "<" into
-	// the intended "<= threshold is healthy" without changing
-	// checkResource's shared comparison logic.
-	c.checkResource("smart:realloc", "Setores realocados", float64(report.ReallocatedSectors),
-		cfg.SMARTReallocatedThreshold+1, c.alertSvc.DiskSMARTDegraded, c.alertSvc.DiskSMARTNormal)
-	c.checkResource("smart:temp", "Temperatura do disco", float64(report.TemperatureC),
-		cfg.SMARTTempThresholdC, c.alertSvc.DiskSMARTHot, c.alertSvc.DiskSMARTCool)
-}
-
-// checkBootTime runs at most once per process lifetime (guarded by
-// c.bootChecked — /proc/uptime only grows, so re-checking on a later tick
-// would measure "how long the process has been running", not "how long the
-// boot took"). uptimeSeconds is the system uptime at the moment this first
-// tick fires (caller passes sys.UptimeSeconds from the same collect() pass).
-//
-// The bootChecked guard alone isn't enough to avoid false positives: it
-// only prevents re-measuring within a single process lifetime, but every
-// `systemctl restart linkguard-cloud` (which happens on every package
-// deploy's postinst) starts a fresh process whose FIRST tick sees whatever
-// the KERNEL's uptime is — often hours, since the machine didn't actually
-// reboot. To tell "the machine really rebooted" apart from "just the
-// service restarted", we compare the kernel's boot_id (stable for the
-// whole life of a boot, see system.ReadBootID) against the last one we
-// persisted. Same boot_id as last time -> this is a same-session service
-// restart, not a real boot -> skip the measurement/alert entirely (no
-// stale/wrong data is better than showing a false "boot lento"). Different
-// (or no) boot_id -> a real boot happened -> measure as before and persist
-// the new boot_id for the next restart to recognize.
-//
-// Unlike every other check in this file, the alert here is fired directly
-// from the freshly-computed `up` value, NOT from observe()'s returned
-// transition — observe()'s anti-flap model requires a SECOND confirming
-// reading before a first-ever "down" fires, which never happens for a check
-// that only ever runs once. observe()/ensureMeta() are still called so the
-// item shows up on the dashboard panel and is bookkept consistently with
-// every other item.
-//
-// cfg.Enabled gates the ALERT, but not the measurement/bookkeeping above it:
-// gating the whole function would let a later re-enable of monitoring fire
-// this using a stale (much larger) uptime reading instead of the real boot
-// duration. The caller (collect(), Task 6) calls this unconditionally.
-func (c *Collector) checkBootTime(uptimeSeconds float64, cfg Config) {
-	c.healthMu.Lock()
-	if c.bootChecked {
-		c.healthMu.Unlock()
-		return
-	}
-	c.bootChecked = true
-	c.healthMu.Unlock()
-
-	bootIDFn := c.bootIDFn
-	if bootIDFn == nil {
-		bootIDFn = system.ReadBootID
-	}
-	currentID, err := bootIDFn()
-	if err != nil {
-		slog.Warn("boot-time: could not read boot_id, measuring anyway", "err", err)
-	} else {
-		lastID, _ := c.db.GetSetting(bootLastKnownIDSettingKey)
-		if lastID != "" && lastID == currentID {
-			// Same kernel boot session as last time we checked (only the
-			// service restarted) — nothing new to measure. Leaving the
-			// boot-time item out of Snapshot until the next real boot is
-			// more honest than showing stale/wrong data.
-			return
-		}
-		_ = c.db.SetSetting(bootLastKnownIDSettingKey, currentID)
-	}
-
-	up := uptimeSeconds < float64(cfg.BootTimeThresholdSec)
-	c.observe("boot:time", up, c.nowFn())
-	c.ensureMeta("boot:time", "boot-time", "resource")
-	if c.rec != nil {
-		c.rec.Gauge("boot.seconds", "", uptimeSeconds)
-	}
-	if !up && cfg.Enabled {
-		_ = c.alertSvc.SlowBoot(uptimeSeconds)
 	}
 }
