@@ -2,8 +2,9 @@ package nftables
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 )
 
 // Janela de horário do grupo de regras (issue #125).
@@ -33,7 +34,6 @@ import (
 //     minúscula o nft recusa a regra inteira — e uma regra recusada aqui
 //     significaria um grupo que simplesmente não entra no firewall.
 var (
-	reHHMM = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
 	// diasNFT traduz a chave curta que o painel guarda para o nome que o nft
 	// exige. A chave é curta e estável no banco; o nome capitalizado é detalhe
@@ -60,34 +60,9 @@ func (s Schedule) Empty() bool {
 	return strings.TrimSpace(s.Days) == "" && strings.TrimSpace(s.Start) == "" && strings.TrimSpace(s.End) == ""
 }
 
-// Validate recusa janela mal formada.
-//
-// Hora sem par é recusada em vez de completada com um padrão: "das 22:00" sem
-// fim poderia razoavelmente significar "até meia-noite" ou "até o fim do dia
-// seguinte", e escolher por conta própria transformaria ambiguidade do admin em
-// comportamento de firewall que ele não pediu.
+// Validate recusa janela mal formada, delegando para as regras canônicas de fwmodel.
 func (s Schedule) Validate() error {
-	temInicio := strings.TrimSpace(s.Start) != ""
-	temFim := strings.TrimSpace(s.End) != ""
-	if temInicio != temFim {
-		return fmt.Errorf("a janela precisa de hora de início E de fim")
-	}
-	if temInicio {
-		if !reHHMM.MatchString(s.Start) || !reHHMM.MatchString(s.End) {
-			return fmt.Errorf("horário inválido (use HH:MM)")
-		}
-		if s.Start == s.End {
-			// Faixa de duração zero não é "o dia inteiro" nem "nunca": é
-			// ambígua, e o nft a aceitaria casando só aquele minuto.
-			return fmt.Errorf("início e fim não podem ser o mesmo horário")
-		}
-	}
-	for _, d := range s.dias() {
-		if _, ok := diasNFT[d]; !ok {
-			return fmt.Errorf("dia inválido: %q", d)
-		}
-	}
-	return nil
+	return fwmodel.ValidarJanela(s.Days, s.Start, s.End)
 }
 
 func (s Schedule) dias() []string {
@@ -134,24 +109,7 @@ func (s Schedule) diasNFTOrdenados() []string {
 	return out
 }
 
-// NormalizeDays devolve as chaves de dia em ordem estável, descartando o que
-// não existe. É o que o handler grava, para o banco não guardar a ordem em que
-// o admin clicou nem lixo digitado.
+// NormalizeDays devolve as chaves de dia em ordem estável, delegando para fwmodel.
 func NormalizeDays(raw string) string {
-	presentes := map[string]bool{}
-	for _, d := range strings.Split(raw, ",") {
-		d = strings.ToLower(strings.TrimSpace(d))
-		if _, ok := diasNFT[d]; ok {
-			presentes[d] = true
-		}
-	}
-	var out []string
-	for _, d := range ordemDias {
-		if presentes[d] {
-			out = append(out, d)
-		}
-	}
-	// A ordem já é a de ordemDias: o laço acima percorre a semana, não o que
-	// o admin digitou.
-	return strings.Join(out, ",")
+	return fwmodel.NormalizeDays(raw)
 }
