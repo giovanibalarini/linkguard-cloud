@@ -2,12 +2,16 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
@@ -174,6 +178,8 @@ var schemaMigrations = []migration{
 	{100, "papéis: saem as permissões de DHCP, NTP e edição de placa", upRetirePermissionsCloud},
 	{101, "papéis: saem as permissões de links, de escrita de rotas e de direcionar host", upRetireMultiWANPermissions},
 	{102, "máquinas por IP: host_info, e cota e consumo chaveados por IP", upHostsPorIP},
+	{103, "firewall por zonas: tabelas de regras, aliases, agendamentos e revisões", upFirewallZonas},
+	{104, "firewall por zonas: grupos de hosts viram aliases e encaminhamentos migrados", upAliasesDosGruposDeHosts},
 }
 
 // upRetirePermissionsCloud tira dos papéis as permissões que a versão cloud
@@ -1667,5 +1673,256 @@ func upGrantHostsQuota(tx *sql.Tx) error {
 		`INSERT INTO settings (key, value) VALUES (?, '1')`, marker); err != nil {
 		return fmt.Errorf("gravar o marcador da migração hosts.quota: %w", err)
 	}
+	return nil
+}
+
+// upFirewallZonas cria as 7 tabelas e o índice da arquitetura de firewall por zonas (migração 103).
+func upFirewallZonas(tx *sql.Tx) error {
+	ddls := []string{
+		`CREATE TABLE IF NOT EXISTS fw_regras (
+		    id             TEXT PRIMARY KEY,
+		    zona           TEXT NOT NULL CHECK (zona IN ('flutuante','internet','vcn','vpn')),
+		    posicao        INTEGER NOT NULL,
+		    ativa          INTEGER NOT NULL DEFAULT 1,
+		    acao           TEXT NOT NULL CHECK (acao IN ('accept','drop','reject')),
+		    proto          TEXT NOT NULL DEFAULT '',
+		    origem_tipo    TEXT NOT NULL DEFAULT 'any',
+		    origem_valor   TEXT NOT NULL DEFAULT '',
+		    destino_tipo   TEXT NOT NULL DEFAULT 'any',
+		    destino_valor  TEXT NOT NULL DEFAULT '',
+		    porta_tipo     TEXT NOT NULL DEFAULT 'any',
+		    porta_valor    TEXT NOT NULL DEFAULT '',
+		    agendamento_id TEXT NOT NULL DEFAULT '',
+		    registrar      INTEGER NOT NULL DEFAULT 0,
+		    descricao      TEXT NOT NULL DEFAULT '',
+		    criada_em      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    atualizada_em  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_fw_regras_zona ON fw_regras(zona, posicao)`,
+		`CREATE TABLE IF NOT EXISTS fw_aliases (
+		    id            TEXT PRIMARY KEY,
+		    nome          TEXT NOT NULL,
+		    nome_chave    TEXT NOT NULL UNIQUE,          -- lower(nome), para unicidade sem caixa
+		    tipo          TEXT NOT NULL CHECK (tipo IN ('enderecos','portas')),
+		    descricao     TEXT NOT NULL DEFAULT '',
+		    itens         TEXT NOT NULL DEFAULT '[]',    -- JSON []string
+		    criado_em     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS fw_agendamentos (
+		    id            TEXT PRIMARY KEY,
+		    nome          TEXT NOT NULL,
+		    nome_chave    TEXT NOT NULL UNIQUE,
+		    descricao     TEXT NOT NULL DEFAULT '',
+		    dias          TEXT NOT NULL DEFAULT '',
+		    inicio        TEXT NOT NULL,
+		    fim           TEXT NOT NULL,
+		    criado_em     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS fw_encaminhamentos (
+		    id            TEXT PRIMARY KEY,
+		    nome          TEXT NOT NULL DEFAULT '',
+		    ativo         INTEGER NOT NULL DEFAULT 1,
+		    proto         TEXT NOT NULL CHECK (proto IN ('tcp','udp')),
+		    porta_externa INTEGER NOT NULL,
+		    ip_destino    TEXT NOT NULL,
+		    porta_destino INTEGER NOT NULL,
+		    posicao       INTEGER NOT NULL DEFAULT 0,
+		    criado_em     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS fw_ajustes (
+		    only_row INTEGER PRIMARY KEY CHECK (only_row = 1),
+		    ajustes  TEXT NOT NULL                        -- JSON fwmodel.Ajustes
+		)`,
+		`CREATE TABLE IF NOT EXISTS fw_aplicado (
+		    only_row     INTEGER PRIMARY KEY CHECK (only_row = 1),
+		    config       TEXT NOT NULL,                   -- fwmodel.Canonico
+		    aplicado_em  INTEGER NOT NULL,                -- unix
+		    aplicado_por TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS fw_revisoes (
+		    id           TEXT PRIMARY KEY,
+		    config       TEXT NOT NULL,
+		    resumo       TEXT NOT NULL DEFAULT '',
+		    motivo       TEXT NOT NULL DEFAULT 'aplicar',  -- aplicar | reverter | conversao | restaurar
+		    aplicado_em  INTEGER NOT NULL,
+		    aplicado_por TEXT NOT NULL DEFAULT ''
+		)`,
+	}
+	for _, ddl := range ddls {
+		if _, err := tx.Exec(ddl); err != nil {
+			return fmt.Errorf("criar tabelas fwzonas: %w", err)
+		}
+	}
+	return nil
+}
+
+func isNomeAliasReservadoMigracao(nome string) bool {
+	low := strings.ToLower(strings.TrimSpace(nome))
+	if strings.HasPrefix(low, "sys:") {
+		return true
+	}
+	switch low {
+	case "vcn", "vpn", "gerência", "gerencia", "este firewall":
+		return true
+	}
+	return false
+}
+
+func normalizarItemEnderecoMigracao(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	if strings.HasSuffix(addr, "/32") {
+		addr = strings.TrimSuffix(addr, "/32")
+	}
+	if strings.Contains(addr, "/") {
+		ip, netw, err := net.ParseCIDR(addr)
+		if err == nil && netw != nil {
+			ones, bits := netw.Mask.Size()
+			if ones == 32 && bits == 32 && ip.To4() != nil {
+				return ip.To4().String()
+			}
+			return netw.String()
+		}
+	}
+	ip := net.ParseIP(addr)
+	if ip != nil && ip.To4() != nil {
+		return ip.To4().String()
+	}
+	return addr
+}
+
+// upAliasesDosGruposDeHosts migra os dados de host_groups para fw_aliases e port_forwards para fw_encaminhamentos (migração 104).
+func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
+	// 1. host_groups -> fw_aliases
+	var hgExists int
+	_ = tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='host_groups'`).Scan(&hgExists)
+	if hgExists > 0 {
+		chavesExistentes := make(map[string]bool)
+		rowsEx, err := tx.Query(`SELECT nome_chave FROM fw_aliases`)
+		if err == nil {
+			for rowsEx.Next() {
+				var k string
+				if err := rowsEx.Scan(&k); err == nil {
+					chavesExistentes[k] = true
+				}
+			}
+			rowsEx.Close()
+		}
+
+		rowsHG, err := tx.Query(`
+			SELECT id, name, description, hosts, created_at, updated_at
+			FROM host_groups
+			ORDER BY created_at ASC, id ASC`)
+		if err == nil {
+			defer rowsHG.Close()
+			for rowsHG.Next() {
+				var id, name, desc, hostsJSON, createdAt, updatedAt string
+				if err := rowsHG.Scan(&id, &name, &desc, &hostsJSON, &createdAt, &updatedAt); err != nil {
+					continue
+				}
+
+				finalName := strings.TrimSpace(name)
+				if isNomeAliasReservadoMigracao(finalName) {
+					finalName = fmt.Sprintf("%s (grupo)", finalName)
+				}
+
+				chaveBase := strings.ToLower(finalName)
+				chave := chaveBase
+				suf := 2
+				for chavesExistentes[chave] {
+					finalName = fmt.Sprintf("%s (%d)", name, suf)
+					chave = strings.ToLower(finalName)
+					suf++
+				}
+				chavesExistentes[chave] = true
+
+				var rawHosts []string
+				if hostsJSON != "" {
+					_ = json.Unmarshal([]byte(hostsJSON), &rawHosts)
+				}
+				var normHosts []string
+				for _, h := range rawHosts {
+					norm := normalizarItemEnderecoMigracao(h)
+					if norm != "" {
+						normHosts = append(normHosts, norm)
+					}
+				}
+				if normHosts == nil {
+					normHosts = []string{}
+				}
+				itensJSON, _ := json.Marshal(normHosts)
+
+				if _, err := tx.Exec(`
+					INSERT OR IGNORE INTO fw_aliases (
+						id, nome, nome_chave, tipo, descricao, itens, criado_em, atualizado_em
+					) VALUES (?, ?, ?, 'enderecos', ?, ?, ?, ?)`,
+					id, finalName, chave, desc, string(itensJSON), createdAt, updatedAt,
+				); err != nil {
+					return fmt.Errorf("migrar host_group %q para fw_aliases: %w", id, err)
+				}
+			}
+		}
+	}
+
+	// 2. setting port_forwards -> fw_encaminhamentos
+	type legacyPortForward struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Enabled   bool   `json:"enabled"`
+		Proto     string `json:"proto"`
+		Interface string `json:"interface"`
+		ExtPort   int    `json:"ext_port"`
+		DestIP    string `json:"dest_ip"`
+		DestPort  int    `json:"dest_port"`
+	}
+
+	var pfRaw string
+	err := tx.QueryRow(`SELECT value FROM settings WHERE key = 'port_forwards'`).Scan(&pfRaw)
+	if err == nil && pfRaw != "" && pfRaw != "[]" {
+		var forwards []legacyPortForward
+		if err := json.Unmarshal([]byte(pfRaw), &forwards); err == nil {
+			for pos, fwd := range forwards {
+				id := strings.TrimSpace(fwd.ID)
+				if id == "" {
+					id = uuid.NewString()
+				}
+				nome := strings.TrimSpace(fwd.Name)
+				if fwd.Interface != "" {
+					if nome != "" {
+						nome += fmt.Sprintf(" (interface %s ignorada na conversão)", fwd.Interface)
+					} else {
+						nome = fmt.Sprintf("(interface %s ignorada na conversão)", fwd.Interface)
+					}
+				}
+
+				ativoInt := 0
+				if fwd.Enabled {
+					ativoInt = 1
+				}
+
+				proto := strings.ToLower(strings.TrimSpace(fwd.Proto))
+				if proto != "tcp" && proto != "udp" {
+					proto = "tcp"
+				}
+
+				destIP := normalizarItemEnderecoMigracao(fwd.DestIP)
+
+				if _, err := tx.Exec(`
+					INSERT OR IGNORE INTO fw_encaminhamentos (
+						id, nome, ativo, proto, porta_externa, ip_destino, porta_destino, posicao
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					id, nome, ativoInt, proto, fwd.ExtPort, destIP, fwd.DestPort, pos,
+				); err != nil {
+					return fmt.Errorf("migrar port_forward %q para fw_encaminhamentos: %w", id, err)
+				}
+			}
+		}
+	}
+
 	return nil
 }
