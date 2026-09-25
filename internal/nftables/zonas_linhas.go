@@ -20,6 +20,9 @@ type Linha struct {
 	DescChave string            `json:"desc_chave"` // chave i18n da descrição das travadas/padrões/implícitas
 	DescVars  map[string]string `json:"desc_vars,omitempty"`
 	Nft       []LinhaNft        `json:"nft"` // cada regra nft que esta linha gera
+	Pacotes   uint64            `json:"pacotes,omitempty"`
+	Bytes     uint64            `json:"bytes,omitempty"`
+	Medido    bool              `json:"medido,omitempty"`
 }
 
 // LinhaNft descreve uma regra individual emitida no nftables, sem o prefixo "add rule inet linkguard <chain>".

@@ -130,11 +130,59 @@ type Service struct {
 	// a expiração podem restaurar o mesmo snapshot duas vezes, ou uma
 	// mutação nova abrir janela no meio de uma reversão.
 	mu sync.Mutex
+
+	// fonteInsumos fornece os fatos dinâmicos do firewall por zonas (§2.8).
+	fonteInsumos FonteInsumos
 }
+
+// FonteInsumos fornece os fatos dinâmicos do firewall por zonas (§2.8).
+type FonteInsumos func(ctx context.Context) (nftables.Insumos, error)
 
 // NewService creates a firewallrules Service.
 func NewService(db *storage.DB, nft *nftables.Service) *Service {
 	return &Service{db: db, nft: nft, now: time.Now, monoNow: time.Now}
+}
+
+// SetFonteInsumos configura a fonte de insumos dinâmicos do firewall por zonas.
+func (s *Service) SetFonteInsumos(f FonteInsumos) {
+	s.fonteInsumos = f
+}
+
+// insumos carrega os fatos dinâmicos e preenche os objetos existentes no nftables.
+func (s *Service) insumos(ctx context.Context) (nftables.Insumos, error) {
+	var ins nftables.Insumos
+	if s.fonteInsumos != nil {
+		var err error
+		ins, err = s.fonteInsumos(ctx)
+		if err != nil {
+			return ins, fmt.Errorf("obter insumos do firewall: %w", err)
+		}
+	}
+	if s.nft != nil {
+		existentes, err := s.nft.ObjetosExistentes(ctx)
+		if err != nil {
+			return ins, fmt.Errorf("ler objetos existentes do nftables: %w", err)
+		}
+		if len(ins.Existentes.Chains) == 0 && len(ins.Existentes.Sets) == 0 {
+			ins.Existentes = existentes
+		}
+	}
+	return ins, nil
+}
+
+// saveNftSnapshot guarda o ruleset vivo em disco via setting nft_live_snapshot.
+func (s *Service) saveNftSnapshot(ctx context.Context) {
+	if s.nft == nil || s.db == nil {
+		return
+	}
+	rs, err := s.nft.PersistentRuleset(ctx)
+	if err != nil {
+		slog.Warn("não foi possível ler o ruleset do nftables para snapshot", "err", err)
+		return
+	}
+	if err := s.db.SetSetting(nftables.LiveSnapshotSettingKey, rs); err != nil {
+		slog.Warn("não foi possível salvar o snapshot do nftables", "err", err)
+	}
 }
 
 // SetAlerter liga o serviço de alertas depois da construção (o alerts.Service

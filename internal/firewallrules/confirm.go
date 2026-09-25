@@ -22,6 +22,7 @@ package firewallrules
 // sempre, sem volta remota.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,6 +30,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/google/uuid"
@@ -207,6 +209,25 @@ func canonicalState(st stateSnapshot) (string, error) {
 // que é a verdade (ver RevertSettled). Custa dois SELECTs e dois Marshal —
 // barato o bastante para rodar na trava de toda mutação.
 func (s *Service) stateMatchesSnapshot(snapshot string) (bool, error) {
+	var header snapshotHeader
+	if err := json.Unmarshal([]byte(snapshot), &header); err != nil {
+		return false, fmt.Errorf("snapshot da mudança pendente ilegível: %w", err)
+	}
+	if header.Formato == 2 {
+		var snap2 snapshotV2
+		if err := json.Unmarshal([]byte(snapshot), &snap2); err != nil {
+			return false, fmt.Errorf("snapshot v2 da mudança pendente ilegível: %w", err)
+		}
+		aplicada, existe, err := s.db.CarregarConfigAplicada()
+		if err != nil {
+			return false, err
+		}
+		if !existe {
+			return false, nil
+		}
+		return bytes.Equal(fwmodel.Canonico(aplicada), fwmodel.Canonico(snap2.Config)), nil
+	}
+
 	var want stateSnapshot
 	if err := json.Unmarshal([]byte(snapshot), &want); err != nil {
 		return false, fmt.Errorf("snapshot da mudança pendente ilegível: %w", err)
@@ -382,24 +403,46 @@ func IsWindowConflict(err error) bool {
 // aqui, porque o operador acredita que o estado anterior voltou. Enquanto
 // esta limitação existir, a regra é: SÓ mutação de grupo/regra pode chamar
 // esta função (é a Task 4 que precisa garantir isso do lado dos handlers).
-func (s *Service) OpenConfirmWindow(_ context.Context, by, summary string) (string, error) {
+func (s *Service) OpenConfirmWindow(ctx context.Context, by, summary string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// O snapshot sai daqui de DENTRO, sob o mesmo mutex que grava o pendente
-	// (N-8). Tirá-lo fora do lock, no chamador, abria um intervalo em que uma
-	// mutação que NÃO abre janela (escopo forward, port forward, bloqueio por
-	// host) entrava no snapshot e seria desfeita por uma reversão que o
-	// operador acredita cirúrgica. São dois statements adjacentes, e agora não
-	// existe mais um caminho de chamada capaz de armar a janela com um
-	// snapshot de outro instante.
-	//
-	// Isso resolve a metade do instante do snapshot, e SÓ ela: a mutação alheia
-	// que aterrissa DEPOIS deste ponto continua fora do snapshot e continuava
-	// sendo apagada pela reversão (issue #20a). Quem fecha essa outra metade é a
-	// conferência do estado na hora de reverter — ver revertTarget e
-	// MarkWindowApplied; aqui não cabe, porque a mutação alheia ainda nem
-	// aconteceu.
+	if convertido, _ := s.db.GetSetting("fw_zonas_convertido"); convertido != "" {
+		aplicada, existe, err := s.db.CarregarConfigAplicada()
+		if err != nil {
+			return "", fmt.Errorf("carregar config aplicada para snapshot: %w", err)
+		}
+		if !existe {
+			aplicada, err = s.db.CarregarConfigEmEdicao()
+			if err != nil {
+				return "", fmt.Errorf("carregar config em edição para snapshot: %w", err)
+			}
+		}
+
+		var perfis []perfilVPN
+		if peers, err := s.db.ListWireGuardPeers(); err == nil {
+			for _, peer := range peers {
+				perfis = append(perfis, perfilVPN{
+					UserID:            peer.UserID,
+					AccessMode:        peer.AccessMode,
+					AllowedHostGroups: peer.AllowedHostGroups,
+					AllowedPorts:      peer.AllowedPorts,
+				})
+			}
+		}
+
+		snap := snapshotV2{
+			Formato:   2,
+			Config:    aplicada,
+			PerfisVPN: perfis,
+		}
+		snapshotBytes, err := json.Marshal(snap)
+		if err != nil {
+			return "", fmt.Errorf("serializar o snapshot v2: %w", err)
+		}
+		return s.openWindowLocked(string(snapshotBytes), by, summary)
+	}
+
 	snapshot, err := s.SnapshotState()
 	if err != nil {
 		return "", err
@@ -430,12 +473,26 @@ func (s *Service) openWindowLocked(snapshot, by, summary string) (string, error)
 	if snapshot == "" {
 		return "", fmt.Errorf("snapshot vazio: sem ele não há para onde reverter")
 	}
-	var parsed stateSnapshot
-	if err := json.Unmarshal([]byte(snapshot), &parsed); err != nil {
+	var header snapshotHeader
+	if err := json.Unmarshal([]byte(snapshot), &header); err != nil {
 		return "", fmt.Errorf("snapshot ilegível (a reversão dependeria dele): %w", err)
 	}
-	if err := validateSnapshotGroups(parsed.Groups); err != nil {
-		return "", fmt.Errorf("janela de confirmação NÃO aberta, porque a reversão dela seria recusada: %w", err)
+	if header.Formato == 2 {
+		var snap2 snapshotV2
+		if err := json.Unmarshal([]byte(snapshot), &snap2); err != nil {
+			return "", fmt.Errorf("snapshot v2 ilegível (a reversão dependeria dele): %w", err)
+		}
+		if err := validateSnapshotV2(snap2); err != nil {
+			return "", fmt.Errorf("janela de confirmação NÃO aberta, porque a reversão dela seria recusada: %w", err)
+		}
+	} else {
+		var parsed stateSnapshot
+		if err := json.Unmarshal([]byte(snapshot), &parsed); err != nil {
+			return "", fmt.Errorf("snapshot ilegível (a reversão dependeria dele): %w", err)
+		}
+		if err := validateSnapshotGroups(parsed.Groups); err != nil {
+			return "", fmt.Errorf("janela de confirmação NÃO aberta, porque a reversão dela seria recusada: %w", err)
+		}
 	}
 
 	existing, err := s.db.GetPendingChange()
@@ -915,6 +972,23 @@ func (s *Service) RevertPendingOnBoot(ctx context.Context) error {
 	if p == nil {
 		return nil
 	}
+
+	var header snapshotHeader
+	_ = json.Unmarshal([]byte(p.Snapshot), &header)
+	if header.Formato != 2 {
+		if convertido, _ := s.db.GetSetting("fw_zonas_convertido"); convertido != "" {
+			slog.Warn("descartando janela legada de confirmação no boot pós-conversão", "id", p.ID, "summary", p.Summary)
+			_ = s.db.CreateAuditLog(&storage.AuditLog{
+				User:     "linkguard",
+				Action:   "fw.janela.descartada_upgrade",
+				Resource: "pending:" + p.ID,
+				Details:  "janela legada descartada após migração para firewall por zonas",
+			})
+			s.clearWindowMemory(p.ID)
+			return s.db.ClearPendingChange()
+		}
+	}
+
 	reason := "o LinkGuard reiniciou com a mudança ainda não confirmada"
 	if !s.now().Before(p.ExpiresAt) {
 		reason = "o LinkGuard reiniciou e o prazo de confirmação já havia terminado"
@@ -972,6 +1046,24 @@ func (s *Service) RevertPendingOnBoot(ctx context.Context) error {
 // nem apagar a regra que quebra o reconcile, nem desligar o grupo, nem
 // confirmar, nem reverter.
 func (s *Service) revert(ctx context.Context, p *storage.PendingChange, reason string, alert bool) error {
+	var header snapshotHeader
+	_ = json.Unmarshal([]byte(p.Snapshot), &header)
+	if header.Formato == 2 {
+		return s.revertV2(ctx, p, reason, alert)
+	}
+
+	if convertido, _ := s.db.GetSetting("fw_zonas_convertido"); convertido != "" {
+		slog.Warn("descartando janela legada de confirmação pós-conversão", "id", p.ID, "summary", p.Summary)
+		_ = s.db.CreateAuditLog(&storage.AuditLog{
+			User:     "linkguard",
+			Action:   "fw.janela.descartada_upgrade",
+			Resource: "pending:" + p.ID,
+			Details:  "janela legada descartada após migração para firewall por zonas",
+		})
+		s.clearWindowMemory(p.ID)
+		return s.db.ClearPendingChange()
+	}
+
 	// Retomada: a reversão deste pendente já tinha começado, e a marca só é
 	// gravada DEPOIS de a transação de restauração ter commitado. Então o banco
 	// já está no estado anterior e o que restou é a reconciliação — o passo
