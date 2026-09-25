@@ -539,7 +539,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	var netSvc netsvc.Provider = unboundSvc
 	trafficSvc := hosttraffic.NewService(exec)
 	hostSvc := hosts.NewService(exec, db, nftSvc)
-	netifSvc := netif.NewService(exec, db, linkSvc)
+	netifSvc := netif.NewService(exec, db, func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) })
 	// Regra que cita uma interface inexistente carrega no nft SEM ERRO e nunca
 	// casa — o painel mostra a regra ativa e ela não protege nada. Aconteceu em
 	// produção (reshuffle de PCI, enp4s0 → enp5s0). Esta ligação é o que permite
@@ -663,7 +663,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// cadastrado a lista passa a ser a do uplink derivado da plataforma, e a
 	// proteção de entrada (mais a tela de exposição) deixa de dizer "sem WAN
 	// conhecida" numa máquina que tem uma.
-	nftSvc.SetWANInterfacesSource(func() ([]string, error) { return wansEfetivas(db, plat) })
+	nftSvc.SetWANInterfacesSource(func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) })
 
 	rrdSvc := tsdb.NewService(db)
 
@@ -723,7 +723,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// escreve. Sem esta linha ele retorna cedo com lista vazia numa VM de
 	// nuvem, isto é, fica cego exatamente na plataforma em que o NAT passou a
 	// ser escrito sem ninguém cadastrar link nenhum.
-	metricsCollector.SetWANSource(func() ([]string, error) { return wansEfetivas(db, plat) })
+	metricsCollector.SetWANSource(func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) })
 	backupSched := backup.NewScheduler(db, secretsSvc, notifySvc, alertSvc, version)
 	journalSched := monitoring.NewJournalScheduler(metricsCollector)
 	updatesSched := monitoring.NewUpdatesScheduler(metricsCollector)
@@ -808,8 +808,8 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		// A MESMA derivação que o firewall usa para decidir o que escrever: a
 		// tela e o kernel não podem discordar sobre quais são as WANs desta
 		// máquina. Ver cmd/linkguard-cloud/uplink.go.
-		WANSource: func() ([]string, error) { return wansEfetivas(db, plat) },
-		Uplink:    func() handlers.UplinkView { return uplinkParaTela(db, plat) },
+		WANSource: func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) },
+		Uplink:    func(ctx context.Context) handlers.UplinkView { return uplinkParaTela(ctx, exec, plat) },
 		WireGuard: wgSvc,
 		QoS:       qosSvc,
 	}, db, exec, linkSvc, iptSvc, routeSvc, failoverSvc, balancerSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, quotaSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
@@ -1108,7 +1108,7 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			// sem a linha de masquerade — que é exatamente o que acontecia
 			// antes desta entrega. A reconciliação logo abaixo, no mesmo boot,
 			// escreve a regra assim que a leitura voltar.
-			wanInterfaces, err := wansEfetivas(db, s.plat)
+			wanInterfaces, err := wansEfetivas(ctx, s.exec, s.plat)
 			if err != nil {
 				slog.Warn("não foi possível derivar as WANs para o bootstrap da tabela; ela nasce sem a regra de NAT e a reconciliação seguinte a escreve", "err", err)
 				wanInterfaces = nil
@@ -1154,7 +1154,7 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			// escrever. Erro de leitura deixa a lista vazia de propósito: a
 			// guarda então mantém a regra que já estiver valendo, em vez de
 			// derrubá-la por causa de um SELECT que falhou.
-			enabledWANs, err := wansEfetivas(db, s.plat)
+			enabledWANs, err := wansEfetivas(ctx, s.exec, s.plat)
 			if err != nil {
 				slog.Warn("não foi possível derivar as WANs no boot; as reconciliações deste ciclo seguem com lista vazia e nada é derrubado", "err", err)
 				enabledWANs = nil

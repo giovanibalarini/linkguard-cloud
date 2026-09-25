@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
@@ -65,15 +64,11 @@ func newTestDB(t *testing.T) *storage.DB {
 	return db
 }
 
-func TestServiceListAssignsRoleFromConfiguredLinks(t *testing.T) {
+func TestServiceListMarksTheUplinkAsWAN(t *testing.T) {
 	exec := &fakeExec{linkJSON: sampleLinkJSON, addrJSON: sampleAddrJSON}
 	db := newTestDB(t)
-	linkSvc := links.NewService(db)
-	if err := linkSvc.Create(&storage.Link{ID: "wan1", Name: "WAN", Interface: "wlp2s0", Weight: 1}); err != nil {
-		t.Fatalf("seed link: %v", err)
-	}
 
-	svc := NewService(exec, db, linkSvc)
+	svc := NewService(exec, db, func() ([]string, error) { return []string{"wlp2s0"}, nil })
 	views, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -84,36 +79,28 @@ func TestServiceListAssignsRoleFromConfiguredLinks(t *testing.T) {
 		byName[v.Name] = v
 	}
 	if wl := byName["wlp2s0"]; wl.Role != RoleWAN {
-		t.Errorf("wlp2s0: expected RoleWAN (matches configured Link.Interface), got %v", wl.Role)
+		t.Errorf("wlp2s0: expected RoleWAN (it is the uplink), got %v", wl.Role)
 	}
 	if en := byName["enp0s31f6"]; en.Role != RoleUnassigned {
-		t.Errorf("enp0s31f6: expected RoleUnassigned (no Link, not the LAN bridge), got %v", en.Role)
+		t.Errorf("enp0s31f6: expected RoleUnassigned, got %v", en.Role)
 	}
 }
 
-// TestServiceListPopulatesGatewayFromConfiguredLink: o gateway não aparece no
-// `ip addr`; quem o conhece é o Link cadastrado (usado pelo balanceador para
-// montar a rota), e a tela mostraria o campo em branco sem este repasse.
-func TestServiceListPopulatesGatewayFromConfiguredLink(t *testing.T) {
+// A fonte de WANs falhar (a rota default não respondeu) não pode derrubar a
+// listagem: o papel é rótulo de tela.
+func TestServiceListSurvivesAFailingWANSource(t *testing.T) {
 	exec := &fakeExec{linkJSON: sampleLinkJSON, addrJSON: sampleAddrJSON}
 	db := newTestDB(t)
-	linkSvc := links.NewService(db)
-	if err := linkSvc.Create(&storage.Link{ID: "wan1", Name: "WAN", Interface: "wlp2s0", Weight: 1, Gateway: "192.168.3.1"}); err != nil {
-		t.Fatalf("seed link: %v", err)
-	}
 
-	svc := NewService(exec, db, linkSvc)
+	svc := NewService(exec, db, func() ([]string, error) { return nil, errors.New("ip route falhou") })
 	views, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-
-	byName := make(map[string]IfaceView, len(views))
 	for _, v := range views {
-		byName[v.Name] = v
-	}
-	if wl := byName["wlp2s0"]; wl.Gateway != "192.168.3.1" {
-		t.Errorf("wlp2s0: esperava Gateway=192.168.3.1 (do Link configurado), veio %q", wl.Gateway)
+		if v.Role == RoleWAN {
+			t.Errorf("%s virou WAN sem fonte que respondesse", v.Name)
+		}
 	}
 }
 
@@ -123,9 +110,7 @@ func TestServiceListAppliesStoredAlias(t *testing.T) {
 	if err := db.SetSetting("interface_aliases", `{"wlp2s0":"WAN Principal"}`); err != nil {
 		t.Fatalf("seed alias: %v", err)
 	}
-	linkSvc := links.NewService(db)
-
-	svc := NewService(exec, db, linkSvc)
+	svc := NewService(exec, db, nil)
 	views, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -140,9 +125,7 @@ func TestServiceListAppliesStoredAlias(t *testing.T) {
 func TestServiceListMergesErrorDroppedCounters(t *testing.T) {
 	exec := &fakeExec{linkJSON: sampleLinkJSON, addrJSON: sampleAddrJSON, netDev: sampleProcNetDev}
 	db := newTestDB(t)
-	linkSvc := links.NewService(db)
-
-	svc := NewService(exec, db, linkSvc)
+	svc := NewService(exec, db, nil)
 	views, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List: %v", err)

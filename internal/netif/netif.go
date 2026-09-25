@@ -23,8 +23,8 @@ const (
 	AddrModeNone   AddrMode = "none"
 )
 
-// Role is a display label, not behavior — the real WAN designation comes
-// from links.Link, which this package's Service cross-references. Never treated as authoritative on its own.
+// Role is a display label, not behavior — the WAN is whatever the product's
+// single WAN source (the uplink) says. Never treated as authoritative on its own.
 type Role string
 
 const (
@@ -40,8 +40,7 @@ type Address struct {
 	CIDR   string `json:"cidr"`
 }
 
-// Iface is one network interface. Name is the stable identifier — the same
-// string internal/links.Link.Interface already references.
+// Iface is one network interface. Name is the stable identifier.
 type Iface struct {
 	Name        string   `json:"name"`
 	Kind        Kind     `json:"kind"`
@@ -51,8 +50,7 @@ type Iface struct {
 	VLANID      int      `json:"vlan_id,omitempty"` // vlan: 1-4094
 	Members     []string `json:"members,omitempty"` // bridge: member interface names
 	AddrMode    AddrMode `json:"addr_mode"`
-	CIDR        string   `json:"cidr,omitempty"`    // static: ex. "192.168.3.3/24"
-	Gateway     string   `json:"gateway,omitempty"` // do Link cadastrado, quando houver
+	CIDR        string   `json:"cidr,omitempty"` // static: ex. "192.168.3.3/24"
 	Role        Role     `json:"role"`
 }
 

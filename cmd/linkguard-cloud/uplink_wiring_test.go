@@ -4,9 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -84,25 +82,5 @@ func TestOBootDerivaAsWANsPelaFonteUnica(t *testing.T) {
 		t.Error("main.go voltou a derivar o PathMTU de uplinkEfetivo: um link cadastrado pela tela " +
 			"passa a zerar a MTU do caminho, e em hairpin isso não devolve o `rt mtu` — deixa a " +
 			"chain de ajuste de MSS VAZIA")
-	}
-}
-
-// TestONucleoNaoVoltaATerCopiaDoLacoDeLinks: o filtro "link habilitado com
-// interface" tinha QUATRO cópias antes desta entrega, e é justamente ele que
-// aprendeu a plataforma. Uma quinta cópia — ou uma das quatro ressuscitada —
-// seria um consumidor que não enxerga o uplink implícito, isto é, uma parte do
-// produto discordando da outra sobre quais são as WANs desta máquina.
-func TestONucleoNaoVoltaATerCopiaDoLacoDeLinks(t *testing.T) {
-	_, thisFile, ok := localizar()
-	if !ok {
-		t.Fatal("não foi possível localizar o arquivo de teste")
-	}
-	b, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "main.go"))
-	if err != nil {
-		t.Fatalf("ler main.go: %v", err)
-	}
-	if strings.Contains(string(b), "l.Enabled && l.Interface !=") {
-		t.Error("main.go voltou a filtrar os links à mão: a derivação canônica é wansEfetivas, " +
-			"em uplink.go, e é a única que conhece o uplink implícito")
 	}
 }

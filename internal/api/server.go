@@ -147,7 +147,7 @@ type Config struct {
 	// Uplink responde o que a tela de Links mostra quando ninguém cadastrou
 	// nada. Nil responde "não sei", e o painel simplesmente não mostra o
 	// cartão. Ver handlers.UplinkView.
-	Uplink func() handlers.UplinkView
+	Uplink func(context.Context) handlers.UplinkView
 	// DomainRouting coordena intenção persistida e runtime dnstap/nft. Como o
 	// roteador nasce em New, ele também precisa chegar pela Config.
 	DomainRouting *domainrouting.Coordinator

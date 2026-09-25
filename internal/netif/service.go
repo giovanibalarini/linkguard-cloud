@@ -6,28 +6,30 @@ import (
 	"fmt"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
-	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 const interfaceAliasSettingKey = "interface_aliases" // same key as internal/api/handlers/system.go — do not duplicate the mechanism, only this small read
 
 // Service builds the live interface inventory: kernel state (via `ip -j`)
-// merged with configured Role (from links.Service) and stored aliases.
+// merged with Role (the uplink is the WAN) and stored aliases.
 //
 // Só leitura. A versão on-prem editava o endereçamento das placas
 // (systemd-networkd, com janela de confirmar-ou-reverter) e fixava nomes por
 // MAC; na nuvem a placa é da Oracle — endereço, rota e nome vêm da VCN — e
 // editar isso por fora do console só produz divergência.
 type Service struct {
-	exec    firewall.Executor
-	db      *storage.DB
-	linkSvc *links.Service
+	exec firewall.Executor
+	db   *storage.DB
+	// wans é a fonte única de "quais são as WANs desta máquina" (o uplink).
+	// Nil = nenhuma placa marcada como WAN.
+	wans func() ([]string, error)
 }
 
-// NewService creates a netif Service.
-func NewService(exec firewall.Executor, db *storage.DB, linkSvc *links.Service) *Service {
-	return &Service{exec: exec, db: db, linkSvc: linkSvc}
+// NewService creates a netif Service. wans is the product's single WAN source
+// (cmd/linkguard-cloud's wansEfetivas).
+func NewService(exec firewall.Executor, db *storage.DB, wans func() ([]string, error)) *Service {
+	return &Service{exec: exec, db: db, wans: wans}
 }
 
 // List returns every interface the kernel currently knows about, with Role
@@ -57,16 +59,13 @@ func (s *Service) List(ctx context.Context) ([]IfaceView, error) {
 	counters := parseProcNetDev(netDevOut)
 	views := mergeLinks(links_, addrs)
 
-	wanNames, lanNames, linkGateways := s.roleSets()
+	wanNames := s.wanSet()
 	aliases := s.aliases()
 
 	for i := range views {
 		name := views[i].Name
-		switch {
-		case wanNames[name]:
+		if wanNames[name] {
 			views[i].Role = RoleWAN
-		case lanNames[name]:
-			views[i].Role = RoleLAN
 		}
 		if a, ok := aliases[name]; ok {
 			views[i].Alias = a
@@ -77,38 +76,27 @@ func (s *Service) List(ctx context.Context) ([]IfaceView, error) {
 			views[i].Live.RxDropped = c.RxDropped
 			views[i].Live.TxDropped = c.TxDropped
 		}
-		// O gateway não aparece no `ip addr`; quem o conhece é o Link
-		// cadastrado, que o balanceador usa para montar a rota.
-		if gw, ok := linkGateways[name]; ok {
-			views[i].Gateway = gw
-		}
 	}
 
 	return views, nil
 }
 
-// roleSets returns the interface names that count as WAN (any interface
-// referenced by a configured Link) and LAN (none on the cloud gateway since
-// DHCP left: the private network belongs to the VCN), plus the gateway each
-// configured Link already knows
-// (used by the balancer to build its routes) keyed by interface name. Role
-// is a label — see spec §5.1 — so a lookup miss is not an error, it just
-// leaves the interface Unassigned / the gateway empty.
-func (s *Service) roleSets() (wan, lan map[string]bool, gateway map[string]string) {
-	wan = map[string]bool{}
-	lan = map[string]bool{}
-	gateway = map[string]string{}
-
-	if configuredLinks, err := s.linkSvc.List(); err == nil {
-		for _, l := range configuredLinks {
-			wan[l.Interface] = true
-			if l.Gateway != "" {
-				gateway[l.Interface] = l.Gateway
-			}
-		}
+// wanSet devolve as placas que contam como WAN. Erro da fonte deixa o
+// conjunto vazio: o papel é rótulo de tela (spec §5.1), e a listagem não pode
+// falhar porque a rota default não respondeu.
+func (s *Service) wanSet() map[string]bool {
+	out := map[string]bool{}
+	if s.wans == nil {
+		return out
 	}
-
-	return wan, lan, gateway
+	ifaces, err := s.wans()
+	if err != nil {
+		return out
+	}
+	for _, i := range ifaces {
+		out[i] = true
+	}
+	return out
 }
 
 // aliases returns the stored interface_aliases map. Reuses the exact same

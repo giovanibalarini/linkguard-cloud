@@ -1,95 +1,67 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
-	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
-// O UPLINK IMPLÍCITO — por onde esta máquina sai para a Internet quando
-// ninguém cadastrou nada.
+// O UPLINK — por onde esta máquina sai para a Internet.
 //
-// ─── O PROBLEMA ──────────────────────────────────────────────────────────────
+// ─── NÃO HÁ CADASTRO ─────────────────────────────────────────────────────────
 //
-// Este é um produto de prateleira: quem instala numa VM de nuvem recém-criada
-// tem de receber uma máquina que FUNCIONA, pelo menos liberando tráfego por
-// NAT, e configurar o resto pela tela. Até aqui não era isso que acontecia. A
-// chain postrouting nascia vazia e nada saía, porque ReconcileMasquerade se
-// recusa — corretamente — a agir com a lista de WANs vazia, e a lista vinha da
-// tabela `links`, que numa instalação nova não tem linha nenhuma.
+// A versão on-prem tinha a tabela `links`: o admin cadastrava cada WAN, e o
+// cadastro vencia qualquer dedução. Na nuvem a saída é UMA e é da VCN, e a
+// versão cloud não tem mais links (nem failover, nem balanceamento). A pergunta
+// "quais são as WANs" passa a ter só duas fontes, nesta ordem:
 //
-// ─── O QUE ESTE ARQUIVO NÃO FAZ ──────────────────────────────────────────────
+//  1. A PLATAFORMA, quando o IMDS do provedor confirmou: a placa da VNIC
+//     primária e a MTU do caminho externo (que numa VM da OCI não é a da placa:
+//     a placa anuncia 9000 e o caminho aceita 1500).
+//  2. O KERNEL: a placa da rota default. É a fonte de reserva para o boot em
+//     que o IMDS não respondeu (cache invalidado, metadata fora do ar) — sem
+//     ela, uma falha passageira do IMDS esvaziaria a lista de WANs, e com a
+//     lista vazia a mss_clamp e a proteção de entrada da WAN nasceriam vazias
+//     e seriam persistidas assim.
 //
-// NÃO CADASTRA LINK, e isso é a decisão inteira. Um atalho que criasse a linha
-// sozinho cairia direto na armadilha: links.Service.Create SEMPRE atribui
-// TableID >= 100, e links.WANPaths devolve caminho para todo link com TableID
-// > 0 — a partir daí o produto começa a escrever `ip rule`, tabelas de policy
-// routing, marca de conexão por link, rota de retorno, monitor e failover numa
-// máquina de UMA VNIC, onde a rota default é do DHCP da fabric e não existe
-// segunda tabela a consultar.
+// A ROTA DEFAULT APONTA PARA FORA, POR DEFINIÇÃO. O medo que a versão on-prem
+// tinha de deduzir uplink ("a placa eleita pode ser a da LAN") vinha da eleição
+// por "primeira placa que não é de sistema". A rota default não é eleição: é o
+// próprio kernel dizendo por onde sai o que não é local.
 //
-// Sem linha em `links` nada disso liga, e não liga POR CONSTRUÇÃO — não por
-// uma guarda nova que alguém possa esquecer de manter. O uplink implícito
-// alimenta a fonte de verdade das WANs e para por aí.
+// ─── A GUARDA NÃO SAIU ───────────────────────────────────────────────────────
 //
-// ─── A GUARDA TAMBÉM NÃO SAIU ────────────────────────────────────────────────
-//
-// A recusa de ReconcileMasquerade com lista vazia continua exatamente onde
-// estava. O que mudou não foi a guarda: foi a lista deixar de chegar vazia numa
-// máquina em que a plataforma sabe responder.
+// Se nenhuma das duas responder, a lista é VAZIA, e lista vazia é o que mantém
+// ReconcileMasquerade se recusando a tocar na chain de NAT.
 
 // Uplink é por onde esta máquina sai para a Internet, e o que o caminho de
-// saída suporta.
-//
-// Valor e não ponteiro, zero-value == "não sei" — a mesma disciplina de
-// platform.Snapshot e de nftables.Zone: o caminho que esquecer de preencher se
-// comporta como o produto se comporta hoje.
+// saída suporta. Zero-value == "não sei".
 type Uplink struct {
-	// Interface é a placa de saída. "" = desconhecido, e desconhecido tem de
-	// continuar produzindo lista VAZIA, isto é, a guarda de ReconcileMasquerade
-	// intacta.
+	// Interface é a placa de saída. "" = desconhecido.
 	Interface string
 	// PathMTU é o que o CAMINHO até a Internet suporta, não o que a interface
-	// anuncia. 0 = desconhecido. Ver platform.NetFacts.PathMTU: numa VM da OCI
-	// a placa anuncia 9000 e o caminho aceita 1500.
+	// anuncia. 0 = desconhecido. Só a plataforma sabe responder isto.
 	PathMTU int
-	// Implicito diz que ninguém cadastrou nada: isto saiu da plataforma. É o
-	// que o painel mostra, e o que separa "o admin decidiu" de "o produto
-	// deduziu".
-	Implicito bool
+	// Origem é de onde a resposta veio: handlers.UplinkOrigem*.
+	Origem string
 }
 
 // uplinkDaPlataforma devolve o uplink que a plataforma AFIRMA, ou o zero-value.
 //
-// A GUARDA É O CORAÇÃO DESTA ENTREGA, e ela é estreita de propósito:
+// Kind.IsCloud() && Confidence == ConfidenceAuthoritative: só quando o IMDS do
+// provedor CONFIRMOU. "Achei que era nuvem por um sinal local" não é autoridade
+// para escolher a placa — para isso existe a rota default, logo abaixo.
 //
-//   - Kind.IsCloud() && Confidence == ConfidenceAuthoritative: só quando o IMDS
-//     do provedor CONFIRMOU. "Achei que era nuvem por um sinal local" não é
-//     autoridade suficiente para começar a mascarar tráfego sozinho;
-//   - !Capable().RoutedTransit: uma VNIC só. Com duas, "por onde se sai" tem
-//     mais de uma resposta, e quem responde é o admin, cadastrando o link;
-//   - Net.PrimaryInterface != "": sem nome de placa não há o que escrever.
-//
-// FORA DA NUVEM ISTO NUNCA DISPARA, e é a propriedade que protege a caixa de
-// produção. Numa Debian on-prem recém-instalada e sem link cadastrado,
-// Facts.Net.PrimaryInterface ESTÁ preenchido — é uma eleição: a rota default,
-// ou a primeira placa que não é de sistema — e pode perfeitamente apontar para
-// a interface da LAN. Derivar o uplink dali poria masquerade na placa de
-// DENTRO: NAT para o lado errado numa caixa que hoje, corretamente, não faz NAT
-// nenhum. Nuvem + autoritativo + VNIC única é o único conjunto em que a fabric
-// é a autoridade sobre qual é o lado de fora.
+// Com mais de uma VNIC a resposta continua sendo a PRIMÁRIA: é nela que a VCN
+// põe a rota default da instância, e a versão cloud não tem cadastro de WAN que
+// pudesse escolher outra.
 func uplinkDaPlataforma(plat platform.Snapshot) Uplink {
 	if !plat.Facts.Kind.IsCloud() || plat.Facts.Confidence != platform.ConfidenceAuthoritative {
-		return Uplink{}
-	}
-	// Capable() e não o campo Capabilities: instantâneo de formato velho ou
-	// incompleto devolve o conjunto PERMISSIVO, isto é, RoutedTransit true,
-	// isto é, nada de uplink implícito. O zero-value permissivo aqui significa
-	// "não deduza".
-	if plat.Capable().RoutedTransit {
 		return Uplink{}
 	}
 	if plat.Facts.Net.PrimaryInterface == "" {
@@ -100,119 +72,102 @@ func uplinkDaPlataforma(plat platform.Snapshot) Uplink {
 		// PathMTU e NÃO LinkMTU. Copiar a MTU da placa para cá seria o bug que
 		// mssclamp.go descreve: um ajuste de MSS para 8960 num caminho de 1500
 		// é pior do que nenhum, porque parece feito.
-		PathMTU:   plat.Facts.Net.PathMTU,
-		Implicito: true,
+		PathMTU: plat.Facts.Net.PathMTU,
+		Origem:  handlers.UplinkOrigemPlataforma,
 	}
 }
 
-// uplinkEfetivo resolve a precedência: O CADASTRO VENCE, SEMPRE.
+// uplinkEfetivo resolve a precedência: plataforma, depois kernel.
 //
-// Um link habilitado com interface é decisão explícita do admin, e o implícito
-// não pode competir com ela nem somar-se a ela. Lista não-vazia de links ⇒
-// zero-value, e os geradores seguem pelo caminho de sempre.
-//
-// Erro de leitura do banco também devolve zero-value, e aqui isso é o lado
-// SEGURO: um SELECT que falhou não é prova de que não há link cadastrado, e
-// deduzir um uplink por causa dele poria NAT numa caixa que já tem o seu.
-// Quem precisa que o erro viaje é wansEfetivas — ver lá.
-func uplinkEfetivo(db *storage.DB, plat platform.Snapshot) Uplink {
-	ifaces, err := linksHabilitados(db)
+// ERRO DE LEITURA PROPAGA. Obedecer a uma lista vazia que na verdade é um `ip
+// route` que falhou apagaria a proteção de entrada de uma caixa que a tem, e o
+// painel continuaria dizendo que ela está protegida. É o contrato que
+// internal/nftables/policy.go declara para a fonte de WANs.
+func uplinkEfetivo(ctx context.Context, exec firewall.Executor, plat platform.Snapshot) (Uplink, error) {
+	if u := uplinkDaPlataforma(plat); u.Interface != "" {
+		return u, nil
+	}
+	dev, err := placaDaRotaDefault(ctx, exec)
 	if err != nil {
-		slog.Warn("não foi possível ler os links para decidir o uplink; nenhum uplink implícito é derivado", "err", err)
-		return Uplink{}
+		return Uplink{}, err
 	}
-	if len(ifaces) > 0 {
-		return Uplink{}
+	if dev == "" {
+		return Uplink{}, nil
 	}
-	return uplinkDaPlataforma(plat)
+	// Sem a plataforma, a MTU do caminho é desconhecida: o ajuste de MSS fica
+	// de fora em vez de chutar.
+	return Uplink{Interface: dev, Origem: handlers.UplinkOrigemKernel}, nil
 }
 
 // wansEfetivas é A LISTA — a única derivação de "quais são as WANs desta
-// máquina" que o produto tem.
-//
-// Substitui as quatro cópias do mesmo laço que existiam em main.go (duas),
-// internal/api/handlers/helpers.go e internal/monitoring/driftchecks.go. Quatro
-// cópias de um filtro são quatro chances de o dia em que ele mudar alcançar só
-// três lugares; e é justamente aqui que ele muda, porque é esta função que
-// aprendeu a plataforma.
-//
-// ERRO DE LEITURA PROPAGA E NÃO VIRA LISTA VAZIA. Obedecer a uma lista vazia
-// que na verdade é um SELECT que falhou apagaria a proteção de entrada de uma
-// caixa que a tem, e o painel continuaria dizendo que ela está protegida. É o
-// contrato que internal/nftables/policy.go já declara para a fonte de WANs.
-func wansEfetivas(db *storage.DB, plat platform.Snapshot) ([]string, error) {
-	ifaces, err := linksHabilitados(db)
+// máquina" que o produto tem. Na versão cloud é o uplink, ou nada.
+func wansEfetivas(ctx context.Context, exec firewall.Executor, plat platform.Snapshot) ([]string, error) {
+	u, err := uplinkEfetivo(ctx, exec, plat)
 	if err != nil {
-		return nil, fmt.Errorf("ler os links para derivar as WANs desta máquina: %w", err)
+		return nil, fmt.Errorf("descobrir por onde esta máquina sai para a Internet: %w", err)
 	}
-	if len(ifaces) > 0 {
-		return ifaces, nil
+	if u.Interface == "" {
+		return nil, nil
 	}
-	if u := uplinkDaPlataforma(plat); u.Interface != "" {
-		return []string{u.Interface}, nil
-	}
-	// NENHUMA DAS DUAS FONTES RESPONDEU: lista vazia, e lista vazia é o que
-	// mantém ReconcileMasquerade se recusando a tocar na chain de NAT. É o
-	// estado de uma caixa on-prem recém-instalada, e ele não muda.
-	return nil, nil
+	return []string{u.Interface}, nil
 }
 
-// linksHabilitados é o filtro de sempre — link ligado, com interface —, agora
-// escrito uma vez só.
-func linksHabilitados(db *storage.DB) ([]string, error) {
-	ls, err := db.GetLinks()
+// rotaDefault é o pedaço de `ip -j route show default` que interessa.
+type rotaDefault struct {
+	Dev    string `json:"dev"`
+	Metric int    `json:"metric"`
+}
+
+// placaDaRotaDefault devolve a placa da rota default de menor métrica, ou ""
+// quando não há rota default.
+func placaDaRotaDefault(ctx context.Context, exec firewall.Executor) (string, error) {
+	out, err := exec.ExecuteRead(ctx, "ip", "-j", "route", "show", "default")
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("ip route show default: %w", err)
 	}
-	ifaces := make([]string, 0, len(ls))
-	for _, l := range ls {
-		if l.Enabled && l.Interface != "" {
-			ifaces = append(ifaces, l.Interface)
+	var rotas []rotaDefault
+	if err := json.Unmarshal([]byte(out), &rotas); err != nil {
+		return "", fmt.Errorf("ler a rota default: %w", err)
+	}
+	melhor := -1
+	for i, r := range rotas {
+		if r.Dev == "" {
+			continue
+		}
+		if melhor < 0 || r.Metric < rotas[melhor].Metric {
+			melhor = i
 		}
 	}
-	return ifaces, nil
+	if melhor < 0 {
+		return "", nil
+	}
+	return rotas[melhor].Dev, nil
 }
 
 // uplinkParaTela traduz o uplink efetivo no que o painel mostra.
 //
 // TRADUZ AQUI, e não no handler: quem sabe casar o instantâneo da plataforma
-// com o banco é este arquivo, e a camada HTTP não pode importar
+// com o kernel é este arquivo, e a camada HTTP não pode importar
 // internal/platform só para nomear a plataforma numa frase de tela.
-//
-// As três origens são DISTINTAS na tela, e a diferença importa para quem está
-// diagnosticando: "platform" explica por que a máquina sai para a Internet sem
-// nenhum link cadastrado; "link" diz que quem manda é o cadastro; "none" é a
-// caixa que de fato não tem saída configurada, e é o único dos três em que o
-// operador tem trabalho a fazer.
-func uplinkParaTela(db *storage.DB, plat platform.Snapshot) handlers.UplinkView {
+func uplinkParaTela(ctx context.Context, exec firewall.Executor, plat platform.Snapshot) handlers.UplinkView {
 	nome := string(plat.Facts.Kind)
 	if nome == "" {
 		nome = string(platform.KindUnknown)
 	}
 	v := handlers.UplinkView{Origem: handlers.UplinkOrigemNenhuma, Plataforma: nome}
-
-	if u := uplinkEfetivo(db, plat); u.Interface != "" {
-		v.Interface = u.Interface
-		v.PathMTU = u.PathMTU
-		v.Implicito = u.Implicito
-		v.Origem = handlers.UplinkOrigemPlataforma
-		return v
-	}
-
-	// Sem implícito, ou o admin cadastrou (e o cadastro vence), ou não há nada.
-	// wansEfetivas responde as duas com a mesma leitura que o firewall usa.
-	ifaces, err := wansEfetivas(db, plat)
+	u, err := uplinkEfetivo(ctx, exec, plat)
 	if err != nil {
-		// Erro de leitura NÃO vira "não há uplink": a tela diria que a máquina
-		// está sem saída por causa de um SELECT que falhou. Origem fica em
-		// "none" com interface vazia, que é o honesto "não sei responder
-		// agora", e o log diz por quê.
+		// Erro de leitura NÃO vira "não há uplink" na tela sem aviso: a origem
+		// fica em "none" com interface vazia, que é o honesto "não sei
+		// responder agora", e o log diz por quê.
 		slog.Warn("não foi possível derivar o uplink para a tela", "err", err)
 		return v
 	}
-	if len(ifaces) > 0 {
-		v.Interface = ifaces[0]
-		v.Origem = handlers.UplinkOrigemLink
+	if u.Interface == "" {
+		return v
 	}
+	v.Interface = u.Interface
+	v.PathMTU = u.PathMTU
+	v.Origem = u.Origem
 	return v
 }
