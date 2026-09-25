@@ -1,0 +1,218 @@
+{
+  "nftables": [
+    {
+      "metainfo": {
+        "version": "1.0.6",
+        "release_name": "Lester",
+        "json_schema_version": 1
+      }
+    },
+    {
+      "table": {
+        "family": "inet",
+        "name": "linkguard",
+        "handle": 1
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "blocklist",
+        "table": "linkguard",
+        "type": "ipv4_addr",
+        "handle": 2,
+        "flags": [
+          "interval"
+        ]
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "blocked_hosts",
+        "table": "linkguard",
+        "type": "ipv4_addr",
+        "handle": 3
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "blocked_macs",
+        "table": "linkguard",
+        "type": "ether_addr",
+        "handle": 4
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "linkguard",
+        "name": "input",
+        "handle": 1,
+        "type": "filter",
+        "hook": "input",
+        "prio": 0,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "linkguard",
+        "name": "forward",
+        "handle": 2,
+        "type": "filter",
+        "hook": "forward",
+        "prio": 0,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "linkguard",
+        "name": "zona_flut_in",
+        "handle": 3
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "linkguard",
+        "name": "grp_0a1b2c3d4e5f",
+        "handle": 4
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "linkguard",
+        "chain": "zona_flut_in",
+        "handle": 10,
+        "comment": "s:ping",
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "icmp",
+                  "field": "type"
+                }
+              },
+              "right": "echo-request"
+            }
+          },
+          {
+            "counter": {
+              "packets": 15,
+              "bytes": 1260
+            }
+          },
+          {
+            "accept": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "linkguard",
+        "chain": "forward",
+        "handle": 20,
+        "comment": "s:hosts-bloqueados",
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": "@blocked_hosts"
+            }
+          },
+          {
+            "counter": {
+              "packets": 10,
+              "bytes": 600
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "linkguard",
+        "chain": "forward",
+        "handle": 21,
+        "comment": "s:hosts-bloqueados",
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": "@blocked_hosts"
+            }
+          },
+          {
+            "counter": {
+              "packets": 5,
+              "bytes": 300
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "linkguard",
+        "chain": "input",
+        "handle": 30,
+        "comment": "r:uuid-casa",
+        "expr": [
+          {
+            "counter": {
+              "packets": 100,
+              "bytes": 8000
+            }
+          },
+          {
+            "accept": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "linkguard",
+        "chain": "input",
+        "handle": 40,
+        "comment": "regra-sem-contador",
+        "expr": [
+          {
+            "accept": null
+          }
+        ]
+      }
+    }
+  ]
+}
