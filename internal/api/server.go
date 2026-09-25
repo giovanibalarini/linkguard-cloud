@@ -20,12 +20,10 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
 	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
-	"github.com/giovanibalarini/linkguard-cloud/internal/balancer"
 	"github.com/giovanibalarini/linkguard-cloud/internal/blocklog"
 	"github.com/giovanibalarini/linkguard-cloud/internal/dnslog"
 	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
 	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
-	"github.com/giovanibalarini/linkguard-cloud/internal/failover"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/hostflows"
@@ -33,8 +31,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosttraffic"
 	"github.com/giovanibalarini/linkguard-cloud/internal/iptables"
-	"github.com/giovanibalarini/linkguard-cloud/internal/linkquota"
-	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/metrics"
 	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
 	"github.com/giovanibalarini/linkguard-cloud/internal/netif"
@@ -42,7 +38,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
 	"github.com/giovanibalarini/linkguard-cloud/internal/pktcapture"
-	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
 	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
@@ -57,11 +52,8 @@ type Server struct {
 	router       *chi.Mux
 	db           *storage.DB
 	exec         firewall.Executor
-	linkSvc      *links.Service
 	iptSvc       *iptables.Service
 	routeSvc     *routes.Service
-	failoverSvc  *failover.Service
-	balancerSvc  *balancer.Service
 	alertSvc     *alerts.Service
 	authSvc      *auth.Service
 	hostSvc      *hosts.Service
@@ -71,7 +63,6 @@ type Server struct {
 	netSvc       netsvc.Provider
 	notifySvc    *notify.Service
 	trafficSvc   *hosttraffic.Service
-	quotaSvc     *linkquota.Service
 	hostQuotaSvc *hostquota.Service
 	sysCol       *system.Collector
 	rrdSvc       *tsdb.Service
@@ -95,7 +86,6 @@ type Server struct {
 	fluxosSvc *hostflows.Servico
 	wgSvc     *wireguard.Service
 	netH      *handlers.NetsvcHandler
-	qosSvc    *qos.Service
 }
 
 // Config holds server configuration.
@@ -135,18 +125,13 @@ type Config struct {
 	// na mesma chamada, e um setter chamado depois chegaria com as rotas já
 	// registradas apontando para um campo nil.
 	HostQuota *hostquota.Service
-	// WANSource é a derivação canônica de "quais são as WANs desta máquina" —
-	// as cadastradas ou, numa VM de nuvem em que ninguém cadastrou nada, o
-	// uplink que o produto derivou da plataforma. Vem pela Config, e não por
+	// WANSource é a derivação canônica de "quais são as WANs desta máquina":
+	// o uplink (plataforma, ou a rota default). Vem pela Config, e não por
 	// setter, pelo mesmo motivo do DomainRouting logo abaixo: New monta o
-	// roteador na mesma chamada.
-	//
-	// Nil cai no laço de sempre sobre a tabela `links` — o comportamento de
-	// todo binário anterior a esta entrega. Ver handlers.fonteDeWANs.
+	// roteador na mesma chamada. Nil = nenhuma WAN.
 	WANSource func() ([]string, error)
-	// Uplink responde o que a tela de Links mostra quando ninguém cadastrou
-	// nada. Nil responde "não sei", e o painel simplesmente não mostra o
-	// cartão. Ver handlers.UplinkView.
+	// Uplink responde por onde esta máquina sai para a Internet. Nil responde
+	// "não sei". Ver handlers.UplinkView.
 	Uplink func(context.Context) handlers.UplinkView
 	// DomainRouting coordena intenção persistida e runtime dnstap/nft. Como o
 	// roteador nasce em New, ele também precisa chegar pela Config.
@@ -155,27 +140,22 @@ type Config struct {
 	// always supplies it; keeping it in Config avoids widening New's already
 	// large positional dependency list.
 	WireGuard *wireguard.Service
-	// QoS é o serviço compartilhado pelo handler e pela reconciliação de boot.
-	QoS *qos.Service
 }
 
 // New creates and wires up the HTTP server.
 func New(cfg Config, db *storage.DB, exec firewall.Executor,
-	linkSvc *links.Service, iptSvc *iptables.Service, routeSvc *routes.Service,
-	failoverSvc *failover.Service, balancerSvc *balancer.Service, alertSvc *alerts.Service, authSvc *auth.Service,
+	iptSvc *iptables.Service, routeSvc *routes.Service,
+	alertSvc *alerts.Service, authSvc *auth.Service,
 	hostSvc *hosts.Service, netifSvc *netif.Service, nftSvc *nftables.Service, frSvc *firewallrules.Service, netSvc netsvc.Provider,
-	notifySvc *notify.Service, trafficSvc *hosttraffic.Service, quotaSvc *linkquota.Service,
+	notifySvc *notify.Service, trafficSvc *hosttraffic.Service,
 	sysCol *system.Collector, rrdSvc *tsdb.Service, promReg *prometheus.Registry,
 	mon *monitoring.Collector, sec secrets.Secrets, aiClient *ai.Client, backupSched *backup.Scheduler) *Server {
 
 	s := &Server{
 		db:          db,
 		exec:        exec,
-		linkSvc:     linkSvc,
 		iptSvc:      iptSvc,
 		routeSvc:    routeSvc,
-		failoverSvc: failoverSvc,
-		balancerSvc: balancerSvc,
 		alertSvc:    alertSvc,
 		authSvc:     authSvc,
 		hostSvc:     hostSvc,
@@ -185,7 +165,6 @@ func New(cfg Config, db *storage.DB, exec firewall.Executor,
 		netSvc:      netSvc,
 		notifySvc:   notifySvc,
 		trafficSvc:  trafficSvc,
-		quotaSvc:    quotaSvc,
 		sysCol:      sysCol,
 		rrdSvc:      rrdSvc,
 		promReg:     promReg,
@@ -194,7 +173,6 @@ func New(cfg Config, db *storage.DB, exec firewall.Executor,
 		aiClient:    aiClient,
 		backupSched: backupSched,
 		webFS:       cfg.WebFS,
-		qosSvc:      cfg.QoS,
 	}
 
 	s.dnstapSvc = cfg.DNSTap
@@ -304,70 +282,25 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		r.With(require(auth.PermSystemRead)).Get("/api/system/traffic-retention", sysH.GetTrafficRetention)
 		r.With(require(auth.PermSystemWrite)).Put("/api/system/traffic-retention", sysH.SetTrafficRetention)
 
-		// Links
-		linksH := handlers.NewLinksHandler(s.linkSvc, s.db, s.nftSvc, s.routeSvc)
-		if cfg.DomainRouting != nil {
-			linksH.SetDomainRouting(cfg.DomainRouting)
-		}
-		if s.qosSvc != nil {
-			linksH.SetQosService(s.qosSvc)
-		}
-		// Mudar a interface de um link muda o escopo da medição de conversa
-		// (#115) — a regra casa por iifname. Sem esta ligação, o nome antigo
-		// ficaria na regra até o próximo boot, com a medição calada.
-		if s.fluxosSvc != nil {
-			linksH.SetFluxos(s.fluxosSvc)
-		}
-		// A lista de WANs que as reconciliações derivadas de link usam. Sem
-		// ela, apagar o último link numa VM de nuvem derrubaria o masquerade do
-		// uplink implícito em vez de voltar para ele.
-		if cfg.WANSource != nil {
-			linksH.SetWANSource(cfg.WANSource)
-		}
-		r.With(require(auth.PermLinksRead)).Get("/api/links", linksH.List)
-		r.With(require(auth.PermLinksWrite)).Post("/api/links", linksH.Create)
-		r.With(require(auth.PermLinksWrite)).Post("/api/links/auto-detect", linksH.AutoDetect)
-		r.With(require(auth.PermLinksRead)).Get("/api/links/{id}", linksH.Get)
-		r.With(require(auth.PermLinksWrite)).Put("/api/links/{id}", linksH.Update)
-		r.With(require(auth.PermLinksWrite)).Delete("/api/links/{id}", linksH.Delete)
-		if s.qosSvc != nil {
-			qosH := handlers.NewQosHandler(s.qosSvc, s.db)
-			registerQosRoutes(r, require, qosH)
-		}
-
-		// O uplink efetivo desta máquina — SOMENTE LEITURA, e sob a permissão
-		// de links porque é disso que ele fala. É a única forma de a tela
-		// explicar por que uma VM de nuvem sem link cadastrado está, mesmo
-		// assim, saindo para a Internet.
+		// Por onde esta máquina sai para a Internet — SOMENTE LEITURA, sob a
+		// permissão de interfaces porque é disso que ele fala: qual placa é a
+		// WAN, e o que o caminho dela suporta.
 		uplinkH := handlers.NewUplinkHandler(cfg.Uplink)
-		r.With(require(auth.PermLinksRead)).Get("/api/uplink", uplinkH.Get)
+		r.With(require(auth.PermInterfacesRead)).Get("/api/uplink", uplinkH.Get)
 
-		// Regras por domínio podem bloquear ou escolher uma WAN, mas seu dono no
-		// RBAC é Links: leitura acompanha links.read e toda mutação links.write.
+		// Bloqueio por domínio: é firewall, e o RBAC acompanha firewall.read e
+		// firewall.write.
 		domainTargetsH := handlers.NewDomainTargetsHandler(nil, s.db)
 		if cfg.DomainRouting != nil {
 			domainTargetsH = handlers.NewDomainTargetsHandler(cfg.DomainRouting, s.db)
 		}
 		registerDomainTargetRoutes(r, require, domainTargetsH)
 
-		// Franquia (cota de dados) por link — rota própria em vez de
-		// /api/links/quota para não conviver com o {id} acima.
-		quotaH := handlers.NewQuotaHandler(s.quotaSvc, s.db)
-		r.With(require(auth.PermLinksRead)).Get("/api/quotas", quotaH.List)
-		r.With(require(auth.PermLinksRead)).Get("/api/quotas/{id}/history", quotaH.History)
-		r.With(require(auth.PermLinksWrite)).Put("/api/quotas/{id}", quotaH.Save)
-		r.With(require(auth.PermLinksWrite)).Delete("/api/quotas/{id}", quotaH.Delete)
-
-		// Routes
+		// Rotas — só leitura. Na nuvem a rota é da VCN (a default vem do DHCP
+		// da Oracle); a tela mostra o que o kernel tem para diagnóstico.
 		routesH := handlers.NewRoutesHandler(s.routeSvc)
 		r.With(require(auth.PermRoutesRead)).Get("/api/routes", routesH.List)
 		r.With(require(auth.PermRoutesRead)).Get("/api/routes/rules", routesH.ListRules)
-		r.With(require(auth.PermRoutesWrite)).Post("/api/routes", routesH.AddRoute)
-		r.With(require(auth.PermRoutesWrite)).Put("/api/routes", routesH.UpdateRoute)
-		r.With(require(auth.PermRoutesWrite)).Delete("/api/routes", routesH.DeleteRoute)
-		r.With(require(auth.PermRoutesWrite)).Post("/api/routes/rules", routesH.AddRule)
-		r.With(require(auth.PermRoutesWrite)).Put("/api/routes/rules", routesH.UpdateRule)
-		r.With(require(auth.PermRoutesWrite)).Delete("/api/routes/rules", routesH.DeleteRule)
 
 		// iptables / firewall
 		iptH := handlers.NewIptablesHandler(s.iptSvc, s.db)
@@ -403,10 +336,9 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		// regra viva de terceiros — {"table":"filter","chain":"DOCKER-USER"}
 		// derruba o isolamento de containers; {"table":"nat",
 		// "chain":"POSTROUTING"} derruba o MASQUERADE do Docker. Nenhuma das
-		// duas tinha tela: o frontend só faz POST, no assistente de
-		// balanceamento WAN.
+		// duas tinha tela. O POST, cujo único usuário era o assistente de
+		// balanceamento de duas WANs, saiu junto com ele na versão cloud.
 		r.With(require(auth.PermFirewallRead)).Get("/api/firewall/backups", iptH.ListBackups)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/firewall/rules", iptH.CreateRule)
 
 		// nftables (native firewall management — replaces iptables)
 		nftH := handlers.NewNftablesHandler(s.nftSvc, s.db, s.frSvc)
@@ -423,8 +355,6 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/backups", nftH.ListBackups)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/backup", nftH.Backup)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/rollback", nftH.Rollback)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/wan-host", nftH.WanHost)
-		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/wan-host", nftH.WanHost)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/blocklist", nftH.Blocklist)
 		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/blocklist", nftH.Blocklist)
 		// The admin's own rules (Phase B, design spec §4.1): id-based CRUD
@@ -498,18 +428,6 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		r.With(require(auth.PermFirewallRead)).Get("/api/portforward", pfH.List)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/portforward", pfH.Upsert)
 		r.With(require(auth.PermFirewallWrite)).Delete("/api/portforward", pfH.Delete)
-
-		// Failover events
-		failH := handlers.NewFailoverHandler(s.failoverSvc)
-		r.With(require(auth.PermMonitoringRead)).Get("/api/failover/events", failH.ListEvents)
-
-		// Multi-WAN balancing (weighted multipath default route + scheduling)
-		routingH := handlers.NewRoutingHandler(s.balancerSvc, s.db)
-		r.With(require(auth.PermRoutesRead)).Get("/api/routing/balance", routingH.Status)
-		r.With(require(auth.PermRoutesWrite)).Put("/api/routing/balance", routingH.UpdateConfig)
-		r.With(require(auth.PermRoutesWrite)).Post("/api/routing/balance/apply", routingH.Apply)
-		r.With(require(auth.PermRoutesWrite)).Post("/api/routing/balance/confirm", routingH.Confirm)
-		r.With(require(auth.PermRoutesWrite)).Post("/api/routing/balance/rollback", routingH.Rollback)
 
 		// Alerts
 		alertsH := handlers.NewAlertsHandler(s.alertSvc, s.db)

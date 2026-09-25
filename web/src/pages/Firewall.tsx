@@ -14,7 +14,7 @@ import FirewallGroups from '../components/FirewallGroups';
 import BlockLog from '../components/firewall/BlockLog';
 import FirewallPosture from '../components/firewall/FirewallPosture';
 import HostGroupsTab from '../components/firewall/HostGroupsTab';
-import WanSteering from '../components/WanSteering';
+import DomainTargets from '../components/DomainTargets';
 import type { IptablesBackup, MsgLevel, NftChainInfo, SystemMetrics } from '../types';
 
 // A aba "blocks" (Bloqueios e direcionamento) se dissolveu: os dois bloqueios
@@ -27,7 +27,7 @@ import type { IptablesBackup, MsgLevel, NftChainInfo, SystemMetrics } from '../t
 // A postura vem logo depois da visão geral, e antes dos grupos: ela é a
 // pergunta de cima ("o que acontece com o tráfego que nenhuma regra
 // menciona?"), e as regras só fazem sentido depois de respondida.
-const TABS = ['overview', 'posture', 'groups', 'hostgroups', 'steering', 'portforward', 'blocklog', 'ruleset', 'backups'] as const;
+const TABS = ['overview', 'posture', 'groups', 'hostgroups', 'domains', 'portforward', 'blocklog', 'ruleset', 'backups'] as const;
 
 type Tab = (typeof TABS)[number];
 
@@ -165,7 +165,6 @@ export default function Firewall() {
         <FirewallOverview
           chains={overview}
           onOpenGroupsTab={() => setActiveTab('groups')}
-          onOpenSteeringTab={() => setActiveTab('steering')}
           onOpenPortForwardTab={() => setActiveTab('portforward')}
         />
       ) : activeTab === 'posture' ? (
@@ -174,8 +173,8 @@ export default function Firewall() {
         <FirewallGroups ifaces={ifaces} canWrite={canWrite} onMsg={notify} />
       ) : activeTab === 'hostgroups' ? (
         <HostGroupsTab canWrite={canWrite} onMsg={notify} />
-      ) : activeTab === 'steering' ? (
-        <WanSteering canWrite={canWrite} onMsg={notify} />
+      ) : activeTab === 'domains' ? (
+        <DomainTargets canEdit={can('firewall.write')} />
       ) : activeTab === 'portforward' ? (
         <PortForwarding ifaces={ifaces} canWrite={canWrite} onMsg={notify} />
       ) : activeTab === 'blocklog' ? (
@@ -188,7 +187,7 @@ export default function Firewall() {
       ) : (
         <>
           {/* I-1: Restore (`nft -f`) reloads everything the snapshot
-              captured — WAN steering, bloqueios, encaminhamentos de porta,
+              captured — bloqueios, encaminhamentos de porta,
               as chains estruturais — but suas regras personalizadas (aba
               "Grupos de regras") continuam vindo do banco de dados, não do
               snapshot: logo após restaurar, elas são reaplicadas por cima de

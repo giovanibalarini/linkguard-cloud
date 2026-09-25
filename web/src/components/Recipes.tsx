@@ -32,7 +32,6 @@ const recipes: Recipe[] = [
   { id: 'top-talkers', icon: Gauge, to: '/hosts', passos: 3 },
   { id: 'port-forward', icon: ArrowRightLeft, to: '/firewall', passos: 4 },
   { id: 'block-device', icon: ShieldOff, to: '/hosts', passos: 4 },
-  { id: 'balance-wan', icon: Network, to: '/links', passos: 3 },
   { id: 'secure-panel', icon: Lock, to: '/admin', passos: 4 },
 ];
 

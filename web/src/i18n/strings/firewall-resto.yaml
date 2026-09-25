@@ -83,24 +83,6 @@ fwx.toast.rollback.done:
 # As frases quebradas em head/tail existem porque o WAN2 e o nome da tela de
 # Hosts vão dentro de um <span> colorido no meio do parágrafo. A posição do
 # trecho destacado é a mesma nos dois idiomas.
-fwx.steering.line.head:
-  pt: "Estes hosts saem pela "
-  en: "These hosts go out through "
-fwx.steering.line.tail:
-  pt: "; os demais pela WAN1."
-  en: "; everything else goes through WAN1."
-fwx.steering.notFilter:
-  pt: "Isto não bloqueia nem libera nada — só escolhe por qual link o tráfego sai. Acontece antes de qualquer regra de grupo, na etapa de marcação (chain "
-  en: "This neither blocks nor allows anything — it only picks which link the traffic leaves through. It happens before any group rule, at the marking stage (chain "
-fwx.steering.revert.aria:
-  pt: "Reverter {ip} para a WAN1"
-  en: "Send {ip} back to WAN1"
-fwx.steering.hostsNote.head:
-  pt: "A tela de "
-  en: "The "
-fwx.steering.hostsNote.tail:
-  pt: " é onde a máquina é reconhecida pelo nome e MAC; a edição do direcionamento mora aqui, no Firewall."
-  en: " screen is where a machine is identified by name and MAC; steering itself is edited here, in the Firewall."
 
 # ─── Encaminhamento de portas ───────────────────────────────────────────────
 fwx.pf.help.1:
@@ -348,9 +330,6 @@ fwx.confirm.btn.revert:
 fwx.owner.nat:
   pt: "NAT (WANs)"
   en: "NAT (WANs)"
-fwx.owner.wan_steering:
-  pt: "Direcionamento por WAN"
-  en: "WAN steering"
 fwx.owner.ntp:
   pt: "NTP"
   en: "NTP"
@@ -425,9 +404,6 @@ desc.blocklist.to:
 desc.blocklist.from:
   pt: "Descarta tráfego vindo de destinos bloqueados"
   en: "Drops traffic coming from blocked destinations"
-desc.markHost:
-  pt: "Marca o host de origem com a WAN definida em Direcionamento por WAN"
-  en: "Marks the source host with the WAN set in WAN steering"
 desc.dnat:
   pt: "Encaminha {proto}/{porta} para {destino}"
   en: "Forwards {proto}/{porta} to {destino}"
@@ -613,3 +589,204 @@ fwx.hostgroups.delete_confirm:
   pt: "Excluir o grupo \"{name}\"? Se houver peers VPN usando este grupo, o acesso ZTNA deles será restrito."
   en: "Delete host group \"{name}\"? If any VPN peers are using this group, their ZTNA access will be restricted."
 
+# ─── Bloqueio por domínio (#123) ───────────────────────────────────────────
+# Veio da tela de Links, que saiu com o multi-WAN. Só a capacidade de
+# bloquear ficou; direcionar por WAN saiu junto.
+fwx.domains.title:
+  pt: "Bloqueio por domínio"
+  en: "Domain blocking"
+fwx.domains.subtitle:
+  pt: "Aprende os endereços nas respostas do DNS desta máquina e bloqueia o tráfego para eles, com validade limitada."
+  en: "Learns addresses from this machine's DNS answers and blocks traffic to them, for a limited time."
+fwx.domains.refresh:
+  pt: "Atualizar"
+  en: "Refresh"
+fwx.domains.add:
+  pt: "Novo alvo"
+  en: "New target"
+fwx.domains.ready:
+  pt: "reconciliado"
+  en: "reconciled"
+fwx.domains.notReady:
+  pt: "aguardando reconciliação"
+  en: "awaiting reconciliation"
+fwx.domains.runtimeAlive:
+  pt: "alimentador ativo"
+  en: "feeder active"
+fwx.domains.runtimeDown:
+  pt: "alimentador parado"
+  en: "feeder stopped"
+fwx.domains.observing:
+  pt: "observando o DNS"
+  en: "watching DNS"
+fwx.domains.notObserving:
+  pt: "coletor de DNS desligado"
+  en: "DNS collector off"
+fwx.domains.observingUnknown:
+  pt: "observação do DNS desconhecida"
+  en: "DNS observation unknown"
+fwx.domains.notObservingHelp:
+  pt: "O coletor de dnstap está desligado, então esta capacidade não recebe endereço nenhum: os domínios ativos não bloqueiam nada, e os zeros de rotatividade e último acesso abaixo NÃO querem dizer que ninguém acessou. Ligue o dnstap na tela de DNS."
+  en: "The dnstap collector is off, so this capability receives no addresses at all: active domains block nothing, and the zeros for rotation and last seen below do NOT mean nobody visited. Turn dnstap on in the DNS screen."
+fwx.domains.notMeasured:
+  pt: "sem medição"
+  en: "not measured"
+fwx.domains.kernelRead:
+  pt: "kernel conferido"
+  en: "kernel checked"
+fwx.domains.kernelUnknown:
+  pt: "kernel não conferido"
+  en: "kernel not checked"
+fwx.domains.dryRun:
+  pt: "ensaio global"
+  en: "global dry run"
+fwx.domains.readOnly:
+  pt: "somente leitura"
+  en: "read only"
+fwx.domains.empty:
+  pt: "Nenhum alvo de domínio configurado."
+  en: "No domain target configured."
+fwx.domains.caveat.title:
+  pt: "Limites que afetam o resultado"
+  en: "Limits that affect the result"
+fwx.domains.caveat.cdn:
+  pt: "CDN: um domínio pode dividir IP com outros serviços; bloquear esse IP pode afetá-los até a validade expirar. Use o ensaio e confira a rotação."
+  en: "CDN: a domain may share an IP with other services; blocking that IP can affect them until it expires. Use trial mode and inspect rotation."
+fwx.domains.caveat.encryptedDns:
+  pt: "DoH/DoT: só as respostas do resolvedor desta máquina são aprendidas. Quem usa DNS cifrado próprio não é coberto."
+  en: "DoH/DoT: only answers from this machine's resolver are learned. Clients using their own encrypted DNS are not covered."
+fwx.domains.caveat.vpn:
+  pt: "VCN: o DNS desta máquina atende quem está na VPN. As máquinas da VCN usam o resolvedor da Oracle, então para elas o bloqueio só vale para endereços que alguém da VPN já tenha resolvido."
+  en: "VCN: this machine's DNS serves VPN users. VCN machines use Oracle's resolver, so for them blocking only covers addresses someone on the VPN has already resolved."
+fwx.domains.caveat.fixedIp:
+  pt: "IP fixo ou acesso direto: sem uma resposta DNS observada não há aprendizado; use uma regra explícita de IP/CIDR."
+  en: "Fixed IP or direct access: without an observed DNS response nothing is learned; use an explicit IP/CIDR rule."
+fwx.domains.caveat.ipv6:
+  pt: "IPv6: o bloqueio aprende IPv4 e IPv6."
+  en: "IPv6: blocking learns both IPv4 and IPv6."
+fwx.domains.phase.active:
+  pt: "ativo"
+  en: "active"
+fwx.domains.phase.suspended:
+  pt: "suspenso"
+  en: "suspended"
+fwx.domains.phase.trial:
+  pt: "ensaio"
+  en: "trial"
+fwx.domains.cap.block:
+  pt: "bloquear"
+  en: "block"
+fwx.domains.cap.route:
+  pt: "direcionar (saiu com o multi-WAN)"
+  en: "route (removed with multi-WAN)"
+fwx.domains.action.promote:
+  pt: "Promover"
+  en: "Promote"
+fwx.domains.action.demote:
+  pt: "Voltar a ensaio"
+  en: "Return to trial"
+fwx.domains.action.edit:
+  pt: "Editar alvo"
+  en: "Edit target"
+fwx.domains.action.delete:
+  pt: "Excluir alvo"
+  en: "Delete target"
+fwx.domains.metric.intent:
+  pt: "intenção"
+  en: "intent"
+fwx.domains.metric.effective:
+  pt: "estado efetivo"
+  en: "effective state"
+fwx.domains.metric.index:
+  pt: "IPs no índice"
+  en: "index IPs"
+fwx.domains.metric.kernel:
+  pt: "IPs no kernel"
+  en: "kernel IPs"
+fwx.domains.metric.rotation:
+  pt: "rotação"
+  en: "rotation"
+fwx.domains.metric.lastLearned:
+  pt: "último aprendizado"
+  en: "last learned"
+fwx.domains.warn.mismatch:
+  pt: "índice e kernel divergentes"
+  en: "index and kernel differ"
+fwx.domains.warn.limit:
+  pt: "limite de {limit} endereços atingido"
+  en: "{limit}-address limit reached"
+fwx.domains.warn.overflows:
+  pt: "{n} endereços excederam o limite"
+  en: "{n} addresses exceeded the limit"
+fwx.domains.warn.rejected:
+  pt: "{n} respostas rejeitadas"
+  en: "{n} answers rejected"
+fwx.domains.warn.rejectedOwn:
+  pt: "{n} endereços próprios/locais recusados"
+  en: "{n} own/local addresses rejected"
+fwx.domains.warn.refcount:
+  pt: "{n} sobreposições sem vaga de referência"
+  en: "{n} overlaps had no reference slot"
+fwx.domains.form.createTitle:
+  pt: "Novo alvo de domínio"
+  en: "New domain target"
+fwx.domains.form.editTitle:
+  pt: "Editar alvo de domínio"
+  en: "Edit domain target"
+fwx.domains.form.domain:
+  pt: "Domínio"
+  en: "Domain"
+fwx.domains.form.note:
+  pt: "Observação"
+  en: "Note"
+fwx.domains.form.trialHelp:
+  pt: "Criação e edição nunca ativam a política. O alvo fica em ensaio até uma promoção explícita."
+  en: "Creation and editing never activate the policy. The target remains in trial until explicitly promoted."
+fwx.domains.promote.title:
+  pt: "Promover política para ativa"
+  en: "Promote policy to active"
+fwx.domains.promote.body:
+  pt: "A promoção passa a bloquear imediatamente os endereços já aprendidos e as próximas respostas DNS. Em CDN, IPs compartilhados podem afetar outros serviços até a validade expirar."
+  en: "Promotion immediately blocks learned addresses and future DNS answers. With a CDN, shared IPs may affect other services until they expire."
+fwx.domains.promote.suspended:
+  pt: "A intenção ficará ativa, mas o enforcement continuará suspenso até a dependência indicada se recuperar."
+  en: "The intent will become active, but enforcement remains suspended until the indicated dependency recovers."
+fwx.domains.promote.confirm:
+  pt: "Promover"
+  en: "Promote"
+fwx.domains.demote.title:
+  pt: "Voltar política a ensaio"
+  en: "Return policy to trial"
+fwx.domains.demote.body:
+  pt: "O enforcement deste alvo será removido com segurança; observação e métricas continuarão disponíveis."
+  en: "Enforcement for this target will be safely removed; observation and metrics remain available."
+fwx.domains.delete.title:
+  pt: "Excluir alvo de domínio"
+  en: "Delete domain target"
+fwx.domains.delete.body:
+  pt: "Excluir {domain}? Apenas o estado pertencente a este alvo será removido."
+  en: "Delete {domain}? Only state owned by this target will be removed."
+fwx.domains.delete.confirm:
+  pt: "Excluir"
+  en: "Delete"
+fwx.domains.reason.boot:
+  pt: "Suspenso: a inicialização ainda não concluiu a reconciliação do firewall."
+  en: "Suspended: startup has not finished reconciling the firewall."
+fwx.domains.reason.blockMissing:
+  pt: "Suspenso: o grupo sistêmico de bloqueio por domínio não existe."
+  en: "Suspended: the system domain-blocking group is missing."
+fwx.domains.reason.blockDisabled:
+  pt: "Suspenso: o grupo sistêmico de bloqueio por domínio está desabilitado."
+  en: "Suspended: the system domain-blocking group is disabled."
+fwx.domains.reason.invalidIntent:
+  pt: "Suspenso: esta linha não é um bloqueio válido (as de \"direcionar\" saíram com o multi-WAN). Apague-a."
+  en: "Suspended: this row is not a valid block (\"route\" rows were removed with multi-WAN). Delete it."
+fwx.domains.reason.unknown:
+  pt: "Suspenso: consulte o erro de reconciliação."
+  en: "Suspended: inspect the reconciliation error."
+fwx.domains.validation.domain:
+  pt: "Informe um domínio ASCII válido com ao menos dois rótulos."
+  en: "Enter a valid ASCII domain with at least two labels."
+fwx.domains.validation.note:
+  pt: "A observação deve ter até 500 caracteres e não pode conter controles ou quebras de linha."
+  en: "The note must have at most 500 characters and contain no control characters or line breaks."

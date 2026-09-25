@@ -1,9 +1,8 @@
 // Package hostquota mede quanto cada aparelho da LAN já consumiu no ciclo
 // vigente e avisa quando ele passa do que foi declarado para ele.
 //
-// É o gêmeo de internal/linkquota um andar abaixo: lá a pergunta é "quanto
-// deste link já foi embora"; aqui é "quem gastou". As duas metades estão
-// na issue #126, e a de link foi entregue primeiro porque não dependia de nada.
+// A pergunta é "quem gastou". Nasceu (issue #126) como a metade de baixo da
+// cota por link WAN, que saiu da versão cloud junto com o multi-WAN.
 //
 // ─── O QUE ELE NÃO FAZ, E POR QUÊ ────────────────────────────────────────────
 //
@@ -78,7 +77,6 @@ import (
 	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/alerts"
-	"github.com/giovanibalarini/linkguard-cloud/internal/linkquota"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 	"github.com/giovanibalarini/linkguard-cloud/internal/validate"
 )
@@ -93,7 +91,7 @@ const (
 )
 
 const (
-	// bytesPerGB é DECIMAL (10^9), como em linkquota e como na fatura.
+	// bytesPerGB é DECIMAL (10^9), como na fatura.
 	bytesPerGB = 1_000_000_000.0
 
 	// flushInterval é de quanto em quanto tempo o acumulado em memória vira
@@ -126,7 +124,7 @@ const (
 )
 
 // Alerter é o pedaço do alerts.Service que esta feature usa. Interface local
-// para o serviço ser testável sem banco de alerta — mesmo padrão do linkquota.
+// para o serviço ser testável sem banco de alerta — mesmo padrão do resto do produto.
 //
 // O último parâmetro se chama linkID no alerts.Service por herança; o que ele
 // carrega é "sobre O QUE é este alerta". Aqui é o MAC do aparelho, que é a
@@ -523,7 +521,7 @@ func NomeDe(m storage.HostMetadata) string {
 // aberto do mesmo (tipo, chave). Duplicar esse controle aqui criaria duas
 // fontes de verdade sobre o que já foi avisado.
 //
-// Os textos usam linkquota.HumanBytes/HumanGB, e não "%.1f GB": uma cota de
+// Os textos usam humanBytes/humanGB, e não "%.1f GB": uma cota de
 // 500 MB — que é exatamente o tamanho que se declara para uma câmera ou um
 // tablet — sairia como "0.0 GB de 0 GB", o defeito que a metade de link
 // deste mesmo recurso já pagou numa validação em máquina real.
@@ -548,13 +546,13 @@ func (s *Service) evaluate(nome, mac string, q storage.HostQuota, used uint64) {
 			fmt.Sprintf("Cota estourada: %s", nome),
 			fmt.Sprintf("O aparelho %s já consumiu %s dos %s %s (%.0f%%). "+
 				"O LinkGuard NÃO corta nem limita a banda dele — este alerta é um aviso.",
-				nome, linkquota.HumanBytes(float64(used)), linkquota.HumanGB(q.LimitGB), janela, pct),
+				nome, humanBytes(float64(used)), humanGB(q.LimitGB), janela, pct),
 			mac)
 	case pct >= float64(q.AlertPct):
 		_ = s.alertSvc.Create(TypeQuotaWarning, alerts.SeverityWarning,
 			fmt.Sprintf("Cota em %.0f%%: %s", pct, nome),
 			fmt.Sprintf("O aparelho %s consumiu %s dos %s %s.",
-				nome, linkquota.HumanBytes(float64(used)), linkquota.HumanGB(q.LimitGB), janela),
+				nome, humanBytes(float64(used)), humanGB(q.LimitGB), janela),
 			mac)
 	}
 }
@@ -698,8 +696,8 @@ func (s *Service) Save(q storage.HostQuota) error {
 		// esse fim.
 		q.CycleDay = 1
 	}
-	if q.CycleDay < 1 || q.CycleDay > linkquota.MaxCycleDay {
-		return fmt.Errorf("dia de fechamento deve estar entre 1 e %d", linkquota.MaxCycleDay)
+	if q.CycleDay < 1 || q.CycleDay > maxCycleDay {
+		return fmt.Errorf("dia de fechamento deve estar entre 1 e %d", maxCycleDay)
 	}
 	if q.AlertPct < 1 || q.AlertPct > 100 {
 		return fmt.Errorf("o aviso deve estar entre 1%% e 100%%")
@@ -797,10 +795,8 @@ func (s *Service) History(mac string, limit int) ([]storage.HostUsage, error) {
 
 // CycleStart devolve o instante em que começou o ciclo vigente.
 //
-// O caso mensal é o de linkquota, reaproveitado e não copiado: o dia de
-// fechamento vai até 28 porque todo mês tem dia 28, e a razão inteira está
-// escrita lá. Duas implementações do mesmo calendário divergiriam no primeiro
-// fevereiro.
+// O caso mensal fecha no dia escolhido, até 28 porque todo mês tem dia 28
+// (ver unidades.go).
 //
 // O caso diário é meia-noite LOCAL, e não UTC, pelo mesmo motivo pelo qual o
 // mensal é local: o "dia" que o admin quer limitar é o dele. Num fuso a
@@ -811,7 +807,7 @@ func CycleStart(now time.Time, period string, day int) time.Time {
 		y, m, d := now.Date()
 		return time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 	}
-	return linkquota.CycleStart(now, day)
+	return inicioDoCicloMensal(now, day)
 }
 
 // CycleEnd é o começo do ciclo seguinte.
@@ -819,5 +815,5 @@ func CycleEnd(start time.Time, period string) time.Time {
 	if period == storage.HostPeriodDaily {
 		return start.AddDate(0, 0, 1)
 	}
-	return linkquota.CycleEnd(start)
+	return start.AddDate(0, 1, 0)
 }

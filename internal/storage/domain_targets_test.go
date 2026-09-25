@@ -74,7 +74,7 @@ func TestODominioEhUnicoNaTabela(t *testing.T) {
 		t.Fatalf("primeira gravação: %v", err)
 	}
 	if err := db.SaveDomainTarget(storage.DomainTarget{
-		Domain: "NETFLIX.COM.", Capability: storage.DomainCapDirecionar, LinkID: "wan2", Mark: 0x12c,
+		Domain: "NETFLIX.COM.", Capability: storage.DomainCapBarrar, Note: "segunda",
 	}); err != nil {
 		t.Fatalf("segunda gravação: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestODominioEhUnicoNaTabela(t *testing.T) {
 	if len(lista) != 1 {
 		t.Fatalf("o mesmo nome virou %d linhas", len(lista))
 	}
-	if lista[0].Capability != storage.DomainCapDirecionar || lista[0].Mark != 0x12c {
+	if lista[0].Note != "segunda" {
 		t.Fatalf("a segunda gravação não corrigiu a primeira: %+v", lista[0])
 	}
 }
@@ -117,19 +117,11 @@ func TestApagarTiraDaLista(t *testing.T) {
 	}
 }
 
-func TestDomainTargetCRUDByIDPreservesStageAndUsesLinkID(t *testing.T) {
+func TestDomainTargetCRUDByIDPreservesStage(t *testing.T) {
 	db := newTestDB(t)
-	link := &storage.Link{
-		ID: "link-wan2", Name: "WAN 2", Interface: "wan2", Status: "online",
-		Enabled: true, TableID: 200,
-	}
-	if err := db.CreateLink(link); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-
 	target := &storage.DomainTarget{
-		Domain: "  VIDEO.Example.COM. ", Capability: storage.DomainCapDirecionar,
-		Stage: storage.DomainStageAtivo, LinkID: link.ID, Note: "streaming",
+		Domain: "  VIDEO.Example.COM. ", Capability: storage.DomainCapBarrar,
+		Stage: storage.DomainStageAtivo, Note: "streaming",
 	}
 	if err := db.CreateDomainTarget(target); err != nil {
 		t.Fatalf("CreateDomainTarget: %v", err)
@@ -141,7 +133,7 @@ func TestDomainTargetCRUDByIDPreservesStageAndUsesLinkID(t *testing.T) {
 	if err != nil || got == nil {
 		t.Fatalf("GetDomainTarget: %+v, %v", got, err)
 	}
-	if got.Domain != "video.example.com" || got.Stage != storage.DomainStageEnsaio || got.LinkID != link.ID {
+	if got.Domain != "video.example.com" || got.Stage != storage.DomainStageEnsaio {
 		t.Fatalf("alvo criado com intenção errada: %+v", got)
 	}
 
@@ -149,8 +141,7 @@ func TestDomainTargetCRUDByIDPreservesStageAndUsesLinkID(t *testing.T) {
 		t.Fatalf("SetDomainTargetStage: %v", err)
 	}
 	if err := db.UpdateDomainTarget(target.ID, storage.DomainTarget{
-		Domain: "media.example.com", Capability: storage.DomainCapDirecionar,
-		LinkID: link.ID, LinkName: "nome obsoleto", Mark: 999, Note: "editado",
+		Domain: "media.example.com", Capability: storage.DomainCapBarrar, Note: "editado",
 	}); err != nil {
 		t.Fatalf("UpdateDomainTarget: %v", err)
 	}
@@ -174,8 +165,8 @@ func TestDomainTargetStorageRejectsInvalidIntent(t *testing.T) {
 	for _, target := range []storage.DomainTarget{
 		{Domain: "-api.example.com", Capability: storage.DomainCapBarrar},
 		{Domain: "api.example.com", Capability: "permitir"},
-		{Domain: "api.example.com", Capability: storage.DomainCapDirecionar},
-		{Domain: "api.example.com", Capability: storage.DomainCapBarrar, LinkID: "link-escondido"},
+		// A escolha de WAN por domínio saiu com o multi-WAN.
+		{Domain: "api.example.com", Capability: "direcionar"},
 		{Domain: "api.example.com", Capability: storage.DomainCapBarrar, Note: longNote},
 		{Domain: "api.example.com", Capability: storage.DomainCapBarrar, Note: "linha\nnova"},
 	} {
@@ -189,13 +180,9 @@ func TestDomainTargetStorageRejectsInvalidIntent(t *testing.T) {
 	}
 }
 
-func TestDomainRoutingSnapshotReadsTargetsLinksAndBlockGroupTogether(t *testing.T) {
+func TestDomainRoutingSnapshotReadsTargetsAndBlockGroupTogether(t *testing.T) {
 	db := newTestDB(t)
-	link := &storage.Link{ID: "wan-1", Name: "WAN 1", Interface: "wan1", Status: "online", Enabled: true, TableID: 100}
-	if err := db.CreateLink(link); err != nil {
-		t.Fatal(err)
-	}
-	target := &storage.DomainTarget{Domain: "example.com", Capability: storage.DomainCapDirecionar, LinkID: link.ID}
+	target := &storage.DomainTarget{Domain: "example.com", Capability: storage.DomainCapBarrar}
 	if err := db.CreateDomainTarget(target); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +196,7 @@ func TestDomainRoutingSnapshotReadsTargetsLinksAndBlockGroupTogether(t *testing.
 	if err != nil {
 		t.Fatalf("DomainRoutingSnapshot: %v", err)
 	}
-	if len(snap.Targets) != 1 || len(snap.Links) != 1 || !snap.BlocklistPresent || !snap.BlocklistEnabled {
+	if len(snap.Targets) != 1 || !snap.BlocklistPresent || !snap.BlocklistEnabled {
 		t.Fatalf("snapshot incompleto: %+v", snap)
 	}
 }

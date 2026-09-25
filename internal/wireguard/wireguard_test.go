@@ -31,7 +31,6 @@ func TestValidateConfigRejectsEveryRenderedInjectionSlot(t *testing.T) {
 		{"address newline", func(c *Config) { c.Address = "10.7.0.1/24\nPostUp = touch /tmp/pwn" }},
 		{"invalid port", func(c *Config) { c.ListenPort = 70000 }},
 		{"endpoint newline", func(c *Config) { c.EndpointHost = "vpn.example\nAllowedIPs = 0.0.0.0/0" }},
-		{"link id newline", func(c *Config) { c.EndpointLinkID = "wan\n1" }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

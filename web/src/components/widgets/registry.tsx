@@ -6,7 +6,6 @@ import LanHostsWidget from './LanHostsWidget';
 import OpenAlertsWidget from './OpenAlertsWidget';
 import SystemResourcesWidget from './SystemResourcesWidget';
 import TopTalkersWidget from './TopTalkersWidget';
-import WanLinksWidget from './WanLinksWidget';
 import { WidgetNote } from './WidgetCard';
 import { useI18n } from '../../i18n';
 import { GRID_GAP, ROW_HEIGHT } from '../WidgetGrid';
@@ -45,8 +44,6 @@ export default function WidgetView({
   switch (item.widget) {
     case 'system_health':
       return <SystemHealth />;
-    case 'wan_links':
-      return <WanLinksWidget />;
     case 'interface_traffic':
       return <InterfaceTrafficWidget height={Math.max(120, alturaDaCelula(item.h) - CROMO_DO_GRAFICO)} />;
     case 'top_talkers':

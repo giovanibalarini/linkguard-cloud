@@ -172,9 +172,6 @@ type Notifier interface {
 // TestStateAlertTypesMatchAutoResolveCallSites guards this list against
 // drifting from service.go's actual AutoResolve call sites.
 var stateAlertTypes = []string{
-	TypeSteerInativo,
-	TypeLinkOffline,
-	TypeLinkDegraded,
 	TypeServiceOffline,
 	TypeDiskFull,
 	TypeHighCPU,
@@ -188,12 +185,26 @@ var stateAlertTypes = []string{
 	TypeCaminhoDNSForaDoLocal,
 	TypeResolucaoSemModuloDNS,
 	TypeSecurityUpdatesPending,
-	TypeBalancerNoWAN,
 	TypeBaseDepsMissing,
 	TypeNetsvcDepsMissing,
 	TypeFirewallSystemGroupsMissing,
 	TypeFirewallBootPersistFailed,
 	TypeFirewallGhostIface,
+}
+
+// tiposAposentados são alertas de funcionalidades que saíram da versão cloud
+// junto com o multi-WAN (links, failover, balanceamento, direcionamento, cota
+// por link). Ninguém mais os levanta nem os resolve, então um que tenha ficado
+// aberto na caixa migrada do linkguard-fw ficaria aberto para sempre, pedindo
+// ação sobre algo que não existe. ResolveStaleOnStartup os fecha.
+var tiposAposentados = []string{
+	TypeLinkOffline,
+	TypeLinkDegraded,
+	TypeFailover,
+	TypeSteerInativo,
+	TypeBalancerNoWAN,
+	"link_quota_warning",
+	"link_quota_exceeded",
 }
 
 // Service manages alert generation and retrieval.
@@ -364,23 +375,6 @@ func (s *Service) createRecovery(alertType, title, message, linkID string) error
 	return nil
 }
 
-// LinkOffline raises a critical alert when a link goes offline.
-func (s *Service) LinkOffline(linkName, linkID string) error {
-	return s.Create(TypeLinkOffline, SeverityCritical,
-		"Link Offline: "+linkName,
-		"WAN link "+linkName+" is no longer reachable.", linkID)
-}
-
-// LinkOnline raises an info alert when a link recovers, delivered via the
-// recovery path so it bypasses the min-severity gate.
-func (s *Service) LinkOnline(linkName, linkID string) error {
-	s.AutoResolve(TypeLinkOffline, linkID)
-	s.AutoResolve(TypeLinkDegraded, linkID)
-	return s.createRecovery(TypeLinkOnline,
-		"Link Online: "+linkName,
-		"WAN link "+linkName+" has recovered and is reachable.", linkID)
-}
-
 // ServiceOffline abre o alerta crítico de que um serviço vigiado parou.
 //
 // O nome da unidade vai no campo de identidade (o mesmo que LinkOffline usa
@@ -446,25 +440,6 @@ func (s *Service) AppDown() error {
 		"O serviço linkguard-cloud parou inesperadamente.", "")
 }
 
-// LinkDegraded raises a warning when a link is degraded. latencyMs and
-// packetLossPct are the measurement that triggered the transition — embedding
-// them in the message is what turns "is experiencing high packet loss or
-// latency" (which forced every past investigation to go read the journal by
-// hand) into something a human can act on without opening the timeline.
-func (s *Service) LinkDegraded(linkName, linkID string, latencyMs, packetLossPct float64) error {
-	return s.Create(TypeLinkDegraded, SeverityWarning,
-		"Link Degraded: "+linkName,
-		fmt.Sprintf("WAN link %s is experiencing high packet loss or latency (latency=%.1fms, loss=%.1f%%).",
-			linkName, latencyMs, packetLossPct), linkID)
-}
-
-// Failover raises a warning when failover is triggered.
-func (s *Service) Failover(linkName, direction string) error {
-	return s.Create(TypeFailover, SeverityWarning,
-		"Failover: "+linkName,
-		"Failover triggered for WAN link "+linkName+". Direction: "+direction, "")
-}
-
 // GhostIface avisa que regras citam interfaces que não existem mais.
 //
 // A severidade depende de as regras órfãs BLOQUEAREM ou não, e a distinção não
@@ -499,29 +474,6 @@ func (s *Service) GhostIface(detalhe string, bloqueando bool) error {
 // deixar um alerta de estado nascer sem o par que o fecha.
 func (s *Service) GhostIfaceOK() {
 	s.AutoResolve(TypeFirewallGhostIface, "")
-}
-
-// BalancerNoWAN sobe quando o balanceamento não encontra nenhuma WAN ativa.
-//
-// Título próprio, e não "Firewall Rule Error": a mensagem é sobre
-// BALANCEAMENTO, e um título de firewall manda o admin abrir a tela errada. É a
-// mesma crítica que o doc-comment de NetsvcDepsMissing já fazia ao pega-tudo,
-// aplicada ao outro chamador dele.
-func (s *Service) BalancerNoWAN(detail string) error {
-	return s.Create(TypeBalancerNoWAN, SeverityCritical,
-		"Nenhuma WAN ativa para balancear", detail, "")
-}
-
-// BalancerWANBack fecha o alerta acima quando o balanceamento volta a encontrar
-// caminho.
-//
-// É a metade que faltava, e a falta dela é a issue #147: sem alguém observando
-// a transição "voltou", o alerta de estado vira permanente por construção. Ver
-// stateAlertTypes.
-func (s *Service) BalancerWANBack(detail string) error {
-	s.AutoResolve(TypeBalancerNoWAN, "")
-	return s.createRecovery(TypeBalancerWANBack, "Balanceamento voltou a ter WAN",
-		detail, "")
 }
 
 // HostNovoNaRede avisa que um aparelho apareceu na rede pela primeira vez.
@@ -637,8 +589,11 @@ func (s *Service) ResolveStaleOnStartup() {
 		slog.Error("resolve stale alerts on startup: list open alerts", "err", err)
 		return
 	}
-	isStateType := make(map[string]bool, len(stateAlertTypes))
+	isStateType := make(map[string]bool, len(stateAlertTypes)+len(tiposAposentados))
 	for _, t := range stateAlertTypes {
+		isStateType[t] = true
+	}
+	for _, t := range tiposAposentados {
 		isStateType[t] = true
 	}
 	done := make(map[string]bool)
@@ -653,31 +608,6 @@ func (s *Service) ResolveStaleOnStartup() {
 		done[key] = true
 		s.AutoResolve(a.Type, a.LinkID)
 	}
-}
-
-// SteerInativo avisa que o direcionamento por WAN está configurado, tem
-// aparelho fixado nele, e NÃO está valendo.
-func (s *Service) SteerInativo(marca, tabela, iface, motivo string, fixados int) error {
-	return s.Create(TypeSteerInativo, SeverityWarning,
-		"Direcionamento por WAN não está valendo",
-		fmt.Sprintf("%d aparelho(s) fixado(s) recebem a marca %s, e não existe regra de roteamento que a atenda "+
-			"(tabela %q, interface %q). Eles estão saindo pelo balanceamento, e não pelo link escolhido. Motivo: %s",
-			fixados, marca, tabela, iface, motivo), "")
-}
-
-// SteerAtivo fecha o alerta acima.
-//
-// POR QUE ISTO PRECISA EXISTIR, e a falta dele já custou. O alerta descreve uma
-// CONDIÇÃO, e condição que some precisa de quem a feche. Sem este par, arrumar o
-// direcionamento — ou soltar os aparelhos, ou desligar o recurso — deixava o
-// vermelho no painel para sempre, descrevendo algo que não existe mais. Foi o
-// que aconteceu na caixa de produção: os oito aparelhos foram soltos, o recurso
-// foi desligado, e o alerta continuou aberto sem ninguém para fechá-lo.
-//
-// Vermelho permanente ensina a ignorar vermelho, que é o mesmo motivo pelo qual
-// o BalancerNoWAN ganhou tipo próprio na #147.
-func (s *Service) SteerAtivo() {
-	s.AutoResolve(TypeSteerInativo, "")
 }
 
 // BackupFailed raises a warning alert when the periodic (or manual "enviar

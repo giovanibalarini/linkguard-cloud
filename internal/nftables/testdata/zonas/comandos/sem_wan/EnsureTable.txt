@@ -19,10 +19,6 @@
           cmd   nft -f <tmp>
           conteúdo:
           | table inet linkguard {
-          | 	map host_wan {
-          | 		type ipv4_addr : mark
-          | 	}
-          | 
           | 	set blocklist {
           | 		type ipv4_addr
           | 		flags interval
@@ -58,11 +54,6 @@
           | 	}
           | 
           | 	chain user_rules {
-          | 	}
-          | 
-          | 	chain mark_hosts {
-          | 		type filter hook prerouting priority mangle; policy accept;
-          | 		counter meta mark set ip saddr map @host_wan
           | 	}
           | 
           | 	chain forward {

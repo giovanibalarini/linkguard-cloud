@@ -1,7 +1,11 @@
-// Package domainrouting liga a intenção persistida de regras por domínio ao
-// runtime alimentado por dnstap. Ele é a única fronteira que traduz LinkID em
-// mark e, portanto, o único lugar que pode suspender uma intenção ativa quando
-// a WAN ou o grupo de bloqueio deixam de ser seguros.
+// Package domainrouting liga a intenção persistida de bloqueio por domínio ao
+// runtime alimentado por dnstap, e é o lugar que suspende uma intenção ativa
+// quando o grupo de bloqueio deixa de ser seguro.
+//
+// Havia uma segunda capacidade, "direcionar" (escolher a WAN por domínio), que
+// saiu da versão cloud com o multi-WAN. Linhas antigas com ela continuam
+// legíveis e aparecem suspensas, para a tela poder mostrar e apagar; nunca são
+// publicadas no runtime.
 package domainrouting
 
 import (
@@ -33,11 +37,6 @@ const (
 	ReasonBootPending           = "boot_pending"
 	ReasonBlockingGroupMissing  = "blocking_group_missing"
 	ReasonBlockingGroupDisabled = "blocking_group_disabled"
-	ReasonLinkMissing           = "link_missing"
-	ReasonLinkDisabled          = "link_disabled"
-	ReasonLinkUnconfigured      = "link_unconfigured"
-	ReasonLinkOffline           = "link_offline"
-	ReasonLinkNotReady          = "link_not_ready"
 	ReasonInvalidIntent         = "invalid_intent"
 )
 
@@ -53,7 +52,6 @@ type Runtime interface {
 type Input struct {
 	Domain     string `json:"domain"`
 	Capability string `json:"capability"`
-	LinkID     string `json:"link_id"`
 	Note       string `json:"note"`
 }
 
@@ -65,28 +63,23 @@ type TargetView struct {
 	Capability       string    `json:"capability"`
 	Stage            string    `json:"stage"`
 	EffectiveStage   string    `json:"effective_stage"`
-	LinkID           string    `json:"link_id"`
-	LinkName         string    `json:"link_name"`
-	LinkStatus       string    `json:"link_status,omitempty"`
-	Mark             uint32    `json:"mark"`
 	Note             string    `json:"note"`
 	Suspended        bool      `json:"suspended"`
 	SuspensionReason string    `json:"suspension_reason,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 
-	NoKernel            *int   `json:"no_kernel"`
-	NoIndex             int    `json:"no_index"`
-	AtLimit             bool   `json:"at_limit"`
-	Limit               int    `json:"limit"`
-	Overflows           uint64 `json:"overflows"`
-	Rejected            uint64 `json:"rejected"`
-	RejectedOwn         uint64 `json:"rejected_own"`
-	NoRefcountSlot      uint64 `json:"no_refcount_slot"`
-	RoutedIPv6Discarded uint64 `json:"routed_ipv6_discarded"`
-	LastLearned         int64  `json:"last_learned"`
-	Rotation            int    `json:"rotation"`
-	RotationTruncated   bool   `json:"rotation_truncated"`
+	NoKernel          *int   `json:"no_kernel"`
+	NoIndex           int    `json:"no_index"`
+	AtLimit           bool   `json:"at_limit"`
+	Limit             int    `json:"limit"`
+	Overflows         uint64 `json:"overflows"`
+	Rejected          uint64 `json:"rejected"`
+	RejectedOwn       uint64 `json:"rejected_own"`
+	NoRefcountSlot    uint64 `json:"no_refcount_slot"`
+	LastLearned       int64  `json:"last_learned"`
+	Rotation          int    `json:"rotation"`
+	RotationTruncated bool   `json:"rotation_truncated"`
 }
 
 // State é a resposta observável da capacidade. Runtime contém os totais do
@@ -98,14 +91,13 @@ type State struct {
 	LastError            string            `json:"last_error,omitempty"`
 	BlockingGroupPresent bool              `json:"blocking_group_present"`
 	BlockingGroupEnabled bool              `json:"blocking_group_enabled"`
-	RoutingIPv6Supported bool              `json:"routing_ipv6_supported"`
 	Runtime              domtargets.Estado `json:"runtime"`
 	Targets              []TargetView      `json:"targets"`
 }
 
 // Coordinator serializa CRUD, snapshots e publicação no runtime. Isso evita
-// que uma promoção concorra com uma mudança de estado da WAN e publique uma
-// combinação que nunca existiu no banco.
+// que uma promoção concorra com uma mudança do grupo de bloqueio e publique
+// uma combinação que nunca existiu no banco.
 type Coordinator struct {
 	mu      sync.Mutex
 	db      *storage.DB
@@ -148,7 +140,7 @@ func (c *Coordinator) Hold(ctx context.Context) error {
 	return c.reconcileLocked(ctx)
 }
 
-// Reconcile lê alvos, links e grupo numa única transação read-only e publica
+// Reconcile lê alvos e grupo numa única transação read-only e publica
 // a lista completa no runtime de uma vez.
 func (c *Coordinator) Reconcile(ctx context.Context) error {
 	c.mu.Lock()
@@ -163,15 +155,10 @@ func (c *Coordinator) reconcileLocked(ctx context.Context) error {
 		return err
 	}
 
-	links := make(map[string]storage.Link, len(snapshot.Links))
-	for _, link := range snapshot.Links {
-		links[link.ID] = link
-	}
-
 	views := make([]TargetView, 0, len(snapshot.Targets))
 	alvos := make([]domtargets.Alvo, 0, len(snapshot.Targets))
 	for _, stored := range snapshot.Targets {
-		view, alvo, valid := c.resolve(stored, links, snapshot)
+		view, alvo, valid := c.resolve(stored, snapshot)
 		views = append(views, view)
 		if valid {
 			alvos = append(alvos, alvo)
@@ -190,16 +177,17 @@ func (c *Coordinator) reconcileLocked(ctx context.Context) error {
 	return nil
 }
 
-func (c *Coordinator) resolve(stored storage.DomainTarget, links map[string]storage.Link, snapshot storage.DomainRoutingDBSnapshot) (TargetView, domtargets.Alvo, bool) {
+func (c *Coordinator) resolve(stored storage.DomainTarget, snapshot storage.DomainRoutingDBSnapshot) (TargetView, domtargets.Alvo, bool) {
 	view := TargetView{
 		ID: stored.ID, Domain: stored.Domain, Capability: stored.Capability,
 		Stage: stored.Stage, EffectiveStage: stored.Stage,
-		LinkID: stored.LinkID, LinkName: stored.LinkName, Mark: stored.Mark,
 		Note: stored.Note, CreatedAt: stored.CreatedAt, UpdatedAt: stored.UpdatedAt,
 	}
 
+	// Capacidade que não é barrar (a "direcionar" de antes, ou lixo) nunca é
+	// publicada: aparece suspensa para ser vista e apagada.
 	domain, ok := validate.NormalizeDomainTarget(stored.Domain)
-	if !ok || (stored.Capability != storage.DomainCapBarrar && stored.Capability != storage.DomainCapDirecionar) ||
+	if !ok || stored.Capability != storage.DomainCapBarrar ||
 		(stored.Stage != storage.DomainStageEnsaio && stored.Stage != storage.DomainStageAtivo) {
 		suspend(&view, ReasonInvalidIntent)
 		return view, domtargets.Alvo{}, false
@@ -210,33 +198,7 @@ func (c *Coordinator) resolve(stored storage.DomainTarget, links map[string]stor
 		Dominio: domain, Capacidade: domtargets.Capacidade(stored.Capability),
 		Estagio: domtargets.Estagio(stored.Stage),
 	}
-	if stored.Capability == storage.DomainCapDirecionar {
-		link, found := links[stored.LinkID]
-		if found {
-			view.LinkName = link.Name
-			view.LinkStatus = strings.ToLower(strings.TrimSpace(link.Status))
-			view.Mark = uint32(link.TableID)
-			alvo.Marca = view.Mark
-		} else {
-			view.LinkName, view.LinkStatus, view.Mark = "", "", 0
-		}
-		if stored.Stage == storage.DomainStageAtivo {
-			switch {
-			case !c.ready:
-				suspend(&view, ReasonBootPending)
-			case !found:
-				suspend(&view, ReasonLinkMissing)
-			case !link.Enabled:
-				suspend(&view, ReasonLinkDisabled)
-			case strings.TrimSpace(link.Interface) == "" || link.TableID <= 0:
-				suspend(&view, ReasonLinkUnconfigured)
-			case view.LinkStatus == "offline":
-				suspend(&view, ReasonLinkOffline)
-			case view.LinkStatus != "online" && view.LinkStatus != "degraded":
-				suspend(&view, ReasonLinkNotReady)
-			}
-		}
-	} else if stored.Stage == storage.DomainStageAtivo {
+	if stored.Stage == storage.DomainStageAtivo {
 		switch {
 		case !c.ready:
 			suspend(&view, ReasonBootPending)
@@ -265,8 +227,7 @@ func (c *Coordinator) State(ctx context.Context) State {
 		Ready: c.ready, Generation: c.generation,
 		LastReconciledAt: c.lastReconciledAt, LastError: c.lastError,
 		BlockingGroupPresent: c.blockPresent, BlockingGroupEnabled: c.blockEnabled,
-		RoutingIPv6Supported: false,
-		Targets:              append([]TargetView(nil), c.targets...),
+		Targets: append([]TargetView(nil), c.targets...),
 	}
 	runtime := c.runtime
 	c.mu.Unlock()
@@ -301,7 +262,6 @@ func mergeMetrics(view *TargetView, row domtargets.EstadoDominio) {
 	view.Rejected = row.Recusados
 	view.RejectedOwn = row.RecusadosProprios
 	view.NoRefcountSlot = row.SemVaga
-	view.RoutedIPv6Discarded = row.DirecionadoV6
 	view.LastLearned = row.UltimoAprendizado
 	view.Rotation = row.Rotatividade
 	view.RotationTruncated = row.RotatividadeTruncada
@@ -403,34 +363,18 @@ func (c *Coordinator) targetFromInput(input Input) (storage.DomainTarget, error)
 		return storage.DomainTarget{}, fmt.Errorf("%w: domínio inválido", ErrInvalid)
 	}
 	input.Capability = strings.TrimSpace(input.Capability)
-	input.LinkID = strings.TrimSpace(input.LinkID)
 	input.Note = strings.TrimSpace(input.Note)
-	if input.Capability != storage.DomainCapBarrar && input.Capability != storage.DomainCapDirecionar {
-		return storage.DomainTarget{}, fmt.Errorf("%w: capacidade deve ser barrar ou direcionar", ErrInvalid)
+	if input.Capability == "" {
+		input.Capability = storage.DomainCapBarrar
 	}
-	if input.Capability == storage.DomainCapBarrar && input.LinkID != "" {
-		return storage.DomainTarget{}, fmt.Errorf("%w: link_id não é aceito para bloqueio", ErrInvalid)
-	}
-	if input.Capability == storage.DomainCapDirecionar && input.LinkID == "" {
-		return storage.DomainTarget{}, fmt.Errorf("%w: link_id é obrigatório para direcionamento", ErrInvalid)
+	if input.Capability != storage.DomainCapBarrar {
+		return storage.DomainTarget{}, fmt.Errorf("%w: a capacidade é barrar (escolher a WAN por domínio saiu com o multi-WAN)", ErrInvalid)
 	}
 	if utf8.RuneCountInString(input.Note) > storage.MaxDomainTargetNoteRunes || strings.ContainsFunc(input.Note, unicode.IsControl) {
 		return storage.DomainTarget{}, fmt.Errorf("%w: observação inválida", ErrInvalid)
 	}
 
-	target := storage.DomainTarget{Domain: domain, Capability: input.Capability, LinkID: input.LinkID, Note: input.Note}
-	if input.Capability == storage.DomainCapDirecionar {
-		link, err := c.db.GetLink(input.LinkID)
-		if err != nil {
-			return storage.DomainTarget{}, fmt.Errorf("consultar link: %w", err)
-		}
-		if link == nil {
-			return storage.DomainTarget{}, fmt.Errorf("%w: link_id desconhecido", ErrInvalid)
-		}
-		target.LinkName = link.Name
-		target.Mark = uint32(link.TableID)
-	}
-	return target, nil
+	return storage.DomainTarget{Domain: domain, Capability: input.Capability, Note: input.Note}, nil
 }
 
 func (c *Coordinator) ensureUniqueDomain(domain, exceptID string) error {

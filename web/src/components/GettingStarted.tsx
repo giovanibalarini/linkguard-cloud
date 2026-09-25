@@ -5,7 +5,7 @@ import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import HelpTip from './HelpTip';
 import { useI18n } from '../i18n';
-import type { SystemMetrics, WanLink } from '../types';
+import type { Uplink } from '../types';
 
 /**
  * Só o esqueleto do passo. O texto (título, explicação, chamada e a ajuda) vem
@@ -69,19 +69,16 @@ export function useOnboardingSteps(): OnboardingProgress {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [sys, links, ruleset] = await Promise.allSettled([
-        client.get<SystemMetrics>('/api/system/status'),
-        client.get<WanLink[]>('/api/links'),
+      const [uplink, ruleset] = await Promise.allSettled([
+        client.get<Uplink>('/api/uplink'),
         client.get<{ ruleset: string }>('/api/nftables/ruleset'),
       ]);
-      const ifaces = sys.status === 'fulfilled' ? (sys.value.data.interfaces ?? []).filter((i) => i.name && i.name !== 'lo') : [];
-      const wan = links.status === 'fulfilled' ? (links.value.data ?? []) : [];
+      const saida = uplink.status === 'fulfilled' ? uplink.value.data : null;
       const rs = ruleset.status === 'fulfilled' ? (ruleset.value.data.ruleset ?? '') : '';
 
       if (!alive) return;
       setSteps([
-        { key: 'iface', to: '/interfaces', done: ifaces.length >= 2 },
-        { key: 'wan', to: '/links', done: wan.length >= 1 },
+        { key: 'wan', to: '/interfaces', done: !!saida && saida.source !== 'none' && !!saida.interface },
         { key: 'nat', to: '/firewall', done: rs.includes('masquerade') },
         { key: 'sec', to: '/admin', done: !!user && user.username !== 'admin' },
       ]);

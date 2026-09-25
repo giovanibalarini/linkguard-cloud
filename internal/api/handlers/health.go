@@ -24,14 +24,12 @@ func NewHealthHandler(db *storage.DB, sysCol *system.Collector, version string) 
 // /api/system/update/check, which needs a token for the private repo and
 // exists to compare against the *latest* release, not report the current one).
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	n, err := h.db.CountLinks()
-	if err != nil {
+	if err := h.db.Ping(); err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":     "ok",
-		"link_count": n,
-		"version":    h.version,
+		"status":  "ok",
+		"version": h.version,
 	})
 }

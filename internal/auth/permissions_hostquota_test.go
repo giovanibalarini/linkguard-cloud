@@ -12,9 +12,6 @@ func TestCotaPorAparelhoTemPermissaoPropriaESeparadaDoBloqueio(t *testing.T) {
 	if PermHostsQuota == PermHostsBlock {
 		t.Fatal("declarar cota e trancar aparelho não podem ser a mesma permissão")
 	}
-	if PermHostsQuota == PermHostsAssign {
-		t.Fatal("direcionar host para uma WAN não é declarar cota")
-	}
 
 	var noCatalogo *CatalogEntry
 	for i := range Catalog {

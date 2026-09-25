@@ -33,19 +33,7 @@ mon.loading:
 mon.link.interface:
   pt: "Interface"
   en: "Interface"
-mon.link.latency:
-  pt: "Latência"
-  en: "Latency"
-mon.link.packetLoss:
-  pt: "Perda de pacotes"
-  en: "Packet loss"
-mon.link.lastCheck:
-  pt: "Última verificação"
-  en: "Last check"
 
-mon.chart.latency.title:
-  pt: "Latência por Link (ms)"
-  en: "Latency per Link (ms)"
 mon.chart.cpuMem.title:
   pt: "CPU e Memória (%)"
   en: "CPU and Memory (%)"
@@ -56,30 +44,6 @@ mon.chart.collecting:
   pt: "Coletando dados…"
   en: "Collecting data…"
 
-mon.timeline.title:
-  pt: "Linha do tempo"
-  en: "Timeline"
-mon.timeline.loading:
-  pt: "Carregando linha do tempo…"
-  en: "Loading timeline…"
-mon.timeline.empty:
-  pt: "Sem dados no período selecionado."
-  en: "No data in the selected period."
-mon.timeline.linkCaption:
-  pt: "{link} — latência (ms), faixa min–max · arraste na régua abaixo do gráfico pra dar zoom"
-  en: "{link} — latency (ms), min–max band · drag the slider below the chart to zoom in"
-mon.timeline.episodes:
-  pt: "Episódios no período"
-  en: "Episodes in the period"
-mon.timeline.ongoing:
-  pt: " (em curso)"
-  en: " (ongoing)"
-mon.tooltip.avg:
-  pt: "média"
-  en: "avg"
-mon.tooltip.range:
-  pt: "faixa {min}–{max} ms"
-  en: "range {min}–{max} ms"
 
 mon.iface.panel.title:
   pt: "Tráfego por Interface"

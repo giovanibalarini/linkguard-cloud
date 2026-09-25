@@ -157,11 +157,10 @@ const maxInternalImportsPerFile = 6
 // seja um ato deliberado, com um humano perguntando "isto é HTTP?", em vez de
 // acontecer sozinho num import automático do editor.
 var allowedInternalImports = map[string]bool{
-	"internal/ai":       true,
-	"internal/alerts":   true,
-	"internal/auth":     true,
-	"internal/backup":   true,
-	"internal/balancer": true,
+	"internal/ai":     true,
+	"internal/alerts": true,
+	"internal/auth":   true,
+	"internal/backup": true,
 	// internal/blocklog entrou com o registro de bloqueios (#122): o handler
 	// lê o journal pelo serviço e devolve as linhas. O formato do log do
 	// kernel e a filtragem moram lá.
@@ -173,7 +172,7 @@ var allowedInternalImports = map[string]bool{
 	// decisão de prazo moram lá.
 	"internal/dnstap": true,
 	// internal/domainrouting entrou com a #123: o handler só traduz HTTP,
-	// audita e delega CRUD/reconciliação; a decisão de suspensão por WAN e a
+	// audita e delega CRUD/reconciliação; a decisão de suspensão e a
 	// publicação atômica no runtime ficam no coordenador.
 	"internal/domainrouting": true,
 	// internal/hostflows entrou com o registro de conversa por host (#115): o
@@ -188,7 +187,6 @@ var allowedInternalImports = map[string]bool{
 	// Prometheus mora em internal/metrics/exposicao.go.
 	"internal/metrics":       true,
 	"internal/dnslog":        true,
-	"internal/failover":      true,
 	"internal/firewallrules": true,
 	// internal/hostquota entrou com a cota por aparelho (#126, metade "por
 	// host"): o handler decodifica, chama e traduz erro em status. A validação
@@ -198,25 +196,16 @@ var allowedInternalImports = map[string]bool{
 	"internal/hosts":       true,
 	"internal/hosttraffic": true,
 	"internal/iptables":    true,
-	// internal/linkquota entrou com a franquia por link (#126): o handler
-	// decodifica, chama e traduz erro em status. A validação (dia de
-	// fechamento, percentual) e o ciclo moram lá.
-	"internal/linkquota":  true,
-	"internal/links":      true,
-	"internal/monitoring": true,
-	"internal/netif":      true,
-	"internal/netsvc":     true,
-	"internal/nftables":   true,
-	"internal/notify":     true,
+	"internal/monitoring":  true,
+	"internal/netif":       true,
+	"internal/netsvc":      true,
+	"internal/nftables":    true,
+	"internal/notify":      true,
 	// internal/pktcapture entrou com a captura de pacotes (#114) pelo mesmo
 	// motivo do stresstest: o handler decodifica o pedido, chama o serviço e
 	// traduz o erro em status. A regra — tetos, filtro, uma por vez, varredura
 	// do TTL — mora lá, e não aqui.
 	"internal/pktcapture": true,
-	// internal/qos owns queue-control validation, per-interface serialization,
-	// kernel apply/rollback, and measurements. Handlers only translate HTTP and
-	// delegate those operations.
-	"internal/qos":        true,
 	"internal/routes":     true,
 	"internal/secrets":    true,
 	"internal/storage":    true,

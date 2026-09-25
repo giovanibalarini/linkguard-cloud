@@ -137,9 +137,9 @@ func (c *Collector) checkBootPersist() {
 // não seria pego ali.
 func (c *Collector) SetWANSource(src func() ([]string, error)) { c.wanSource = src }
 
-// enabledWANInterfaces returns the interfaces of every enabled WAN link —
-// the source of truth both checkWANInterfaces and checkFirewallNAT compare
-// reality against.
+// enabledWANInterfaces returns the WAN interfaces (the uplink) — the source of
+// truth both checkWANInterfaces and checkFirewallNAT compare reality against.
+// Sem fonte ligada não há WAN a verificar.
 //
 // Erro de leitura devolve lista vazia, e aqui isso é o certo: sem saber o que
 // foi configurado não há veredito a dar, e os dois chamadores tratam lista
@@ -153,17 +153,7 @@ func (c *Collector) enabledWANInterfaces() []string {
 		}
 		return ifaces
 	}
-	ls, err := c.db.GetLinks()
-	if err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(ls))
-	for _, l := range ls {
-		if l.Enabled && l.Interface != "" {
-			out = append(out, l.Interface)
-		}
-	}
-	return out
+	return nil
 }
 
 // interfaceExists reports whether the kernel currently has this interface.
@@ -173,13 +163,14 @@ func interfaceExists(name string) bool {
 	return err == nil
 }
 
-// checkWANInterfaces verifies every enabled WAN link points at an interface
-// the kernel actually has. This is the watcher that would have caught the
-// 2026-08-10 incident the moment the box came up.
+// checkWANInterfaces verifies the WAN (the uplink) points at an interface the
+// kernel actually has. This is the watcher that would have caught the
+// 2026-08-10 incident the moment the box came up; on the cloud it catches a
+// platform snapshot that still names a card the VM no longer has.
 func (c *Collector) checkWANInterfaces() {
-	ls, err := c.db.GetLinks()
-	if err != nil {
-		return // cannot evaluate this tick; don't invent a verdict
+	ifaces := c.enabledWANInterfaces()
+	if len(ifaces) == 0 {
+		return // nothing to verify this tick; don't invent a verdict
 	}
 	exists := c.ifaceExists
 	if exists == nil {
@@ -187,12 +178,9 @@ func (c *Collector) checkWANInterfaces() {
 	}
 
 	var missing []string
-	for _, l := range ls {
-		if !l.Enabled || l.Interface == "" {
-			continue
-		}
-		if !exists(l.Interface) {
-			missing = append(missing, fmt.Sprintf("%s -> %s", l.Name, l.Interface))
+	for _, i := range ifaces {
+		if !exists(i) {
+			missing = append(missing, i)
 		}
 	}
 

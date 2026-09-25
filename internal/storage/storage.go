@@ -172,6 +172,7 @@ var schemaMigrations = []migration{
 	// registrada — e a nossa 24 seria dada como aplicada sem nunca ter rodado.
 	// O salto para 100 tira a colisão do caminho.
 	{100, "papéis: saem as permissões de DHCP, NTP e edição de placa", upRetirePermissionsCloud},
+	{101, "papéis: saem as permissões de links, de escrita de rotas e de direcionar host", upRetireMultiWANPermissions},
 }
 
 // upRetirePermissionsCloud tira dos papéis as permissões que a versão cloud
@@ -192,6 +193,24 @@ func upRetirePermissionsCloud(tx *sql.Tx) error {
 		DELETE FROM role_permissions
 		WHERE permission IN ('dhcp.read', 'dhcp.write', 'ntp.read', 'ntp.write', 'interfaces.write')`); err != nil {
 		return fmt.Errorf("tirar dos papéis as permissões aposentadas: %w", err)
+	}
+	return nil
+}
+
+// upRetireMultiWANPermissions tira dos papéis as permissões do multi-WAN, que
+// saiu da versão cloud: links.read e links.write (os links WAN), routes.write
+// (rotas e regras manuais; as rotas agora só se leem) e hosts.assign (mandar
+// um host por uma WAN). Mesmo motivo da 100: salvar um papel valida cada
+// chave contra o catálogo.
+//
+// O bloqueio por domínio, que ficava sob links.*, passou para firewall.*; um
+// papel que o operava por links.write e não tinha firewall.write perde a
+// escrita, e isso é deliberado: não se concede permissão nova por migração.
+func upRetireMultiWANPermissions(tx *sql.Tx) error {
+	if _, err := tx.Exec(`
+		DELETE FROM role_permissions
+		WHERE permission IN ('links.read', 'links.write', 'routes.write', 'hosts.assign')`); err != nil {
+		return fmt.Errorf("tirar dos papéis as permissões do multi-WAN: %w", err)
 	}
 	return nil
 }

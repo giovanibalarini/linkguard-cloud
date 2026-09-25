@@ -64,14 +64,12 @@ type cenario struct {
 	// descricao vai para o cabeçalho de todo arquivo golden: o diff é a
 	// interface, e quem o lê daqui a seis meses precisa saber que topologia é.
 	descricao string
-	// wans é a lista COMO O BANCO A ENTREGA — fora de ordem alfabética de
-	// propósito. sanitizeInterfaces preserva a ordem de entrada e
-	// sanitizeWANMarks/markHostsChainRules ORDENAM: a assimetria é real, está
-	// congelada aqui, e um NewZone que resolvesse "ordenar por conveniência"
-	// reordenaria a chain mss_clamp da produção sem que nada mais acusasse.
-	wans     []string
-	wanMarks []WANMark
-	lanNets  []string
+	// wans é a lista COMO A FONTE A ENTREGA — fora de ordem alfabética de
+	// propósito. sanitizeInterfaces preserva a ordem de entrada, e um NewZone
+	// que resolvesse "ordenar por conveniência" reordenaria a chain mss_clamp
+	// sem que nada mais acusasse.
+	wans    []string
+	lanNets []string
 	// hairpin diz que entra e sai pela MESMA interface. É o que faz a Zone
 	// renderizar por CIDR em vez de por interface. Falso nos três cenários
 	// originais, que são caixas on-prem — e é justamente por isso que os
@@ -115,11 +113,7 @@ func cenarios() []cenario {
 			nome: "onprem_2wan",
 			descricao: "a máquina de produção do dono: duas WANs (uma PPPoE, uma ethernet) " +
 				"mais uma LAN em 192.168.3.0/24. É esta saída que não pode mudar.",
-			wans: []string{"ppp0", "enp2s0"},
-			wanMarks: []WANMark{
-				{Interface: "ppp0", Mark: 0x64},
-				{Interface: "enp2s0", Mark: 0xc8},
-			},
+			wans:      []string{"ppp0", "enp2s0"},
 			lanNets:   []string{"192.168.3.0/24"},
 			acesso:    acessoProducao,
 			grupos:    gruposProducao,
@@ -130,7 +124,6 @@ func cenarios() []cenario {
 			nome:      "onprem_1wan",
 			descricao: "uma WAN só mais a LAN: o link redundante caiu do cadastro, ou nunca houve.",
 			wans:      []string{"enp2s0"},
-			wanMarks:  []WANMark{{Interface: "enp2s0", Mark: 0xc8}},
 			lanNets:   []string{"192.168.3.0/24"},
 			acesso:    acessoProducao,
 			grupos:    gruposProducao,
@@ -142,10 +135,9 @@ func cenarios() []cenario {
 			descricao: "uma VM de nuvem com UMA placa de rede: entra e sai pela mesma " +
 				"interface, e o eixo das regras passa a ser o CIDR de dentro. É o " +
 				"comportamento NOVO, e o contraste com onprem_1wan é o ponto.",
-			wans:     []string{"ens3"},
-			wanMarks: []WANMark{{Interface: "ens3", Mark: 0x64}},
-			lanNets:  []string{"10.0.0.0/24"},
-			hairpin:  true,
+			wans:    []string{"ens3"},
+			lanNets: []string{"10.0.0.0/24"},
+			hairpin: true,
 			acesso: AdminAccess{
 				SSHPorts:    []int{22},
 				PanelPort:   9997,
@@ -169,11 +161,10 @@ func cenarios() []cenario {
 			descricao: "a VM da OCI de verdade: UMA VNIC, NENHUM link cadastrado, e o uplink " +
 				"(ens3) derivado da plataforma. O caminho externo suporta 1500 mesmo com a " +
 				"placa anunciando 9000 — é o cenário que o produto tem de fazer funcionar de primeira.",
-			wans:     []string{"ens3"},
-			wanMarks: nil, // sem linha em `links` não há TableID, não há marca, não há policy routing
-			lanNets:  []string{"10.0.0.0/24"},
-			hairpin:  true,
-			pathMTU:  1500,
+			wans:    []string{"ens3"},
+			lanNets: []string{"10.0.0.0/24"},
+			hairpin: true,
+			pathMTU: 1500,
 			acesso: AdminAccess{
 				SSHPorts:    []int{22},
 				PanelPort:   9997,
@@ -237,7 +228,6 @@ func cenarios() []cenario {
 				"cadastrado ainda. Hoje vários Ensure* desistem ANTES de criar a chain, e é " +
 				"esse fato — a chain não nascer — que este cenário prende.",
 			wans:      nil,
-			wanMarks:  nil,
 			lanNets:   []string{"192.168.3.0/24"},
 			acesso:    acessoProducao,
 			grupos:    gruposProducao,
@@ -256,14 +246,6 @@ func cenarios() []cenario {
 // zona mudasse um byte na topologia do dono, seria aqui que apareceria.
 func (c cenario) zona(ifaces []string) Zone {
 	return NewZone(ifaces, c.lanNets, c.hairpin, c.pathMTU)
-}
-
-// zonaDasMarcas é a zona das chains que derivam das WANMark. A lista de
-// interfaces sai ORDENADA, que é a forma que conn_mark e mark_hosts têm em
-// produção — e não a ordem do cadastro, que é a da acct e da mss_clamp. Os
-// goldens congelam as DUAS ordens lado a lado de propósito.
-func (c cenario) zonaDasMarcas() Zone {
-	return c.zona(wanMarkIfaces(sanitizeWANMarks(c.wanMarks)))
 }
 
 // fatos é o que o Service leria da plataforma neste cenário.
@@ -344,14 +326,6 @@ func conferirGeradores(t *testing.T, c cenario) {
 		regras  [][]string
 	}
 
-	// Uma regra só, embrulhada, para os dois geradores que devolvem []string.
-	uma := func(r []string) [][]string {
-		if r == nil {
-			return nil
-		}
-		return [][]string{r}
-	}
-
 	casos := []caso{
 		{
 			arquivo: "acctChainRules",
@@ -376,31 +350,6 @@ func conferirGeradores(t *testing.T, c cenario) {
 			arquivo: "flowsChainRules",
 			entrada: fmt.Sprintf("wanIfaces = %q", sanitizeInterfaces(c.wans)),
 			regras:  flowsChainRules(c.zona(sanitizeInterfaces(c.wans))),
-		},
-		{
-			arquivo: "connMarkChainRules",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(sanitizeWANMarks(c.wanMarks))),
-			regras:  connMarkChainRules(c.zonaDasMarcas(), sanitizeWANMarks(c.wanMarks)),
-		},
-		{
-			arquivo: "connMarkOutChainRules",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(sanitizeWANMarks(c.wanMarks))),
-			regras:  connMarkOutChainRules(c.zonaDasMarcas(), sanitizeWANMarks(c.wanMarks)),
-		},
-		{
-			arquivo: "restoreReplyMarkRule",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(sanitizeWANMarks(c.wanMarks))),
-			regras:  uma(restoreReplyMarkRule(c.zonaDasMarcas())),
-		},
-		{
-			arquivo: "restoreOutboundMarkRule",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(sanitizeWANMarks(c.wanMarks))),
-			regras:  uma(restoreOutboundMarkRule(c.zonaDasMarcas())),
-		},
-		{
-			arquivo: "markHostsChainRules",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(c.wanMarks)),
-			regras:  markHostsChainRules(c.zona(wanMarkIfaces(c.wanMarks))),
 		},
 		{
 			arquivo: "abuseRules",
@@ -565,13 +514,6 @@ func conferirComandos(t *testing.T, c cenario) {
 			},
 		},
 		{
-			arquivo: "EnsureConnMark",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(c.wanMarks)),
-			rodar: func(ctx context.Context, s *Service) string {
-				return retornoDe(s.EnsureConnMark(ctx, c.wanMarks))
-			},
-		},
-		{
 			// ErrSemWAN é CONTRATO DE API: internal/hostflows o distingue de
 			// erro genérico e o handler o traduz em recado de tela. O cenário
 			// sem_wan tem de continuar devolvendo a sentinela e ZERO comando.
@@ -580,13 +522,6 @@ func conferirComandos(t *testing.T, c cenario) {
 				c.wans, flowsDoCenario.JanelaMinutos, flowsDoCenario.Teto),
 			rodar: func(ctx context.Context, s *Service) string {
 				return retornoDe(s.EnsureFlows(ctx, c.wans, flowsDoCenario))
-			},
-		},
-		{
-			arquivo: "ReconcileStructuralChains",
-			entrada: fmt.Sprintf("wans = %s", descreverMarcas(c.wanMarks)),
-			rodar: func(ctx context.Context, s *Service) string {
-				return retornoDe(s.ReconcileStructuralChains(ctx, c.wanMarks...))
 			},
 		},
 		{
@@ -695,15 +630,12 @@ func TestAMesmaEntradaProduzAMesmaSaidaEmCinquentaExecucoesSeguidas(t *testing.T
 	for _, c := range cenarios() {
 		t.Run(c.nome, func(t *testing.T) {
 			geradores := map[string]func() [][]string{
-				"acctChainRules":        func() [][]string { return acctChainRules(c.zona(sanitizeInterfaces(c.wans))) },
-				"mssClampRules":         func() [][]string { return mssClampRules(c.zona(sanitizeInterfaces(c.wans))) },
-				"masqueradeRules":       func() [][]string { return masqueradeRules(c.zona(sanitizeInterfaces(c.wans))) },
-				"flowsChainRules":       func() [][]string { return flowsChainRules(c.zona(sanitizeInterfaces(c.wans))) },
-				"connMarkChainRules":    func() [][]string { return connMarkChainRules(c.zonaDasMarcas(), sanitizeWANMarks(c.wanMarks)) },
-				"connMarkOutChainRules": func() [][]string { return connMarkOutChainRules(c.zonaDasMarcas(), sanitizeWANMarks(c.wanMarks)) },
-				"markHostsChainRules":   func() [][]string { return markHostsChainRules(c.zona(wanMarkIfaces(c.wanMarks))) },
-				"abuseRules":            func() [][]string { return abuseRules(c.zona(c.wans), portasDeGerencia(c.acesso)) },
-				"WANInputRules":         func() [][]string { return WANInputRules(c.zona(c.wans), c.acesso, false, true, portaWireGuard) },
+				"acctChainRules":  func() [][]string { return acctChainRules(c.zona(sanitizeInterfaces(c.wans))) },
+				"mssClampRules":   func() [][]string { return mssClampRules(c.zona(sanitizeInterfaces(c.wans))) },
+				"masqueradeRules": func() [][]string { return masqueradeRules(c.zona(sanitizeInterfaces(c.wans))) },
+				"flowsChainRules": func() [][]string { return flowsChainRules(c.zona(sanitizeInterfaces(c.wans))) },
+				"abuseRules":      func() [][]string { return abuseRules(c.zona(c.wans), portasDeGerencia(c.acesso)) },
+				"WANInputRules":   func() [][]string { return WANInputRules(c.zona(c.wans), c.acesso, false, true, portaWireGuard) },
 				"inputChainRules": func() [][]string {
 					return inputChainRules(c.grupos, c.ntpRedes, c.ntpServir, PolicyDrop, c.acesso, c.zona(c.wans), false, true, portaWireGuard)
 				},
@@ -718,7 +650,7 @@ func TestAMesmaEntradaProduzAMesmaSaidaEmCinquentaExecucoesSeguidas(t *testing.T
 				}
 			}
 
-			// O mesmo para o texto do bootstrap, que embute markHostsChainRules.
+			// O mesmo para o texto do bootstrap, que embute masqueradeRules.
 			primeiro := buildBootstrapRuleset(c.wans, c.fatos())
 			for i := 2; i <= 50; i++ {
 				if buildBootstrapRuleset(c.wans, c.fatos()) != primeiro {
@@ -907,17 +839,6 @@ func textoDasRegras(regras [][]string) string {
 		b.WriteString(tokensCitados(r) + "\n")
 	}
 	return b.String()
-}
-
-func descreverMarcas(wans []WANMark) string {
-	if len(wans) == 0 {
-		return "[]"
-	}
-	partes := make([]string, len(wans))
-	for i, w := range wans {
-		partes[i] = fmt.Sprintf("{%q 0x%x}", w.Interface, w.Mark)
-	}
-	return "[" + strings.Join(partes, " ") + "]"
 }
 
 func descreverAcesso(a AdminAccess) string {
@@ -1109,14 +1030,10 @@ func TestSemWANOsGeradoresOmitemARegraEmVezDeEmitirUmSetVazio(t *testing.T) {
 	}
 
 	vazios := map[string][][]string{
-		"acctChainRules":          acctChainRules(semZona),
-		"flowsChainRules":         flowsChainRules(semZona),
-		"connMarkChainRules":      connMarkChainRules(semZona, nil),
-		"connMarkOutChainRules":   connMarkOutChainRules(semZona, nil),
-		"mssClampRules":           mssClampRules(semZona),
-		"abuseRules":              abuseRules(semZona, "{ 22 }"),
-		"restoreReplyMarkRule":    {restoreReplyMarkRule(semZona)},
-		"restoreOutboundMarkRule": {restoreOutboundMarkRule(semZona)},
+		"acctChainRules":  acctChainRules(semZona),
+		"flowsChainRules": flowsChainRules(semZona),
+		"mssClampRules":   mssClampRules(semZona),
+		"abuseRules":      abuseRules(semZona, "{ 22 }"),
 	}
 	for nome, regras := range vazios {
 		for _, r := range regras {
@@ -1127,23 +1044,5 @@ func TestSemWANOsGeradoresOmitemARegraEmVezDeEmitirUmSetVazio(t *testing.T) {
 				}
 			}
 		}
-	}
-
-	// As duas de restauração são o caso delicado: elas NÃO podem ser emitidas
-	// sem o `iifname !=`, porque emiti-las desguarnecidas é ressuscitar a
-	// armadilha da #120 (ver connmark.go). Quem as embrulha é
-	// connMarkChainRules, e é lá que o guarda tem de estar.
-	if regras := connMarkChainRules(semZona, nil); len(regras) != 0 {
-		t.Errorf("sem WAN cadastrada a conn_mark tem de nascer VAZIA, vieram %d regras: %v", len(regras), regras)
-	}
-
-	// E o contraexemplo que já estava certo desde sempre: sem WAN, a mark_hosts
-	// não some — sobra a linha do @host_wan, que não depende de eixo nenhum.
-	semWAN := markHostsChainRules(semZona)
-	if len(semWAN) != 1 {
-		t.Fatalf("markHostsChainRules sem WAN tinha que emitir uma regra só, veio %d: %v", len(semWAN), semWAN)
-	}
-	if got := strings.Join(semWAN[0], " "); got != "counter meta mark set ip saddr map @host_wan" {
-		t.Errorf("markHostsChainRules sem WAN: %q", got)
 	}
 }

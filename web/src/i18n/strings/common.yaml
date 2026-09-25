@@ -19,9 +19,6 @@ nav.dashboard:
 nav.traffic:
   pt: "Tráfego"
   en: "Traffic"
-nav.links:
-  pt: "Links WAN"
-  en: "WAN Links"
 nav.firewall:
   pt: "Firewall"
   en: "Firewall"
@@ -142,9 +139,9 @@ fw.tab.groups:
 fw.tab.hostgroups:
   pt: "Grupos de hosts"
   en: "Host groups"
-fw.tab.steering:
-  pt: "Direcionamento por WAN"
-  en: "WAN steering"
+fw.tab.domains:
+  pt: "Domínios bloqueados"
+  en: "Blocked domains"
 fw.tab.portforward:
   pt: "Encaminhamento"
   en: "Port forwarding"
@@ -817,18 +814,6 @@ fw.pf.intPort.placeholder:
   en: "Internal port"
 
 # Direcionamento por WAN
-fw.steering.title:
-  pt: "Direcionamento por WAN"
-  en: "WAN steering"
-fw.steering.hostIp.placeholder:
-  pt: "IP do host (ex.: 192.168.3.50)"
-  en: "Host IP (e.g. 192.168.3.50)"
-fw.steering.empty:
-  pt: "Nenhum host direcionado."
-  en: "No hosts steered."
-fw.steering.hosts:
-  pt: "Hosts"
-  en: "Hosts"
 
 # Mensagens de confirmação (toasts) da área de firewall. Elas escapam de um
 # grep de JSX porque são argumentos de função — e foi assim que sobreviveram à

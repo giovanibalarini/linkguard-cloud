@@ -48,7 +48,6 @@ const navGroups: NavGroup[] = [
   {
     id: 'rede', label: 'group.rede',
     items: [
-      { to: '/links', label: 'nav.links', icon: Network, perm: ['links.read'] },
       { to: '/interfaces', label: 'nav.interfaces', icon: Cable, perm: ['system.read'], advanced: true },
       { to: '/routes', label: 'nav.routes', icon: Route, perm: ['routes.read'], advanced: true },
       { to: '/hosts', label: 'nav.hosts', icon: MonitorSmartphone, perm: ['hosts.read'] },

@@ -18,16 +18,11 @@ import (
 // Check and RecordSpend each doing an unsynchronized
 // LoadConfig -> mutate -> SaveConfig round-trip against the DB. main.go
 // constructs exactly one BudgetGuard and shares it across every
-// TriggerImmediate/RunDigest/TestToken call; balancer.OnLinkChange fires
-// TriggerImmediate as `go ai.TriggerImmediate(...)` per link, so two links
-// degrading close together call RecordSpend concurrently on the same
-// instance. Without a lock, both goroutines read the same starting
-// SpentThisMonthUSD and the slower writer's increment silently overwrites
-// the faster one's — a lost update that lets real spend drift above the
-// monthly cap the design calls a "hard limit, no exception". This is the
-// same class of bug fixed in immediate.go's lastImmediateTrigger map
-// (mutex-guards-shared-state), applied here to the shared BudgetGuard
-// instance instead of a package-level map.
+// RunDigest/TestToken call, and those run concurrently (the daily digest and a
+// token test from the panel). Without a lock, both goroutines read the same
+// starting SpentThisMonthUSD and the slower writer's increment silently
+// overwrites the faster one's — a lost update that lets real spend drift above
+// the monthly cap the design calls a "hard limit, no exception".
 type BudgetGuard struct {
 	db *storage.DB
 	mu sync.Mutex

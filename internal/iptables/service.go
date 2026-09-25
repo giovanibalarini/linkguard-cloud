@@ -3,10 +3,6 @@ package iptables
 
 import (
 	"context"
-	"fmt"
-	"net"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
@@ -94,139 +90,11 @@ func (s *Service) Save(ctx context.Context) (string, error) {
 // restaura firewall neste produto é nftables.Service.Restore, escopado à tabela
 // `inet linkguard` e com pré-voo `nft -c -f`.
 
-// CreateRule inserts/appends a rule in the specified table and chain.
-// ruleSpec should contain only rule arguments (e.g. "-s 10.0.0.0/24 -j ACCEPT").
-func (s *Service) CreateRule(ctx context.Context, table, chain, ruleSpec string, line int) (string, error) {
-	if err := validateTableChain(table, chain); err != nil {
-		return "", err
-	}
-	if err := validateRuleSpec(ruleSpec); err != nil {
-		return "", err
-	}
-	parts := strings.Fields(strings.TrimSpace(ruleSpec))
-	if len(parts) == 0 {
-		return "", fmt.Errorf("rule_spec is required")
-	}
-
-	args := []string{"-t", table}
-	if line > 0 {
-		args = append(args, "-I", chain, fmt.Sprintf("%d", line))
-	} else {
-		args = append(args, "-A", chain)
-	}
-	args = append(args, parts...)
-	return s.exec.Execute(ctx, "iptables", args...)
-}
-
-// DeleteRule e ReplaceRule foram removidos. O DeleteRule era o único caminho de
-// escrita restante que não passava por validateTableChain: aceitava qualquer
-// table/chain e apagava regra viva de outro programa (as chains do Docker, por
-// exemplo). Nenhum dos dois tinha chamador — o único uso vivo do pacote é o
-// CreateRule do assistente de balanceamento WAN, restrito a mangle/PREROUTING.
-
-var (
-	allowedModules = map[string]bool{"conntrack": true, "statistic": true}
-	allowedCtstate = map[string]bool{"NEW": true, "ESTABLISHED": true, "RELATED": true, "INVALID": true}
-	allowedMode    = map[string]bool{"random": true, "nth": true}
-	allowedTarget  = map[string]bool{"ACCEPT": true, "DROP": true, "REJECT": true, "RETURN": true, "MARK": true}
-	setMarkRe      = regexp.MustCompile(`^0x[0-9a-fA-F]{1,8}$`)
-)
-
-// validateRuleSpec accepts only the exact rule shape the WAN-balance wizard
-// (the sole caller of this legacy endpoint) needs to build:
-//
-//	-s <CIDR> -m conntrack --ctstate <states> [-m statistic --mode <mode> --probability <p>] -j <target> [--set-mark <hex>]
-//
-// Every token must be recognized; anything else — including match/target
-// extensions not in this allowlist — rejects the whole spec. This replaces a
-// denylist that only blocked rule-management flags (-A/-I/-F/...) but let
-// arbitrary -j targets and unvalidated -s/-d values through as extra argv
-// tokens on the real `iptables` invocation.
-func validateRuleSpec(ruleSpec string) error {
-	parts := strings.Fields(strings.TrimSpace(ruleSpec))
-	if len(parts) == 0 {
-		return fmt.Errorf("rule_spec is required")
-	}
-	i := 0
-	next := func() (string, bool) {
-		if i >= len(parts) {
-			return "", false
-		}
-		v := parts[i]
-		i++
-		return v, true
-	}
-	for i < len(parts) {
-		flag, _ := next()
-		switch flag {
-		case "-s", "-d":
-			val, ok := next()
-			if !ok {
-				return fmt.Errorf("%s requires a value", flag)
-			}
-			if net.ParseIP(val) == nil {
-				if _, _, err := net.ParseCIDR(val); err != nil {
-					return fmt.Errorf("%s: endereço/CIDR inválido: %q", flag, val)
-				}
-			}
-		case "-m":
-			val, ok := next()
-			if !ok || !allowedModules[val] {
-				return fmt.Errorf("módulo -m não permitido: %q", val)
-			}
-		case "--ctstate":
-			val, ok := next()
-			if !ok {
-				return fmt.Errorf("--ctstate requires a value")
-			}
-			for _, state := range strings.Split(val, ",") {
-				if !allowedCtstate[state] {
-					return fmt.Errorf("--ctstate não permitido: %q", state)
-				}
-			}
-		case "--mode":
-			val, ok := next()
-			if !ok || !allowedMode[val] {
-				return fmt.Errorf("--mode não permitido: %q", val)
-			}
-		case "--probability":
-			val, ok := next()
-			if !ok {
-				return fmt.Errorf("--probability requires a value")
-			}
-			p, err := strconv.ParseFloat(val, 64)
-			if err != nil || p < 0 || p > 1 {
-				return fmt.Errorf("--probability inválida: %q", val)
-			}
-		case "-j":
-			val, ok := next()
-			if !ok || !allowedTarget[val] {
-				return fmt.Errorf("alvo -j não permitido: %q", val)
-			}
-		case "--set-mark":
-			val, ok := next()
-			if !ok || !setMarkRe.MatchString(val) {
-				return fmt.Errorf("--set-mark inválido: %q", val)
-			}
-		default:
-			return fmt.Errorf("flag não reconhecida: %q", flag)
-		}
-	}
-	return nil
-}
-
-// validateTableChain restricts table/chain to the one combination the WAN-
-// balance wizard (the sole caller of this legacy endpoint) actually uses.
-// Extending this list is a deliberate, explicit decision for a future real
-// use case — not something any caller can widen by just passing a new string.
-func validateTableChain(table, chain string) error {
-	if table == "mangle" && chain == "PREROUTING" {
-		return nil
-	}
-	return fmt.Errorf("table/chain não suportados: %s/%s", table, chain)
-}
-
-// ─── Parser ──────────────────────────────────────────────────────────────────
+// CreateRule, DeleteRule e ReplaceRule foram removidos: o pacote só LÊ o
+// iptables. O último caminho de escrita (o CreateRule, restrito a
+// mangle/PREROUTING) tinha um usuário só, o assistente de balanceamento de duas
+// WANs, que saiu da versão cloud junto com o multi-WAN. O LinkGuard escreve só
+// na tabela inet linkguard.
 
 func parseIptablesOutput(tableName, output string) Table {
 	t := Table{Name: tableName}

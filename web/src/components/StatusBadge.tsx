@@ -1,26 +1,5 @@
 import Tag, { type TagVariant } from './ui/Tag';
-import type { LinkStatus, AlertSeverity } from '../types';
-
-interface StatusBadgeProps {
-  status: LinkStatus | string;
-  className?: string;
-}
-
-const statusConfig: Record<string, { label: string; variant: TagVariant }> = {
-  online: { label: 'Online', variant: 'ok' },
-  offline: { label: 'Offline', variant: 'crit' },
-  degraded: { label: 'Degradado', variant: 'warn' },
-  unknown: { label: 'Desconhecido', variant: 'idle' },
-};
-
-export default function StatusBadge({ status, className = '' }: StatusBadgeProps) {
-  const cfg = statusConfig[status] ?? statusConfig.unknown;
-  return (
-    <Tag variant={cfg.variant} dot className={className}>
-      {cfg.label}
-    </Tag>
-  );
-}
+import type { AlertSeverity } from '../types';
 
 interface AlertBadgeProps {
   severity: AlertSeverity | string;

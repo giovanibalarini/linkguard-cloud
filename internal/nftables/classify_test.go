@@ -30,16 +30,6 @@ func TestClassifyRuleMasqueradeOwnedByNAT(t *testing.T) {
 	}
 }
 
-func TestClassifyRuleMarkHostsOwnedByWanSteering(t *testing.T) {
-	managed, owner := classifyRule("mark_hosts", "meta mark set ip saddr map @host_wan")
-	if !managed {
-		t.Error("mark_hosts must be managed")
-	}
-	if owner.Key != "wan_steering" {
-		t.Errorf("owner.Key = %q, want %q", owner.Key, "wan_steering")
-	}
-}
-
 func TestClassifyRuleInputNTPOwnedByNTP(t *testing.T) {
 	managed, owner := classifyRule(InputChain, "udp dport 123 ip saddr 192.168.3.0/24 accept")
 	if !managed || owner.Key != "ntp" {
@@ -221,13 +211,6 @@ func TestDescribeRuleJumpUserRulesIsHumanReadable(t *testing.T) {
 	got := describeRule("forward", "jump user_rules")
 	if got == "" || got == "jump user_rules" {
 		t.Errorf("expected a translated description, got raw/empty: %q", got)
-	}
-}
-
-func TestDescribeRuleMarkHostsMentionsWan(t *testing.T) {
-	got := describeRule("mark_hosts", "meta mark set ip saddr map @host_wan")
-	if !strings.Contains(strings.ToUpper(got), "WAN") {
-		t.Errorf("expected description to mention WAN, got %q", got)
 	}
 }
 

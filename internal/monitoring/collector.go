@@ -119,7 +119,7 @@ func (c *Collector) collect() {
 		//
 		// Gated by cfg.Enabled — the "Me avise de qualquer queda" master toggle.
 		// By product decision it is a single switch: turning it off silences ALL
-		// alerts (services, links AND the box's own cpu/mem/disk), for the
+		// alerts (services AND the box's own cpu/mem/disk), for the
 		// simplest mental model. Default is on.
 		if cfg.Enabled {
 			c.checkResource("resource:cpu", "CPU", sys.CPUPercent, 90, c.alertSvc.HighCPU, c.alertSvc.CPUNormal)
@@ -151,9 +151,6 @@ func (c *Collector) collect() {
 		c.m.AlertsTotal.Set(float64(n))
 	}
 
-	if cfg.Enabled {
-		c.trackLinks()
-	}
 }
 
 // setLastUpdatesReport caches the most recent pending-updates report so the

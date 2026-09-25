@@ -1,6 +1,5 @@
 // API type definitions for LinkGuard Cloud
 
-export type LinkStatus = 'online' | 'offline' | 'degraded' | 'unknown';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 // MsgLevel é como uma mensagem de tela deve SOAR. Os dois primeiros já
@@ -10,118 +9,19 @@ export type AlertSeverity = 'info' | 'warning' | 'critical';
 // notícia — em verde, ele induz o operador a achar que a mudança dele valeu.
 export type MsgLevel = 'ok' | 'warn' | 'error';
 
-export interface WanLink {
-  id: string;
-  name: string;
-  interface: string;
-  ip_address: string;
-  gateway: string;
-  weight: number;
-  dns_test: string;
-  monitor_hosts: string;
-  status: LinkStatus;
-  latency_ms: number;
-  packet_loss: number;
-  last_check: string | null;
-  enabled: boolean;
-  table_id: number;
-  qos_enabled: boolean;
-  qos_upload_mbps: number;
-  qos_download_mbps: number;
-  qos_interactive: boolean;
-  created_at: string;
-  updated_at: string;
-}
+// ─── Uplink ─────────────────────────────────────────────────────────────────
 
-// ─── Uplink efetivo ─────────────────────────────────────────────────────────
-
-// Uplink é por onde a máquina sai para a Internet AGORA — o que o admin
-// cadastrou ou, quando ele não cadastrou nada, o que a plataforma afirmou.
-//
-// NÃO É UM WanLink, e a diferença é o ponto: não tem id, não tem table_id, não
-// tem monitor nem failover, e nada nele pode ser editado ou apagado. O servidor
-// o serve numa rota própria (GET /api/uplink) exatamente para a tela não
-// oferecer as ações de link sobre uma coisa que não é link.
+// Uplink é por onde a máquina sai para a Internet AGORA: a VNIC primária que a
+// plataforma afirmou ou, quando ela não respondeu, a placa da rota default.
+// Somente leitura (GET /api/uplink): o que se muda é a VNIC, no console da
+// Oracle, e não um registro.
 export interface Uplink {
   interface: string;
   // path_mtu é o que o CAMINHO suporta, não o que a placa anuncia. 0 =
   // desconhecido, e a tela tem de dizer "desconhecida", nunca "0".
   path_mtu: number;
-  implicit: boolean;
-  source: 'platform' | 'link' | 'none';
+  source: 'platform' | 'kernel' | 'none';
   platform: string;
-}
-
-// ─── Queue control per WAN (issue #121) ─────────────────────────────────────
-
-export interface QosConfig {
-  interface: string;
-  enabled: boolean;
-  upload_mbps: number;
-  download_mbps: number;
-  interactive: boolean;
-}
-
-export interface QosState {
-  enabled: boolean;
-  interface: string;
-  ifb: string;
-  mode: string;
-  dry_run: boolean;
-}
-
-export interface QosGetResponse {
-  desired: QosConfig;
-  observed: QosState;
-}
-
-export interface QosUpdateRequest {
-  enabled: boolean;
-  upload_mbps: number;
-  download_mbps: number;
-  interactive: boolean;
-}
-
-export interface QosMeasurement {
-  min_ms: number;
-  avg_ms: number;
-  max_ms: number;
-  loss_pct: number;
-}
-
-export interface QosLoadMeasurement {
-  offered_mbps: number;
-  latency: QosMeasurement | null;
-  throughput_mbps: number | null;
-  interface_mbps: number | null;
-  cpu_percent: number | null;
-  valid: boolean;
-  limitations: string[];
-}
-
-export interface QosPhaseMeasurement {
-  upload: QosLoadMeasurement;
-  download: QosLoadMeasurement;
-  valid: boolean;
-  limitations: string[];
-}
-
-export interface QosBenchmarkConditions {
-  server: string;
-  port: number;
-  duration_sec: number;
-  load_cap_mbps: number;
-  upload_offered_mbps: number;
-  download_offered_mbps: number;
-}
-
-export interface QosComparison {
-  baseline: QosPhaseMeasurement;
-  configured: QosPhaseMeasurement;
-  conditions: QosBenchmarkConditions;
-  valid: boolean;
-  restored: boolean;
-  limitations: string[];
 }
 
 export interface TimelinePoint {
@@ -216,18 +116,6 @@ export interface AuditLog {
   created_at: string;
 }
 
-export interface FailoverEvent {
-  id: string;
-  link_id: string;
-  link_name: string;
-  from_status: string;
-  to_status: string;
-  reason: string;
-  commands: string;
-  dry_run: boolean;
-  created_at: string;
-}
-
 export interface Route {
   destination: string;
   gateway: string;
@@ -294,7 +182,7 @@ export interface LoginResponse {
 
 export interface HealthStatus {
   status: string;
-  link_count: number;
+  version?: string;
 }
 
 // ─── RBAC ──────────────────────────────────────────────────────────────────
@@ -333,7 +221,6 @@ export interface MeResponse {
 }
 
 export interface NftManaged {
-  wan_hosts: { ip: string; mark: string }[];
   blocklist: string[];
   blocked_hosts: string[];
 }
@@ -628,54 +515,6 @@ export interface DNSData { config: NetsvcConfig; blocklist: string[]; last_apply
 
 export interface HostTraffic { ip: string; rx_bytes: number; tx_bytes: number; }
 
-// ─── Multi-WAN balancing ─────────────────────────────────────────────────────
-
-export interface BalanceNexthop {
-  link_id: string;
-  name: string;
-  gateway: string;
-  interface: string;
-  raw_weight: number;
-  weight: number;
-  online: boolean;
-}
-
-export interface BalanceSchedule {
-  id: string;
-  name: string;
-  enabled: boolean;
-  days: number[]; // 0=Sun .. 6=Sat
-  at: string; // "HH:MM"
-  weights: Record<string, number>; // link_id -> weight
-}
-
-export interface BalanceConfig {
-  mode: 'failover' | 'balance';
-  table: string;
-  arm_seconds: number;
-  schedules: BalanceSchedule[];
-  evict_on_degrade: boolean;
-  degraded_sustain_samples: number;
-  evict_cooldown_seconds: number;
-}
-
-export interface BalancePlan {
-  mode: 'failover' | 'balance';
-  table: string;
-  nexthops: BalanceNexthop[];
-  excluded: BalanceNexthop[];
-  command: string;
-  current_default: string;
-  pending: boolean;
-  pending_expiry: number;
-  arm_seconds: number;
-}
-
-export interface BalanceStatus {
-  config: BalanceConfig;
-  plan: BalancePlan;
-}
-
 export interface NetHost {
   ip: string;
   mac: string;
@@ -718,7 +557,7 @@ export interface TrafficRetentionResponse {
 
 // ─── Monitoring (Vigia) ──────────────────────────────────────────────────────
 
-export interface HealthItem { name: string; kind: 'service' | 'link' | 'resource'; up: boolean; since: number; }
+export interface HealthItem { name: string; kind: 'service' | 'resource'; up: boolean; since: number; }
 export interface PendingPackage {
   name: string;
   current_version: string;
@@ -904,27 +743,6 @@ export interface CaptureStatus {
     file_ttl_sec: number;
   };
   capture?: CaptureRun;
-}
-
-// ─── Franquia por link (issue #126) ──────────────────────────────────────────
-// limit_gb e o consumo são em GB DECIMAIS (10^9) — a unidade da fatura da
-// operadora. Ver storage.LinkQuota no backend.
-
-export interface LinkQuotaStatus {
-  link_id: string;
-  link_name: string;
-  interface: string;
-  configured: boolean;
-  enabled: boolean;
-  limit_gb: number;
-  cycle_day: number;
-  alert_pct: number;
-  cycle_start: number;
-  cycle_end: number;
-  rx_bytes: number;
-  tx_bytes: number;
-  used_bytes: number;
-  used_pct: number;
 }
 
 // ─── Registro de bloqueios (issue #122) ──────────────────────────────────────

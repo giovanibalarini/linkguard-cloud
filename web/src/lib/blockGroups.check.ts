@@ -49,7 +49,7 @@ const check = (c: unknown, m: string) => { assert.ok(c, m); n++; };
     check(yaml.includes(`\nfwx.systemGroup.${kind}:`), `falta fwx.systemGroup.${kind} no YAML`);
   }
   // Os rótulos de dono, idem: eles vêm do Go com um Key estável.
-  for (const key of ['nat', 'wan_steering', 'ntp', 'rule_groups', 'host_block', 'blocklist', 'port_forward']) {
+  for (const key of ['nat', 'ntp', 'rule_groups', 'host_block', 'blocklist', 'port_forward']) {
     check(yaml.includes(`\nfwx.owner.${key}:`), `falta fwx.owner.${key} no YAML (o Go emite esse Key)`);
   }
 }

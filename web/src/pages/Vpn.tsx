@@ -16,7 +16,6 @@ const defaultConfig: VPNConfig = {
   listen_port: 51820,
   address: '10.7.0.1/24',
   endpoint_host: '',
-  endpoint_link_id: '',
 };
 
 type Message = { kind: 'ok' | 'error' | 'warn'; text: string } | null;

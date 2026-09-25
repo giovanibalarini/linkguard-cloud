@@ -116,7 +116,7 @@ func (h *FluxosHandler) SetConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "corpo inválido")
 		return
 	}
-	wans, err := wansDe(h.wanSource, h.db)
+	wans, err := wansDe(h.wanSource)
 	if err != nil {
 		writeInternalError(w, err)
 		return

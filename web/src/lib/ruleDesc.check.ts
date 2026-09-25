@@ -69,7 +69,7 @@ const t = (k: string, vars?: Record<string, string | number>) => {
   const doGo = [
     'desc.masquerade', 'desc.ctRelated', 'desc.ntpAccept', 'desc.ntpAcceptFrom', 'desc.ntpDrop',
     'desc.jumpUserRules', 'desc.blockedHosts.to', 'desc.blockedHosts.from',
-    'desc.blocklist.to', 'desc.blocklist.from', 'desc.markHost', 'desc.dnat',
+    'desc.blocklist.to', 'desc.blocklist.from', 'desc.dnat',
   ];
   for (const k of doGo) check(yaml.includes(`\n${k}:`), `falta ${k} no YAML (o Go emite essa chave)`);
   for (const acao of ['accept', 'drop', 'reject', 'rule']) {

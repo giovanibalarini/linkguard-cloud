@@ -56,37 +56,6 @@ func newNftTestHandler(t *testing.T, ruleset string) (*handlers.NftablesHandler,
 	return handlers.NewNftablesHandler(svc, db, fr), db
 }
 
-// TestWanHostPersistsLiveSnapshot is the regression test for "regras de
-// firewall persistidas no banco": every mutation that changes the live
-// nftables ruleset (here, adding a host_wan entry) must also save a fresh
-// snapshot to LiveSnapshotSettingKey, so a from-scratch install can restore
-// it later (see nftables.EnsureTable + main.go's bootstrap-then-restore).
-func TestWanHostPersistsLiveSnapshot(t *testing.T) {
-	redirectConfPath(t)
-	const wantRuleset = "table inet linkguard {\n\tmap host_wan {\n\t\telements = { 10.0.0.5 : 0x12c }\n\t}\n}\n"
-	h, db := newNftTestHandler(t, wantRuleset)
-
-	if got, _ := db.GetSetting(nftables.LiveSnapshotSettingKey); got != "" {
-		t.Fatalf("expected no snapshot before any mutation, got %q", got)
-	}
-
-	body := strings.NewReader(`{"ip":"10.0.0.5","mark":"0x12c"}`)
-	r := httptest.NewRequest("POST", "/api/nftables/wan-host", body)
-	w := httptest.NewRecorder()
-	h.WanHost(w, r)
-
-	if w.Code != 200 {
-		t.Fatalf("WanHost: status %d, body %s", w.Code, w.Body.String())
-	}
-	got, err := db.GetSetting(nftables.LiveSnapshotSettingKey)
-	if err != nil {
-		t.Fatalf("GetSetting: %v", err)
-	}
-	if got != wantRuleset {
-		t.Errorf("snapshot not persisted correctly:\ngot:  %q\nwant: %q", got, wantRuleset)
-	}
-}
-
 // TestBlocklistPersistsLiveSnapshot covers the other mutating nftables
 // endpoint family (sets, not just the map) through the same mechanism.
 func TestBlocklistPersistsLiveSnapshot(t *testing.T) {

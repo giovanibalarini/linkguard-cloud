@@ -5,32 +5,6 @@ import (
 	"time"
 )
 
-// ─── Link ────────────────────────────────────────────────────────────────────
-
-// Link represents a WAN link configuration.
-type Link struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Interface       string     `json:"interface"`
-	IPAddress       string     `json:"ip_address"`
-	Gateway         string     `json:"gateway"`
-	Weight          int        `json:"weight"`
-	DNSTest         string     `json:"dns_test"`
-	MonitorHosts    string     `json:"monitor_hosts"`
-	Status          string     `json:"status"` // online, offline, degraded, unknown
-	LatencyMs       float64    `json:"latency_ms"`
-	PacketLoss      float64    `json:"packet_loss"`
-	LastCheck       *time.Time `json:"last_check"`
-	Enabled         bool       `json:"enabled"`
-	TableID         int        `json:"table_id"`
-	QoSEnabled      bool       `json:"qos_enabled"`
-	QoSUploadMbps   int        `json:"qos_upload_mbps"`
-	QoSDownloadMbps int        `json:"qos_download_mbps"`
-	QoSInteractive  bool       `json:"qos_interactive"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-}
-
 // ─── Alert ───────────────────────────────────────────────────────────────────
 
 // Alert represents a system alert.
@@ -64,43 +38,6 @@ type AuditLog struct {
 	Details   string    `json:"details"`
 	IP        string    `json:"ip"`
 	CreatedAt time.Time `json:"created_at"`
-}
-
-// ─── FailoverEvent ───────────────────────────────────────────────────────────
-
-// FailoverEvent records a state change on a link.
-type FailoverEvent struct {
-	ID         string    `json:"id"`
-	LinkID     string    `json:"link_id"`
-	LinkName   string    `json:"link_name"`
-	FromStatus string    `json:"from_status"`
-	ToStatus   string    `json:"to_status"`
-	Reason     string    `json:"reason"`
-	Commands   string    `json:"commands"`
-	DryRun     bool      `json:"dry_run"`
-	CreatedAt  time.Time `json:"created_at"`
-}
-
-// ─── RoutingPolicy ───────────────────────────────────────────────────────────
-
-// RoutingPolicy defines how traffic from/to a CIDR is routed.
-//
-// NÃO É UM RECURSO DO PRODUTO. Nada fora de internal/storage constrói ou lê
-// este tipo: sem handler, sem service, sem tela (issue #62). A forma dos campos
-// sugere um desenho que nunca foi implementado do outro lado — ver o comentário
-// do bloco "Routing Policies" em repo_netsvc.go antes de assumir que basta
-// ligá-lo na interface.
-type RoutingPolicy struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	SourceCIDR string    `json:"source_cidr"`
-	DestCIDR   string    `json:"dest_cidr"`
-	LinkID     string    `json:"link_id"`
-	Priority   int       `json:"priority"`
-	Enabled    bool      `json:"enabled"`
-	Failover   bool      `json:"failover"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // ─── IptablesBackup ──────────────────────────────────────────────────────────
@@ -166,8 +103,6 @@ type HostMetadata struct {
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
 }
-
-// ─── DHCPReservation ─────────────────────────────────────────────────────────
 
 // ─── TrafficSample ──────────────────────────────────────────────────────────
 

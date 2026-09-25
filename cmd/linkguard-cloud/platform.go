@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
 )
 
 // detectPlatformOnBoot descobre em que máquina o produto está e NUNCA derruba
@@ -102,4 +104,32 @@ func redesDasPlacas(plat platform.Snapshot) []string {
 		}
 	}
 	return redes
+}
+
+// enderecosProprios são os endereços desta caixa que o alvo por domínio nunca
+// pode pôr no bloqueio: o privado de cada VNIC, o roteador virtual da VCN (o
+// gateway) e o endereço público da VPN quando ele é um IP — na Oracle é o IP
+// reservado, que não aparece em placa nenhuma e por isso não é descoberto
+// pelo índice olhando as interfaces.
+func enderecosProprios(plat platform.Snapshot, wg interface {
+	Config() (wireguard.Config, error)
+}) []string {
+	var out []string
+	add := func(a string) {
+		if net.ParseIP(a) != nil {
+			out = append(out, a)
+		}
+	}
+	if plat.Facts.OCI != nil {
+		for _, v := range plat.Facts.OCI.VNICs {
+			add(v.PrivateIP)
+			add(v.VirtualRouterIP)
+		}
+	}
+	if wg != nil {
+		if c, err := wg.Config(); err == nil {
+			add(c.EndpointHost)
+		}
+	}
+	return out
 }

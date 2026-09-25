@@ -83,3 +83,10 @@ func (db *DB) CountAlerts() (int, error) {
 	err := db.conn.QueryRow(`SELECT COUNT(*) FROM alerts WHERE resolved=0`).Scan(&n)
 	return n, err
 }
+
+// Ping prova que o banco responde a uma consulta de verdade. É o que o
+// /api/health usa (antes era a contagem de links, que saíram com o multi-WAN).
+func (db *DB) Ping() error {
+	var one int
+	return db.conn.QueryRow(`SELECT 1`).Scan(&one)
+}

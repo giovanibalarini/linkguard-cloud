@@ -35,11 +35,6 @@ func newDomainTargetsHandler(t *testing.T) (*DomainTargetsHandler, *domainroutin
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateLink(&storage.Link{
-		ID: "wan-2", Name: "WAN 2", Interface: "wan2", Status: "online", Enabled: true, TableID: 200,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	coordinator := domainrouting.New(db, &domainRuntimeStub{})
 	if err := coordinator.Prepare(context.Background()); err != nil {
 		t.Fatal(err)
@@ -72,7 +67,7 @@ func TestDomainTargetsHandlerCRUDKeepsPromotionExplicit(t *testing.T) {
 
 	create := httptest.NewRecorder()
 	h.Create(create, domainRequest(http.MethodPost, "/api/domain-targets",
-		`{"domain":"Video.Example.com.","capability":"direcionar","link_id":"wan-2","note":"streaming"}`))
+		`{"domain":"Video.Example.com.","capability":"barrar","note":"streaming"}`))
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create = %d: %s", create.Code, create.Body.String())
 	}
@@ -94,7 +89,7 @@ func TestDomainTargetsHandlerCRUDKeepsPromotionExplicit(t *testing.T) {
 
 	update := httptest.NewRecorder()
 	h.Update(update, domainRequest(http.MethodPut, "/api/domain-targets/"+id,
-		`{"domain":"media.example.com","capability":"direcionar","link_id":"wan-2","note":"editado"}`, "id", id))
+		`{"domain":"media.example.com","capability":"barrar","note":"editado"}`, "id", id))
 	if update.Code != http.StatusOK {
 		t.Fatalf("update = %d: %s", update.Code, update.Body.String())
 	}
@@ -132,7 +127,8 @@ func TestDomainTargetsHandlerRejectsUnknownTrailingAndInvalidPayloads(t *testing
 		{name: "stage hidden in create", body: `{"domain":"video.example.com","capability":"barrar","stage":"ativo"}`},
 		{name: "trailing json", body: `{"domain":"video.example.com","capability":"barrar"} {}`},
 		{name: "unknown capability", body: `{"domain":"video.example.com","capability":"redirecionar"}`},
-		{name: "unknown link", body: `{"domain":"video.example.com","capability":"direcionar","link_id":"wan-missing"}`},
+		{name: "steering left with multi-WAN", body: `{"domain":"video.example.com","capability":"direcionar"}`},
+		{name: "link_id is no longer a field", body: `{"domain":"video.example.com","capability":"barrar","link_id":"wan-2"}`},
 		{name: "control in note", body: "{\"domain\":\"video.example.com\",\"capability\":\"barrar\",\"note\":\"linha\\nnova\"}"},
 	}
 	for _, tt := range tests {

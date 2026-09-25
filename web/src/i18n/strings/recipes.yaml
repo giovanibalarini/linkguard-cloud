@@ -113,24 +113,6 @@ recipes.block-device.step4:
   pt: "Para liberar, clique em *Desbloquear* no mesmo aparelho."
   en: "To let it back on, click *Unblock* on the same device."
 
-recipes.balance-wan.title:
-  pt: "Escolher / equilibrar a internet (WAN)"
-  en: "Choose / balance the internet (WAN)"
-recipes.balance-wan.summary:
-  pt: "Definir prioridade entre links ou dividir o tráfego (multi-WAN)."
-  en: "Set priority between links or split traffic across them (multi-WAN)."
-recipes.balance-wan.cta:
-  pt: "Ir para Links WAN"
-  en: "Go to WAN Links"
-recipes.balance-wan.step1:
-  pt: "Abra a tela *Links WAN*."
-  en: "Open the *WAN Links* screen."
-recipes.balance-wan.step2:
-  pt: "Ajuste o *peso* de cada link: maior peso recebe mais tráfego."
-  en: "Adjust the *weight* of each link: the higher the weight, the more traffic it takes."
-recipes.balance-wan.step3:
-  pt: "Com dois links, o LinkGuard equilibra o uso e troca sozinho se um cair (*failover*)."
-  en: "With two links, LinkGuard balances usage between them and switches over on its own if one goes down (*failover*)."
 
 recipes.secure-panel.title:
   pt: "Proteger o acesso ao painel"
@@ -174,44 +156,29 @@ recipes.start.progress:
   pt: "{feitos} de {total}"
   en: "{feitos} of {total}"
 
-recipes.start.iface.title:
-  pt: "Identifique suas conexões"
-  en: "Identify your connections"
-recipes.start.iface.body:
-  pt: "Toda máquina-firewall tem pelo menos duas conexões de rede."
-  en: "Every firewall machine has at least two network connections."
-recipes.start.iface.cta:
-  pt: "Ver interfaces"
-  en: "View interfaces"
-recipes.start.iface.help.title:
-  pt: "WAN e LAN"
-  en: "WAN and LAN"
-recipes.start.iface.help.body:
-  pt: "A *WAN* é a sua conexão com a *internet* (o cabo do provedor/modem). A *LAN* é a sua *rede local* (os aparelhos de casa). O firewall fica no meio, protegendo a LAN e compartilhando a internet."
-  en: "The *WAN* is your connection to the *internet* (the cable from the provider or modem). The *LAN* is your *local network* (the devices at home). The firewall sits between the two, protecting the LAN and sharing the internet."
 
 recipes.start.wan.title:
-  pt: "Configure sua internet (WAN)"
-  en: "Set up your internet (WAN)"
+  pt: "Confira a saída para a Internet"
+  en: "Check the path to the Internet"
 recipes.start.wan.body:
-  pt: "Diga qual interface é a sua internet. Pode ter mais de uma (multi-WAN)."
-  en: "Say which interface carries your internet. There can be more than one (multi-WAN)."
+  pt: "É a placa por onde esta máquina sai. Vem da Oracle: o LinkGuard descobre sozinho."
+  en: "It is the card this machine leaves through. It comes from Oracle: LinkGuard finds it by itself."
 recipes.start.wan.cta:
-  pt: "Configurar WAN"
-  en: "Configure WAN"
+  pt: "Ver interfaces"
+  en: "View interfaces"
 recipes.start.wan.help.title:
-  pt: "Link WAN"
-  en: "WAN link"
+  pt: "Saída para a Internet"
+  en: "Path to the Internet"
 recipes.start.wan.help.body:
-  pt: "É a porta por onde a internet entra. Com *duas WANs*, o LinkGuard pode equilibrar o uso e trocar automaticamente se uma cair (*failover*)."
-  en: "It is the port the internet comes in through. With *two WANs*, LinkGuard can balance usage and switch over automatically if one goes down (*failover*)."
+  pt: "É a *VNIC primária* da máquina. As outras máquinas da *VCN* que apontam a rota para cá saem por ela com *NAT*."
+  en: "It is the machine's *primary VNIC*. Other *VCN* machines whose route points here leave through it with *NAT*."
 
 recipes.start.nat.title:
   pt: "Transforme em firewall (NAT)"
   en: "Turn it into a firewall (NAT)"
 recipes.start.nat.body:
-  pt: "Compartilha a internet com a sua rede local com segurança."
-  en: "Shares the internet with your local network, safely."
+  pt: "Deixa as máquinas da VCN saírem para a Internet por aqui."
+  en: "Lets the VCN machines reach the Internet through here."
 recipes.start.nat.cta:
   pt: "Ver firewall"
   en: "View firewall"

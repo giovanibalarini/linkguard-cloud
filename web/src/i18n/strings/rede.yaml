@@ -11,9 +11,6 @@
 # ─── Mensagens e rótulos compartilhados na área ─────────────────────────────
 # net.msg.errorPrefix precisa ser o começo EXATO de net.msg.error nos dois
 # idiomas: o banner de Rotas decide a cor vermelha por esse prefixo.
-net.msg.errorPrefix:
-  pt: "Erro"
-  en: "Error"
 net.msg.error:
   pt: "Erro: {e}"
   en: "Error: {e}"
@@ -23,23 +20,14 @@ net.action.refresh:
 net.action.back:
   pt: "Voltar"
   en: "Back"
-net.col.actions:
-  pt: "Ações"
-  en: "Actions"
 
 # ─── Rotas ──────────────────────────────────────────────────────────────────
 net.routes.title:
   pt: "Rotas"
   en: "Routes"
 net.routes.subtitle:
-  pt: "Tabelas de roteamento e regras ip rule"
-  en: "Routing tables and ip rule entries"
-net.routes.new:
-  pt: "Nova Rota"
-  en: "New route"
-net.routes.modal.edit:
-  pt: "Editar Rota"
-  en: "Edit route"
+  pt: "O que o kernel tem nas tabelas de rota e nas regras ip rule. Só leitura: na nuvem a rota é da VCN."
+  en: "What the kernel has in its route tables and ip rules. Read-only: on the cloud, routing belongs to the VCN."
 net.routes.tab.routes:
   pt: "Rotas ({n})"
   en: "Routes ({n})"
@@ -49,15 +37,6 @@ net.routes.tab.rules:
 net.routes.empty:
   pt: "Nenhuma rota disponível"
   en: "No routes available"
-net.routes.action.edit:
-  pt: "Editar rota"
-  en: "Edit route"
-net.routes.action.delete:
-  pt: "Remover rota"
-  en: "Delete route"
-net.routes.confirm.delete:
-  pt: "Remover rota {d}?"
-  en: "Delete route {d}?"
 net.routes.col.destination:
   pt: "Destino"
   en: "Destination"
@@ -76,68 +55,11 @@ net.routes.col.metric:
 net.routes.col.scope:
   pt: "Escopo"
   en: "Scope"
-net.routes.field.destination:
-  pt: "Destino *"
-  en: "Destination *"
-net.routes.ph.destination:
-  pt: "default ou 10.0.0.0/24"
-  en: "default or 10.0.0.0/24"
-net.routes.field.gateway:
-  pt: "Gateway"
-  en: "Gateway"
-net.routes.field.interface:
-  pt: "Interface"
-  en: "Interface"
-net.routes.field.table:
-  pt: "Tabela"
-  en: "Table"
-net.routes.ph.table:
-  pt: "main ou 100"
-  en: "main or 100"
-net.routes.hint.table:
-  pt: "Deixe vazio para usar a tabela principal (main)."
-  en: "Leave empty to use the main routing table (main)."
-net.routes.form.destRequired:
-  pt: "Informe o destino da rota."
-  en: "Enter the route destination."
-net.routes.form.saveFailed:
-  pt: "Erro ao salvar rota."
-  en: "Could not save the route."
-net.routes.toast.added:
-  pt: "Rota adicionada com sucesso!"
-  en: "Route added."
-net.routes.toast.updated:
-  pt: "Rota atualizada com sucesso!"
-  en: "Route updated."
-net.routes.toast.removed:
-  pt: "Rota removida com sucesso!"
-  en: "Route deleted."
 
 # ─── Regras ip rule ─────────────────────────────────────────────────────────
-net.rules.new:
-  pt: "Nova Regra"
-  en: "New rule"
-net.rules.modal.new:
-  pt: "Nova Regra ip rule"
-  en: "New ip rule entry"
-net.rules.modal.edit:
-  pt: "Editar Regra ip rule"
-  en: "Edit ip rule entry"
 net.rules.empty:
   pt: "Nenhuma regra ip rule disponível"
   en: "No ip rule entries available"
-net.rules.action.edit:
-  pt: "Editar regra"
-  en: "Edit rule"
-net.rules.action.delete:
-  pt: "Remover regra"
-  en: "Delete rule"
-net.rules.confirm.delete:
-  pt: "Remover regra {p}: {s}?"
-  en: "Delete rule {p}: {s}?"
-net.rules.priorityInline:
-  pt: "prioridade {p}"
-  en: "priority {p}"
 net.rules.col.priority:
   pt: "Prioridade"
   en: "Priority"
@@ -153,36 +75,6 @@ net.rules.col.action:
 net.rules.col.table:
   pt: "Tabela"
   en: "Table"
-net.rules.field.from:
-  pt: "Origem (from)"
-  en: "Source (from)"
-net.rules.ph.from:
-  pt: "192.168.1.0/24 ou all"
-  en: "192.168.1.0/24 or all"
-net.rules.field.fwmark:
-  pt: "FWMark"
-  en: "FWMark"
-net.rules.field.table:
-  pt: "Tabela lookup *"
-  en: "Lookup table *"
-net.rules.field.priority:
-  pt: "Prioridade"
-  en: "Priority"
-net.rules.form.tableRequired:
-  pt: "Informe a tabela lookup (ex.: main ou 100)."
-  en: "Enter the lookup table (e.g. main or 100)."
-net.rules.form.saveFailed:
-  pt: "Erro ao salvar regra."
-  en: "Could not save the rule."
-net.rules.toast.added:
-  pt: "Regra adicionada com sucesso!"
-  en: "Rule added."
-net.rules.toast.updated:
-  pt: "Regra atualizada com sucesso!"
-  en: "Rule updated."
-net.rules.toast.removed:
-  pt: "Regra removida com sucesso!"
-  en: "Rule deleted."
 
 # ─── Interfaces ─────────────────────────────────────────────────────────────
 net.if.title:
@@ -401,3 +293,29 @@ net.traffic.alias.hint:
 net.traffic.aliasSaveFailed:
   pt: "Erro ao salvar apelido da interface"
   en: "Could not save the interface alias"
+
+# ─── Por onde a máquina sai para a Internet ────────────────────────────────
+net.uplink.title:
+  pt: "Saída para a Internet"
+  en: "Path to the Internet"
+net.uplink.source.platform:
+  pt: "Detectada pela plataforma (a Oracle confirmou qual é a placa primária). O tráfego de quem está atrás desta máquina sai por ela com NAT."
+  en: "Detected from the platform (Oracle confirmed the primary card). Traffic from machines behind this one leaves through it with NAT."
+net.uplink.source.kernel:
+  pt: "Tirada da rota default, porque a plataforma não respondeu neste boot. O NAT funciona; o ajuste de MSS fica desligado até a plataforma responder."
+  en: "Taken from the default route, because the platform did not answer on this boot. NAT works; MSS clamping stays off until the platform answers."
+net.uplink.source.none:
+  pt: "Nenhuma saída encontrada: sem rota default e sem resposta da plataforma. Sem ela a máquina não faz NAT."
+  en: "No path found: no default route and no answer from the platform. Without it the machine does no NAT."
+net.uplink.iface:
+  pt: "Interface"
+  en: "Interface"
+net.uplink.mtu:
+  pt: "MTU do caminho"
+  en: "Path MTU"
+net.uplink.mtu.unknown:
+  pt: "desconhecida"
+  en: "unknown"
+net.uplink.platform:
+  pt: "Plataforma"
+  en: "Platform"

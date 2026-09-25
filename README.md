@@ -143,15 +143,18 @@ For enthusiasts who also want to venture in and help the evolution of the projec
 
 **🇺🇸 Turns a bare Debian box into a managed firewall appliance — and then owns it.**
 
-LinkGuard Cloud manages the whole edge of a small network from one web panel:
-native **nftables** firewalling, multi-WAN load balancing and failover, policy
-routing, DHCP (Kea), recursive DNS (unbound), NTP (chrony), interface naming,
-LAN host inventory and per-host bandwidth. You install LinkGuard on a machine
-with nothing on it; it installs and configures the rest itself.
+LinkGuard Cloud is the gateway of a cloud account, managed from one web panel:
+outbound **NAT** for the private instances behind it, native **nftables**
+firewalling, a **WireGuard** VPN with per-person access, a DNS resolver for VPN
+users (unbound) with blocklists, and visibility into who is talking to whom
+(per-host traffic, flows, packet capture). The uplink comes from the platform
+(the VNIC Oracle confirms) or from the kernel's default route; there are no WAN
+links to register. You install it on a fresh VM; NAT works right away, and the
+rest is configured from the panel.
 
-It is written for the person who currently keeps a firewall alive by hand — a
-pile of `iptables` lines in `rc.local`, an `/etc/network/interfaces` nobody
-dares touch, and a DHCP config that only one person understands.
+It is written for the person who would otherwise keep a bastion alive by hand:
+an iptables MASQUERADE line, a hand-edited `wg0.conf`, and no idea who is using
+the tunnel.
 
 ## Installation
 

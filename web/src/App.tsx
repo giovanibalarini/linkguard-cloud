@@ -5,7 +5,6 @@ import { I18nProvider } from './i18n';
 import Layout, { firstAllowedPath } from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Links from './pages/Links';
 import Routes_ from './pages/Routes';
 import Firewall from './pages/Firewall';
 import Alerts from './pages/Alerts';
@@ -44,7 +43,6 @@ function AppRoutes() {
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Home />} />
-          <Route path="links" element={<Links />} />
           <Route path="routes" element={<Routes_ />} />
           <Route path="firewall" element={<Firewall />} />
           <Route path="vpn" element={<Vpn />} />

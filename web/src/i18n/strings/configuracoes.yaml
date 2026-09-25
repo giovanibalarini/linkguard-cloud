@@ -65,12 +65,15 @@ cfg.about.license:
 cfg.about.features:
   pt: "Funcionalidades"
   en: "Features"
-cfg.about.feature.wan:
-  pt: "Gestão de links WAN com monitoramento contínuo"
-  en: "WAN link management with continuous monitoring"
-cfg.about.feature.failover:
-  pt: "Failover automático com dry-run mode"
-  en: "Automatic failover with dry-run mode"
+cfg.about.feature.nat:
+  pt: "NAT e firewall para as máquinas da VCN"
+  en: "NAT and firewall for the VCN machines"
+cfg.about.feature.vpn:
+  pt: "VPN WireGuard com acesso definido por pessoa"
+  en: "WireGuard VPN with per-person access"
+cfg.about.feature.traffic:
+  pt: "Análise de tráfego por máquina e captura de pacotes"
+  en: "Per-machine traffic analysis and packet capture"
 cfg.about.feature.routes:
   pt: "Visualização de tabelas de roteamento"
   en: "Routing table view"

@@ -25,14 +25,12 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
 	"github.com/giovanibalarini/linkguard-cloud/internal/backup"
-	"github.com/giovanibalarini/linkguard-cloud/internal/balancer"
 	"github.com/giovanibalarini/linkguard-cloud/internal/bootstrapdeps"
 	"github.com/giovanibalarini/linkguard-cloud/internal/comportamento"
 	"github.com/giovanibalarini/linkguard-cloud/internal/config"
 	"github.com/giovanibalarini/linkguard-cloud/internal/dnstap"
 	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
 	"github.com/giovanibalarini/linkguard-cloud/internal/domtargets"
-	"github.com/giovanibalarini/linkguard-cloud/internal/failover"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/hostflows"
@@ -40,8 +38,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosts"
 	"github.com/giovanibalarini/linkguard-cloud/internal/hosttraffic"
 	"github.com/giovanibalarini/linkguard-cloud/internal/iptables"
-	"github.com/giovanibalarini/linkguard-cloud/internal/linkquota"
-	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/metrics"
 	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
 	"github.com/giovanibalarini/linkguard-cloud/internal/netif"
@@ -49,7 +45,6 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/notify"
 	"github.com/giovanibalarini/linkguard-cloud/internal/platform"
-	"github.com/giovanibalarini/linkguard-cloud/internal/qos"
 	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
 	"github.com/giovanibalarini/linkguard-cloud/internal/secrets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
@@ -217,7 +212,6 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	wireCallbacks(ctx, s)
 	writers := startBackground(ctx, s)
 	return serveHTTP(ctx, s, writers)
 }
@@ -351,13 +345,10 @@ type services struct {
 	alertSvc     *alerts.Service
 	notifySvc    *notify.Service
 	authSvc      *auth.Service
-	linkSvc      *links.Service
 	iptSvc       *iptables.Service
 	routeSvc     *routes.Service
-	failoverSvc  *failover.Service
 	nftSvc       *nftables.Service
 	frSvc        *firewallrules.Service
-	balancerSvc  *balancer.Service
 	unboundSvc   *unbound.Service
 	netSvc       netsvc.Provider
 	trafficSvc   *hosttraffic.Service
@@ -366,8 +357,6 @@ type services struct {
 	sysCollector *system.Collector
 	rrdSvc       *tsdb.Service
 	hostSampler  *hosttraffic.Sampler
-	quotaSvc     *linkquota.Service
-	qosSvc       *qos.Service
 	hostQuotaSvc *hostquota.Service
 	wgSvc        *wireguard.Service
 	aiClient     *ai.Client
@@ -379,7 +368,6 @@ type services struct {
 	journalSched     *monitoring.JournalScheduler
 	updatesSched     *monitoring.UpdatesScheduler
 
-	monitor   *links.Monitor
 	server    *api.Server
 	dnstapSvc *dnstap.Servico
 	// domSvc é o alimentador de alvo por domínio (#123). Escreve no KERNEL e
@@ -393,8 +381,7 @@ type services struct {
 	// sobre o que está configurado é o que a Fase C2 existe para impedir.
 	ntpInputState func() ([]string, bool, error)
 
-	// interval é a cadência do coletor de métricas; a do monitor de link é
-	// outra (e mais rápida) e já está dentro do próprio monitor.
+	// interval é a cadência do coletor de métricas.
 	interval time.Duration
 }
 
@@ -410,7 +397,7 @@ var secretKeyPath = "/etc/linkguard-cloud/secret.key"
 // A LIGAÇÃO ENTRE OS SERVIÇOS MORA AQUI, e não numa função de "wiring"
 // separada, apesar de a issue #24 propor o contrário. O motivo é o que a
 // própria issue reclama: hoje a ligação é "opcional e silenciosa", e uma
-// wireCallbacks separada mantém essa propriedade — passa a existir um
+// função de ligação separada mantém essa propriedade — passa a existir um
 // *services completo, com todos os campos preenchidos, que ninguém guardou.
 // Ligando aqui, quem tem um *services tem um nftSvc com a guarda do Persist e
 // com as duas fontes da chain input, porque não há outro caminho para obtê-lo.
@@ -419,8 +406,6 @@ var secretKeyPath = "/etc/linkguard-cloud/secret.key"
 // para por que a versão literal daquele critério esbarra num ciclo
 // (nftables.Service precisa de firewallrules.Service, que precisa de
 // nftables.Service).
-//
-// wireCallbacks fica com o que é de fato callback de evento e precisa do ctx.
 //
 // Os slog.Error ficam aqui pelo mesmo motivo de openStore.
 func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (*services, error) {
@@ -480,18 +465,8 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	notifySvc := notify.NewService(db, secretsSvc)
 	alertSvc.SetNotifier(notifySvc)
 	authSvc := auth.NewService(db, cfg.JWTSecret, secretsSvc)
-	linkSvc := links.NewService(db)
 	iptSvc := iptables.NewService(exec)
 	routeSvc := routes.NewService(exec)
-	qosSvc := qos.NewService(exec)
-	qosSvc.SetOperationStore(db)
-	failoverSvc := failover.NewService(failover.Config{
-		Enabled:          cfg.FailoverEnabled,
-		DryRun:           cfg.DryRun,
-		FailThreshold:    cfg.FailThreshold,
-		RecoverThreshold: cfg.RecoverThreshold,
-		CooldownSecs:     cfg.FailoverCooldownSecs,
-	}, db, exec, routeSvc, alertSvc)
 	nftSvc := nftables.NewService(exec)
 	frSvc := firewallrules.NewService(db, nftSvc)
 	// Bloqueio administrativo que não está mais na lista de grupos é motivo
@@ -524,7 +499,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// junto da construção, pelo mesmo motivo da linha acima; guardada contra
 	// deriva por TestMainWiresThePersistGuard.
 	nftSvc.SetPersistGuard(frSvc.UnconfirmedChangePending)
-	balancerSvc := balancer.NewService(db, exec, linkSvc, alertSvc)
 	unboundSvc := unbound.NewService(exec)
 	// O caminho sob demanda (o admin liga o DNS no painel) instala
 	// unbound + dns-root-data. Sem isto ele herdava o executor de 30s
@@ -672,11 +646,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// MAC, e o tsdb como gravador — com o rollup e a retenção que ele já tem.
 	hostSampler := hosttraffic.NewSampler(nftSvc, hostSvc, rrdSvc)
 
-	// A franquia por link consome os MESMOS deltas de byte que alimentam as
-	// séries de tráfego — ver tsdb.UsageSink. SetUsageSink tem de acontecer
-	// antes de rrdSvc.Run, que é quem monta o amostrador.
-	quotaSvc := linkquota.NewService(db, alertSvc)
-
 	// A cota por APARELHO (#126) consome os MESMOS deltas de byte que alimentam
 	// as séries por host — ver hosttraffic.UsageSink. O sink é ligado aqui,
 	// antes de qualquer Run: o amostrador lê o campo sem lock dentro do
@@ -697,21 +666,14 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// idempotent and a disabled tunnel removes both projections.
 	nftSvc.SetWireGuardInputSource(wgSvc.InputPort)
 	unboundSvc.SetDNSBindingSource(wgSvc.DNSBinding)
-	rrdSvc.SetUsageSink(quotaSvc)
 
 	// Optional AI advisory layer (BYOK): disabled by default (ai.LoadConfig's
-	// Enabled defaults to false), and swallows its own failures — wiring it in
-	// unconditionally here does not change failover/balance behavior.
+	// Enabled defaults to false), and swallows its own failures.
 	aiBudget := ai.NewBudgetGuard(db)
 	aiClient := ai.NewClient(secretsSvc, aiBudget, func() ai.Config { return ai.LoadConfig(db) })
-	balancerSvc.SetAI(aiClient, rrdSvc)
 
 	promReg := prometheus.NewRegistry()
 	appMetrics := metrics.New(promReg)
-	// `linkguard_failover_events_total` era publicada em /metrics e NUNCA
-	// incrementada: zero para sempre, num painel de Grafana dizendo que a rede
-	// nunca teve problema nenhum. Ver recordEvent em internal/failover.
-	failoverSvc.SetEventHook(appMetrics.FailoverEvents.Inc)
 	metricsCollector := monitoring.NewCollector(db, appMetrics, alertSvc, exec, rrdSvc)
 	// O item "Regras no próximo boot" da Saúde do sistema. Sem esta linha o
 	// vigia não tem como saber nada sobre o /etc/nftables.conf e o item
@@ -720,9 +682,8 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// contra deriva por TestMainWiresTheBootPersistSource.
 	metricsCollector.SetBootPersistSource(nftSvc)
 	// O vigia de NAT compara o kernel contra a MESMA lista que o firewall
-	// escreve. Sem esta linha ele retorna cedo com lista vazia numa VM de
-	// nuvem, isto é, fica cego exatamente na plataforma em que o NAT passou a
-	// ser escrito sem ninguém cadastrar link nenhum.
+	// escreve. Sem esta linha ele retorna cedo com lista vazia, isto é, fica
+	// cego exatamente onde o NAT é escrito.
 	metricsCollector.SetWANSource(func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) })
 	backupSched := backup.NewScheduler(db, secretsSvc, notifySvc, alertSvc, version)
 	journalSched := monitoring.NewJournalScheduler(metricsCollector)
@@ -737,23 +698,14 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// goroutines de conexão — ver SetObservador.
 	domSvc := domtargets.NovoServico(nftSvc)
 	domainRouting := domainrouting.New(db, domSvc)
-	// As faixas e os endereços da PRÓPRIA caixa, que o filtro de categoria do
-	// índice não tem como recusar: o endereço da WAN é público (o ddns existe
-	// para publicá-lo), o gateway de um uplink /30 é público, e com prefixo
-	// delegado os hosts da LAN têm endereço global v6. Sem esta lista, um
-	// domínio hostil que responde com qualquer um deles põe o firewall contra a
-	// própria caixa. Recarregada a cada poda porque o endereço da WAN muda
-	// sozinho num link discado.
+	// Os endereços da PRÓPRIA caixa, que o filtro de categoria do índice não
+	// tem como recusar: o endereço público pelo qual a VPN é alcançada (o IP
+	// reservado da Oracle não aparece em placa nenhuma), o endereço privado de
+	// cada VNIC e o roteador virtual da VCN. Sem esta lista, um domínio hostil
+	// que responde com qualquer um deles põe o firewall contra a própria caixa.
+	// Recarregada a cada poda: o endereço da VPN se edita pela tela.
 	domSvc.DefinirFonteDeEnderecosProprios(func() []string {
-		links, err := db.GetLinks()
-		if err != nil {
-			return nil
-		}
-		proprios := make([]string, 0, len(links)*4)
-		for _, l := range links {
-			proprios = append(proprios, l.IPAddress, l.Gateway, l.DNSTest, l.MonitorHosts)
-		}
-		return proprios
+		return enderecosProprios(plat, wgSvc)
 	})
 	dnstapSvc.SetObservador(domSvc.Observar)
 
@@ -811,15 +763,9 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		WANSource: func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) },
 		Uplink:    func(ctx context.Context) handlers.UplinkView { return uplinkParaTela(ctx, exec, plat) },
 		WireGuard: wgSvc,
-		QoS:       qosSvc,
-	}, db, exec, linkSvc, iptSvc, routeSvc, failoverSvc, balancerSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, quotaSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
+	}, db, exec, iptSvc, routeSvc, alertSvc, authSvc, hostSvc, netifSvc, nftSvc, frSvc, netSvc, notifySvc, trafficSvc, sysCollector, rrdSvc, promReg, metricsCollector, secretsSvc, aiClient, backupSched)
 
 	interval := time.Duration(cfg.MonitorInterval) * time.Second
-	// The link health probe runs on its own (faster) cadence, decoupled from the
-	// metrics collector, and sends several probes per host so packet loss/latency
-	// are real averages instead of a single pass/fail.
-	probeInterval := time.Duration(cfg.ProbeIntervalSeconds) * time.Second
-	monitor := links.NewMonitor(db, linkSvc, probeInterval, cfg.ProbeCount, rrdSvc, appMetrics)
 
 	return &services{
 		cfg:              cfg,
@@ -831,13 +777,10 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		alertSvc:         alertSvc,
 		notifySvc:        notifySvc,
 		authSvc:          authSvc,
-		linkSvc:          linkSvc,
 		iptSvc:           iptSvc,
 		routeSvc:         routeSvc,
-		failoverSvc:      failoverSvc,
 		nftSvc:           nftSvc,
 		frSvc:            frSvc,
-		balancerSvc:      balancerSvc,
 		unboundSvc:       unboundSvc,
 		netSvc:           netSvc,
 		trafficSvc:       trafficSvc,
@@ -846,8 +789,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		sysCollector:     sysCollector,
 		rrdSvc:           rrdSvc,
 		hostSampler:      hostSampler,
-		quotaSvc:         quotaSvc,
-		qosSvc:           qosSvc,
 		hostQuotaSvc:     hostQuotaSvc,
 		wgSvc:            wgSvc,
 		aiClient:         aiClient,
@@ -857,7 +798,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		backupSched:      backupSched,
 		journalSched:     journalSched,
 		updatesSched:     updatesSched,
-		monitor:          monitor,
 		server:           server,
 		ntpInputState:    ntpInputState,
 		interval:         interval,
@@ -865,78 +805,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		domSvc:           domSvc,
 		domainRouting:    domainRouting,
 	}, nil
-}
-
-// wireCallbacks liga os callbacks de EVENTO — os que só podem ser ligados
-// depois de existir o ctx do processo, e por isso não cabem em buildServices.
-//
-// É só o monitor de link: a decisão entre balanceamento e failover a cada
-// mudança de estado, e a expulsão ativa do link degradado. As ligações que
-// NÃO dependem do ctx (a guarda do Persist, as fontes da chain input, a fonte
-// do vigia) ficam em buildServices, junto da construção — ver o doc-comment
-// de lá para por que essa separação não é arbitrária.
-func wireCallbacks(ctx context.Context, s *services) {
-	monitor, balancerSvc, failoverSvc := s.monitor, s.balancerSvc, s.failoverSvc
-	domainRouting := s.domainRouting
-
-	// On a link state change, balance mode rebuilds the weighted multipath
-	// default route; otherwise the legacy per-table failover handles it.
-	monitor.OnStatusChange(func(link *storage.Link, oldStatus, newStatus string) {
-		reconcileDomains := func() {
-			if domainRouting == nil {
-				return
-			}
-			if err := domainRouting.Reconcile(ctx); err != nil {
-				slog.Warn("não foi possível reconciliar os alvos por domínio após mudança de estado da WAN", "err", err)
-			}
-		}
-		// O monitor já persistiu newStatus. Na queda, tirar a mark vem primeiro
-		// para nenhum fluxo novo entrar durante os até 30 s do failover. Na
-		// recuperação, a ordem se inverte: a rota volta antes de a intenção ser
-		// reabilitada.
-		if newStatus == links.StatusOffline {
-			reconcileDomains()
-		}
-		if balancerSvc.Active() {
-			balancerSvc.OnLinkChange(link, oldStatus, newStatus)
-		} else {
-			failoverSvc.HandleStatusChange(link, oldStatus, newStatus)
-		}
-		if newStatus != links.StatusOffline {
-			reconcileDomains()
-		}
-	})
-	// A link that stays degraded past the admin-configured threshold triggers
-	// active flow eviction (balance mode only; itself gated by a toggle). The
-	// threshold is read live so UI changes take effect without a restart.
-	monitor.SustainThreshold(func() int { return balancerSvc.LoadConfig().DegradedSustainSamples })
-	monitor.OnDegradedSustained(func(link *storage.Link) {
-		if balancerSvc.Active() {
-			balancerSvc.EvictDegraded(ctx, link)
-		}
-	})
-}
-
-// connMarksDe e replyRoutesDe traduzem o caminho de volta de cada WAN para o
-// que cada camada entende. São duas linhas cada, e existem para a conversão
-// acontecer num lugar só: o dia em que a marca deixar de ser o table_id, é aqui
-// que se descobre — e não numa caixa em que a resposta some.
-func connMarksDe(caminhos []links.WANPath) []nftables.WANMark {
-	out := make([]nftables.WANMark, 0, len(caminhos))
-	for _, c := range caminhos {
-		out = append(out, nftables.WANMark{Interface: c.Interface, Mark: c.Mark})
-	}
-	return out
-}
-
-func replyRoutesDe(caminhos []links.WANPath) []routes.ReplyRoute {
-	out := make([]routes.ReplyRoute, 0, len(caminhos))
-	for _, c := range caminhos {
-		out = append(out, routes.ReplyRoute{
-			Interface: c.Interface, Gateway: c.Gateway, Table: c.Table, Mark: c.MarkHex(),
-		})
-	}
-	return out
 }
 
 // startBackground sobe TUDO que roda em segundo plano: o provisionamento da
@@ -959,11 +827,9 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	db := s.db
 	pkgExec := s.pkgExec
 	frSvc, nftSvc := s.frSvc, s.nftSvc
-	linkSvc, routeSvc, balancerSvc := s.linkSvc, s.routeSvc, s.balancerSvc
+	routeSvc := s.routeSvc
 	trafficSvc, unboundSvc, alertSvc := s.trafficSvc, s.unboundSvc, s.alertSvc
-	monitor, metricsCollector, rrdSvc := s.monitor, s.metricsCollector, s.rrdSvc
-	quotaSvc := s.quotaSvc
-	qosSvc := s.qosSvc
+	metricsCollector, rrdSvc := s.metricsCollector, s.rrdSvc
 	hostQuotaSvc := s.hostQuotaSvc
 	wgSvc, server := s.wgSvc, s.server
 	hostSampler := s.hostSampler
@@ -972,12 +838,6 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	domainRouting := s.domainRouting
 	ntpInputState := s.ntpInputState
 	interval := s.interval
-
-	// Fault recovery is intentionally attempted before dependency bootstrap:
-	// an interrupted outage may have left a WAN administratively down. The
-	// retry inside provisionSystem covers a first attempt made before ip/tc are
-	// available on a partially provisioned host.
-	recoverQoSOnBoot(ctx, qosSvc)
 
 	// bootPendingChecked prende a verificação de boot do confirmar-ou-reverte
 	// à primeira passada de provisionSystem que a tenha CONCLUÍDO.
@@ -1060,15 +920,9 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			}
 		}
 
-		recoverQoSOnBoot(ctx, qosSvc)
-
 		// Enable IPv4 forwarding so the box can route between LAN and WAN; it
 		// defaults to 0 on a fresh system and a firewall/router needs it on.
 		routeSvc.EnsureForwarding()
-
-		// Apply the WAN host-steering policy routing at startup (LinkGuard now owns
-		// this; it previously came from /etc/network/linkguard-routing.sh via rc.local).
-		balancerSvc.EnsureSteerRouting(ctx)
 
 		// The tunnel is reconciled before firewall groups/input and before
 		// unbound is reloaded. This establishes the address that unbound must
@@ -1091,293 +945,263 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 		// table is already there. On every install to date this table was created
 		// by hand once; this makes a fresh install self-sufficient instead of
 		// silently failing the first time an admin uses the Firewall screen.
-		if configuredLinks, err := linkSvc.List(); err != nil {
-			domainBootReady = false
-			slog.Warn("could not load links for nftables bootstrap", "err", err)
-		} else {
-			reconcileQoSOnBoot(ctx, qosSvc, db.GetLinks)
-
-			// A TABELA NASCE JÁ COM O NAT. wansEfetivas devolve as WANs
-			// cadastradas ou, quando não há nenhuma e a plataforma sabe
-			// responder, o uplink implícito — que é o que faz uma VM de nuvem
-			// recém-criada bootar liberando tráfego em vez de com a chain
-			// postrouting vazia.
-			//
-			// Erro de leitura NÃO cancela o bootstrap: sem tabela a máquina
-			// fica sem firewall nenhum, o que é pior do que uma tabela criada
-			// sem a linha de masquerade — que é exatamente o que acontecia
-			// antes desta entrega. A reconciliação logo abaixo, no mesmo boot,
-			// escreve a regra assim que a leitura voltar.
-			wanInterfaces, err := wansEfetivas(ctx, s.exec, s.plat)
-			if err != nil {
-				slog.Warn("não foi possível derivar as WANs para o bootstrap da tabela; ela nasce sem a regra de NAT e a reconciliação seguinte a escreve", "err", err)
-				wanInterfaces = nil
-			}
-			if nftSvc.EnsureTable(ctx, wanInterfaces) {
-				// The table was just created empty — restore whatever was saved on
-				// the last mutation (host_wan, blocklist, user rules, host blocks,
-				// port forwards) so a from-scratch install with a restored database
-				// comes back with the same firewall it had, not a blank one. Only
-				// runs right after a bootstrap: reapplying a snapshot on every
-				// ordinary restart would risk clobbering a running firewall with
-				// stale state instead.
-				if snapshot, _ := db.GetSetting(nftables.LiveSnapshotSettingKey); snapshot != "" {
-					if _, err := nftSvc.Restore(ctx, snapshot); err != nil {
-						slog.Warn("bootstrapped nftables table but could not restore the saved elements", "err", err)
-					} else {
-						slog.Info("restored saved nftables elements after bootstrap (host_wan/blocklist/user rules/port forwards)")
-					}
+		// A TABELA NASCE JÁ COM O NAT. wansEfetivas devolve as WANs
+		// cadastradas ou, quando não há nenhuma e a plataforma sabe
+		// responder, o uplink implícito — que é o que faz uma VM de nuvem
+		// recém-criada bootar liberando tráfego em vez de com a chain
+		// postrouting vazia.
+		//
+		// Erro de leitura NÃO cancela o bootstrap: sem tabela a máquina
+		// fica sem firewall nenhum, o que é pior do que uma tabela criada
+		// sem a linha de masquerade — que é exatamente o que acontecia
+		// antes desta entrega. A reconciliação logo abaixo, no mesmo boot,
+		// escreve a regra assim que a leitura voltar.
+		wanInterfaces, err := wansEfetivas(ctx, s.exec, s.plat)
+		if err != nil {
+			slog.Warn("não foi possível derivar as WANs para o bootstrap da tabela; ela nasce sem a regra de NAT e a reconciliação seguinte a escreve", "err", err)
+			wanInterfaces = nil
+		}
+		if nftSvc.EnsureTable(ctx, wanInterfaces) {
+			// The table was just created empty — restore whatever was saved on
+			// the last mutation (blocklist, user rules, host blocks,
+			// port forwards) so a from-scratch install with a restored database
+			// comes back with the same firewall it had, not a blank one. Only
+			// runs right after a bootstrap: reapplying a snapshot on every
+			// ordinary restart would risk clobbering a running firewall with
+			// stale state instead.
+			if snapshot, _ := db.GetSetting(nftables.LiveSnapshotSettingKey); snapshot != "" {
+				if _, err := nftSvc.Restore(ctx, snapshot); err != nil {
+					slog.Warn("bootstrapped nftables table but could not restore the saved elements", "err", err)
+				} else {
+					slog.Info("restored saved nftables elements after bootstrap (blocklist/user rules/port forwards)")
 				}
 			}
-
-			// A configuração de unbound só é reaplicada quando a VPN já foi
-			// configurada alguma vez. Isso restaura/adiciona o listener quando
-			// ativa e o remove quando desativa, sem instalar o unbound numa
-			// caixa que nunca usou a VPN.
-			if wireGuardConfigured && wireGuardReady {
-				if err := server.ReconcileVPNDNS(ctx); err != nil {
-					wgSvc.RecordIntegrationError(err)
-					slog.Warn("não foi possível reconciliar o DNS do túnel WireGuard no boot", "err", err)
-				}
-			}
-
-			// Reconcile the masquerade rule on EVERY boot, not just when the table
-			// had to be created. EnsureTable is a no-op on an already-provisioned
-			// box, so before this the NAT rule kept whatever interface names it was
-			// born with — in production a renamed NIC (enp4s0 -> enp5s0) silently
-			// took WAN1's NAT down until an operator intervened by hand.
-			//
-			// A LISTA SAI DE wansEfetivas, e é aqui que o produto passa a
-			// funcionar de primeira: numa VM de nuvem sem link cadastrado ela
-			// devolve o uplink que a plataforma afirma, e ReconcileMasquerade
-			// — com a guarda de lista vazia INTACTA — finalmente tem o que
-			// escrever. Erro de leitura deixa a lista vazia de propósito: a
-			// guarda então mantém a regra que já estiver valendo, em vez de
-			// derrubá-la por causa de um SELECT que falhou.
-			enabledWANs, err := wansEfetivas(ctx, s.exec, s.plat)
-			if err != nil {
-				slog.Warn("não foi possível derivar as WANs no boot; as reconciliações deste ciclo seguem com lista vazia e nada é derrubado", "err", err)
-				enabledWANs = nil
-			}
-			if err := nftSvc.ReconcileMasquerade(ctx, enabledWANs); err != nil {
-				slog.Warn("não foi possível reconciliar a regra de NAT no boot", "err", err)
-			}
-
-			// A contabilidade por host (#112) usa a MESMA lista de WANs, e pelo
-			// mesmo motivo do masquerade precisa ser reconciliada em todo boot:
-			// EnsureTable é no-op em máquina já provisionada, então sem isto
-			// uma instalação existente nunca ganharia a chain.
-			if err := nftSvc.EnsureAccounting(ctx, enabledWANs); err != nil {
-				slog.Warn("não foi possível reconciliar a contabilidade por host no boot", "err", err)
-			}
-
-			// Registro de conversa por host (#115). Reconciliado em todo boot
-			// pelo mesmo motivo da contabilidade — EnsureTable é no-op em
-			// máquina já provisionada — e com uma diferença que importa: aqui a
-			// reconciliação também DERRUBA a tabela quando a feature está
-			// desligada, para uma caixa cujo admin desligou o registro não voltar
-			// do boot com a base chain de volta no hook forward.
-			//
-			// A tabela é própria e o Persist não a enxerga, então ela nunca
-			// sobrevive ao reboot sozinha: quem a recria é esta linha, e só se o
-			// admin tiver pedido.
-			if err := s.fluxosSvc.Reconciliar(ctx, enabledWANs); err != nil {
-				slog.Warn("não foi possível reconciliar o registro de conversa por host no boot", "err", err)
-			}
-
-			// Ajuste de MSS (#130): também deriva da lista de WANs, e é no-op
-			// por construção onde a MTU é 1500 — ver EnsureMSSClamp.
-			if err := nftSvc.EnsureMSSClamp(ctx, enabledWANs); err != nil {
-				slog.Warn("não foi possível reconciliar o ajuste de MSS no boot", "err", err)
-			}
-
-			// Bloqueio por endereço físico (#119, fase 2). O set nasce vazio,
-			// então numa caixa já instalada os hosts bloqueados precisam ser
-			// recolocados nele — senão o bloqueio deles continuaria valendo só
-			// para IPv4, com a tela dizendo "bloqueado".
-			// A set precisa existir ANTES da sincronização: quem a cria no
-			// caminho normal é reconcileGroups, que só roda mais adiante neste
-			// mesmo boot. Sem esta linha, no primeiro boot depois do upgrade
-			// TODOS os elementos são recusados pelo nft e o erro é engolido —
-			// a set fica vazia e o bloqueio volta a valer só para IPv4, sem uma
-			// linha no journal dizendo por quê.
-			if err := s.nftSvc.EnsureBlockedMACSet(ctx); err != nil {
-				slog.Warn("não foi possível garantir a set de endereços físicos bloqueados no boot", "err", err)
-			}
-			s.hostSvc.SincronizaBloqueiosPorMAC(ctx)
-
-			// Estruturas de alvo por domínio (#123): garantidas E ESVAZIADAS
-			// no boot.
-			//
-			// O esvaziamento é incondicional de propósito. O que elas guardam é
-			// cache do que o resolver respondeu, e endereço de CDN é de um site
-			// hoje e de outro daqui a dez minutos. Cache que sobrevive ao
-			// reboot afirma sobre endereços o que ninguém mais confirmou — a
-			// mesma razão pela qual o mapa da #116 vive só em memória.
-			//
-			// E há um caminho pelo qual esse cache VOLTARIA sozinho: Persist
-			// despeja o `nft list table` inteiro, elementos inclusive, em
-			// /etc/nftables.conf, e o nftables.service recarrega esse arquivo
-			// ANTES de o LinkGuard subir. Sem esta linha, endereços aprendidos
-			// há semanas voltariam a valer sem ninguém para reconfirmá-los.
-			if err := s.nftSvc.EnsureDomainStructures(ctx); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível garantir as estruturas de alvo por domínio no boot", "err", err)
-			} else if err := s.nftSvc.FlushDomainStructures(ctx); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível esvaziar as estruturas de alvo por domínio no boot", "err", err)
-			}
-
-			// Proteção de entrada das WANs (#119). Reconciliada em todo boot
-			// pela mesma razão da contabilidade: EnsureTable é no-op em máquina
-			// já provisionada, então sem isto uma instalação existente nunca
-			// ganharia a proteção.
-			if err := nftSvc.ReconcileInputProtection(ctx); err != nil {
-				slog.Warn("não foi possível reconciliar a proteção de entrada das WANs no boot", "err", err)
-			}
-
-			// Roteamento de retorno por WAN (#120). As duas metades saem da
-			// MESMA lista de caminhos, derivada num lugar só (links.WANPaths),
-			// para a marca gravada na conexão e a tabela consultada pela rota
-			// nunca discordarem.
-			caminhos := links.WANPaths(configuredLinks)
-			if err := nftSvc.EnsureConnMark(ctx, connMarksDe(caminhos)); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível reconciliar a marcação de conexão no boot", "err", err)
-			}
-			if err := routeSvc.EnsureReplyRouting(ctx, replyRoutesDe(caminhos)); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível reconciliar o roteamento de retorno no boot", "err", err)
-			}
-
-			// Reconcile the structural chain (mark_hosts) on every boot too.
-			// Until this feature (2026-08-11, firewall page redesign spec §6)
-			// it was only ever created once at EnsureTable/bootstrap and never
-			// touched again — the gap that let a double-load of the ruleset
-			// (2026-08-10 incident) leave every rule in it permanently
-			// duplicated, since nothing ever flushed and rewrote it again. See
-			// ReconcileStructuralChains' doc comment.
-			//
-			// The forward chain used to be reconciled here too; since rule
-			// groups (Phase C1) it belongs to ReconcileGroups, called below via
-			// frSvc.Reconcile — the only place that knows the admin's groups.
-			if err := nftSvc.ReconcileStructuralChains(ctx, connMarksDe(caminhos)...); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível reconciliar a chain estrutural (mark_hosts) no boot", "err", err)
-			}
-
-			// EnsureSystemGroups vem PRIMEIRO, antes de qualquer coisa que
-			// reconcilie, e a ordem é o ponto: ele cria, uma única vez, as
-			// duas linhas de grupo que representam os bloqueios (hosts e
-			// destinos) nas posições 0 e 1, empurrando os grupos do admin
-			// para depois. É a lista de grupos que passa a decidir se os
-			// bloqueios existem na chain forward — e as duas migrações
-			// abaixo reconciliam por dentro, então rodá-las antes desta
-			// abriria uma janela em que a forward é reconstruída com a lista
-			// ainda sem os bloqueios. A defesa de firewallrules recusa
-			// exatamente esse estado (ver ensureSystemGroupsPresent): com a
-			// ordem invertida, as duas migrações do boot de upgrade
-			// falhariam em vez de migrar.
-			//
-			// Não depende de nenhuma das duas: só lê a própria trava e
-			// insere as duas linhas, deslocando as posições existentes.
-			// TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile
-			// guarda essa ordem contra deriva.
-			//
-			// Um erro aqui não derruba o boot: os grupos não são criados, e
-			// tudo que reconcilia a seguir se recusa a reconstruir a forward
-			// (o firewall segue valendo com a última forward aplicada, que
-			// tem os bloqueios dentro), com apply-status não-ok e alerta
-			// crítico. A próxima inicialização tenta de novo.
-			if err := frSvc.EnsureSystemGroups(ctx); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível criar os grupos do sistema (hosts e destinos bloqueados)", "err", err)
-			}
-
-			// Phase B (firewall page redesign spec §4.1): the admin's own rules
-			// now live in the DB, not just inside nft. On a box upgrading from
-			// Phase A, ImportOnce brings whatever is in the live user_rules
-			// chain into the DB exactly once (guarded by a settings flag, never
-			// by "is the table empty" — see its doc comment for why that
-			// distinction matters), preserving order; a fresh install has
-			// nothing to import and just sets the guard.
-			//
-			// MigrateRulesIntoDefaultGroup runs right after: it adopts whatever
-			// rules are still ungrouped — including whatever ImportOnce just
-			// brought in — into the "Minhas regras" group, once, guarded the
-			// same way. The order between these two is not arbitrary: inverting
-			// them would make a box still on Phase A (nothing in the DB yet,
-			// the real rules only living in the legacy user_rules chain) run
-			// the group migration against an empty rule set, then have
-			// ImportOnce bring the rules in afterwards as orphans nobody ever
-			// adopts into a group.
-			//
-			// Reconcile (Fase C1) is what actually renders the forward chain
-			// (blocks, then the group jumps) and every grp_ chain from the DB —
-			// see its doc comment. It is called unconditionally last, on every
-			// boot, same as the other reconciles above. This is not redundant
-			// with the two calls above even though both of them also reconcile
-			// internally when they do real work (MigrateRulesIntoDefaultGroup
-			// must, to safely retire the legacy user_rules chain — see its doc
-			// comment): on a box with nothing to migrate, that function returns
-			// without reconciling at all, which would leave the forward chain
-			// stuck on whatever was last written to /etc/nftables.conf.
-			if err := frSvc.ImportOnce(ctx); err != nil {
-				slog.Warn("não foi possível importar as regras existentes de user_rules para o banco", "err", err)
-			}
-			if err := frSvc.MigrateRulesIntoDefaultGroup(ctx); err != nil {
-				slog.Warn("não foi possível migrar as regras soltas para o grupo padrão", "err", err)
-			}
-			if err := frSvc.Reconcile(ctx); err != nil {
-				domainBootReady = false
-				slog.Warn("não foi possível reconciliar os grupos de regras (chain forward) a partir do banco no boot", "err", err)
-
-				// m1 da revisão da Fase C2: frSvc.Reconcile → nftSvc.ReconcileGroups
-				// já reconstrói a chain input INTEIRA (passo 3b, ver o doc-comment
-				// de ReconcileGroups) a partir da mesma fonte de estado do NTP que
-				// ntpInputState lê abaixo — no caminho feliz, chamar
-				// nftSvc.ReconcileNTPInput de novo aqui só duplicava o trabalho.
-				// Duplicar não é de graça: cada reconstrução da chain input abre uma
-				// janela entre o `flush chain` e o `add rule` do bloqueio de udp/123
-				// em que ela fica vazia com `policy accept` — NTP de qualquer origem
-				// passaria nesse instante —, e dobrar a chamada dobra essa janela por
-				// boot, além de duplicar o Persist() em /etc/nftables.conf.
-				//
-				// O valor que sobra é estreito mas real: se frSvc.Reconcile FALHOU
-				// (por exemplo abortou em ensureSystemGroupsPresent, antes mesmo de
-				// chamar ReconcileGroups), a chain input pode não ter sido tocada por
-				// ele nesta passada — e é só este `if` que ainda garante que a
-				// proteção do NTP suba no boot. Por isso a chamada fica presa a este
-				// ramo de erro em vez de rodar solta como antes.
-				// TestNTPInputIsReconciledAfterTheGroupChainsExist guarda isto.
-				//
-				// A ordem continua sendo o ponto (I-4 da revisão da Fase C2): desde a
-				// Fase C2 a chain input carrega também um `jump` por grupo de escopo
-				// input, e quem CRIA as chains grp_ é o passo 1 de ReconcileGroups,
-				// chamado (com sucesso ou não) dentro de frSvc.Reconcile acima. Numa
-				// máquina cujo ruleset foi recriado do zero por EnsureTable
-				// (recuperação de desastre, como em 2026-08-10) e cujo banco tenha um
-				// grupo de escopo input, emitir o jump antes disso falha com "No such
-				// file or directory": a passada seguinte conserta, mas o log de boot
-				// fica com um erro que não é erro — e log de boot de firewall é lido
-				// em emergência.
-				//
-				// Erro de LEITURA não vira reconciliação: reconstruir a chain com
-				// "servir NTP: desligado" que na verdade é "não consegui ler"
-				// apagaria a proteção do serviço de hora do firewall vivo (I-1).
-				if networks, serving, err := ntpInputState(); err != nil {
-					slog.Warn("não foi possível ler a configuração de NTP no boot; a chain input não foi tocada nesta passada", "err", err)
-				} else if err := nftSvc.ReconcileNTPInput(ctx, networks, serving); err != nil {
-					slog.Warn("não foi possível reconciliar a chain de proteção do NTP no boot", "err", err)
-				}
-			}
-
 		}
 
-		// Só agora sets/map, chain de marcação, policy routing e grupos estão
-		// coerentes. Uma falha em qualquer etapa fecha o gate de novo e publica
-		// ensaio/boot_pending, inclusive se a leitura dos links falhou ou numa
-		// tentativa posterior de provisionamento.
+		// O que o multi-WAN deixou na tabela de uma caixa migrada do
+		// linkguard-fw: as chains de marcação por link e o map de
+		// direcionamento por host. Depois do EnsureTable/Restore (que podem
+		// tê-los trazido de volta do snapshot) e antes das reconciliações que
+		// persistem. Ver nftables.RemoverHerancaMultiWAN.
+		if _, err := nftSvc.RemoverHerancaMultiWAN(ctx); err != nil {
+			slog.Warn("não foi possível apagar as estruturas do multi-WAN da tabela", "err", err)
+		}
+
+		// A configuração de unbound só é reaplicada quando a VPN já foi
+		// configurada alguma vez. Isso restaura/adiciona o listener quando
+		// ativa e o remove quando desativa, sem instalar o unbound numa
+		// caixa que nunca usou a VPN.
+		if wireGuardConfigured && wireGuardReady {
+			if err := server.ReconcileVPNDNS(ctx); err != nil {
+				wgSvc.RecordIntegrationError(err)
+				slog.Warn("não foi possível reconciliar o DNS do túnel WireGuard no boot", "err", err)
+			}
+		}
+
+		// Reconcile the masquerade rule on EVERY boot, not just when the table
+		// had to be created. EnsureTable is a no-op on an already-provisioned
+		// box, so before this the NAT rule kept whatever interface names it was
+		// born with — in production a renamed NIC (enp4s0 -> enp5s0) silently
+		// took WAN1's NAT down until an operator intervened by hand.
+		//
+		// A LISTA SAI DE wansEfetivas, e é aqui que o produto passa a
+		// funcionar de primeira: numa VM de nuvem sem link cadastrado ela
+		// devolve o uplink que a plataforma afirma, e ReconcileMasquerade
+		// — com a guarda de lista vazia INTACTA — finalmente tem o que
+		// escrever. Erro de leitura deixa a lista vazia de propósito: a
+		// guarda então mantém a regra que já estiver valendo, em vez de
+		// derrubá-la por causa de um SELECT que falhou.
+		enabledWANs, err := wansEfetivas(ctx, s.exec, s.plat)
+		if err != nil {
+			slog.Warn("não foi possível derivar as WANs no boot; as reconciliações deste ciclo seguem com lista vazia e nada é derrubado", "err", err)
+			enabledWANs = nil
+		}
+		if err := nftSvc.ReconcileMasquerade(ctx, enabledWANs); err != nil {
+			slog.Warn("não foi possível reconciliar a regra de NAT no boot", "err", err)
+		}
+
+		// A contabilidade por host (#112) usa a MESMA lista de WANs, e pelo
+		// mesmo motivo do masquerade precisa ser reconciliada em todo boot:
+		// EnsureTable é no-op em máquina já provisionada, então sem isto
+		// uma instalação existente nunca ganharia a chain.
+		if err := nftSvc.EnsureAccounting(ctx, enabledWANs); err != nil {
+			slog.Warn("não foi possível reconciliar a contabilidade por host no boot", "err", err)
+		}
+
+		// Registro de conversa por host (#115). Reconciliado em todo boot
+		// pelo mesmo motivo da contabilidade — EnsureTable é no-op em
+		// máquina já provisionada — e com uma diferença que importa: aqui a
+		// reconciliação também DERRUBA a tabela quando a feature está
+		// desligada, para uma caixa cujo admin desligou o registro não voltar
+		// do boot com a base chain de volta no hook forward.
+		//
+		// A tabela é própria e o Persist não a enxerga, então ela nunca
+		// sobrevive ao reboot sozinha: quem a recria é esta linha, e só se o
+		// admin tiver pedido.
+		if err := s.fluxosSvc.Reconciliar(ctx, enabledWANs); err != nil {
+			slog.Warn("não foi possível reconciliar o registro de conversa por host no boot", "err", err)
+		}
+
+		// Ajuste de MSS (#130): também deriva da lista de WANs, e é no-op
+		// por construção onde a MTU é 1500 — ver EnsureMSSClamp.
+		if err := nftSvc.EnsureMSSClamp(ctx, enabledWANs); err != nil {
+			slog.Warn("não foi possível reconciliar o ajuste de MSS no boot", "err", err)
+		}
+
+		// Bloqueio por endereço físico (#119, fase 2). O set nasce vazio,
+		// então numa caixa já instalada os hosts bloqueados precisam ser
+		// recolocados nele — senão o bloqueio deles continuaria valendo só
+		// para IPv4, com a tela dizendo "bloqueado".
+		// A set precisa existir ANTES da sincronização: quem a cria no
+		// caminho normal é reconcileGroups, que só roda mais adiante neste
+		// mesmo boot. Sem esta linha, no primeiro boot depois do upgrade
+		// TODOS os elementos são recusados pelo nft e o erro é engolido —
+		// a set fica vazia e o bloqueio volta a valer só para IPv4, sem uma
+		// linha no journal dizendo por quê.
+		if err := s.nftSvc.EnsureBlockedMACSet(ctx); err != nil {
+			slog.Warn("não foi possível garantir a set de endereços físicos bloqueados no boot", "err", err)
+		}
+		s.hostSvc.SincronizaBloqueiosPorMAC(ctx)
+
+		// Estruturas de alvo por domínio (#123): garantidas E ESVAZIADAS
+		// no boot.
+		//
+		// O esvaziamento é incondicional de propósito. O que elas guardam é
+		// cache do que o resolver respondeu, e endereço de CDN é de um site
+		// hoje e de outro daqui a dez minutos. Cache que sobrevive ao
+		// reboot afirma sobre endereços o que ninguém mais confirmou — a
+		// mesma razão pela qual o mapa da #116 vive só em memória.
+		//
+		// E há um caminho pelo qual esse cache VOLTARIA sozinho: Persist
+		// despeja o `nft list table` inteiro, elementos inclusive, em
+		// /etc/nftables.conf, e o nftables.service recarrega esse arquivo
+		// ANTES de o LinkGuard subir. Sem esta linha, endereços aprendidos
+		// há semanas voltariam a valer sem ninguém para reconfirmá-los.
+		if err := s.nftSvc.EnsureDomainStructures(ctx); err != nil {
+			domainBootReady = false
+			slog.Warn("não foi possível garantir as estruturas de alvo por domínio no boot", "err", err)
+		} else if err := s.nftSvc.FlushDomainStructures(ctx); err != nil {
+			domainBootReady = false
+			slog.Warn("não foi possível esvaziar as estruturas de alvo por domínio no boot", "err", err)
+		}
+
+		// Proteção de entrada das WANs (#119). Reconciliada em todo boot
+		// pela mesma razão da contabilidade: EnsureTable é no-op em máquina
+		// já provisionada, então sem isto uma instalação existente nunca
+		// ganharia a proteção.
+		if err := nftSvc.ReconcileInputProtection(ctx); err != nil {
+			slog.Warn("não foi possível reconciliar a proteção de entrada das WANs no boot", "err", err)
+		}
+
+		// EnsureSystemGroups vem PRIMEIRO, antes de qualquer coisa que
+		// reconcilie, e a ordem é o ponto: ele cria, uma única vez, as
+		// duas linhas de grupo que representam os bloqueios (hosts e
+		// destinos) nas posições 0 e 1, empurrando os grupos do admin
+		// para depois. É a lista de grupos que passa a decidir se os
+		// bloqueios existem na chain forward — e as duas migrações
+		// abaixo reconciliam por dentro, então rodá-las antes desta
+		// abriria uma janela em que a forward é reconstruída com a lista
+		// ainda sem os bloqueios. A defesa de firewallrules recusa
+		// exatamente esse estado (ver ensureSystemGroupsPresent): com a
+		// ordem invertida, as duas migrações do boot de upgrade
+		// falhariam em vez de migrar.
+		//
+		// Não depende de nenhuma das duas: só lê a própria trava e
+		// insere as duas linhas, deslocando as posições existentes.
+		// TestEnsureSystemGroupsRunsBeforeTheMigrationsThatReconcile
+		// guarda essa ordem contra deriva.
+		//
+		// Um erro aqui não derruba o boot: os grupos não são criados, e
+		// tudo que reconcilia a seguir se recusa a reconstruir a forward
+		// (o firewall segue valendo com a última forward aplicada, que
+		// tem os bloqueios dentro), com apply-status não-ok e alerta
+		// crítico. A próxima inicialização tenta de novo.
+		if err := frSvc.EnsureSystemGroups(ctx); err != nil {
+			domainBootReady = false
+			slog.Warn("não foi possível criar os grupos do sistema (hosts e destinos bloqueados)", "err", err)
+		}
+
+		// Phase B (firewall page redesign spec §4.1): the admin's own rules
+		// now live in the DB, not just inside nft. On a box upgrading from
+		// Phase A, ImportOnce brings whatever is in the live user_rules
+		// chain into the DB exactly once (guarded by a settings flag, never
+		// by "is the table empty" — see its doc comment for why that
+		// distinction matters), preserving order; a fresh install has
+		// nothing to import and just sets the guard.
+		//
+		// MigrateRulesIntoDefaultGroup runs right after: it adopts whatever
+		// rules are still ungrouped — including whatever ImportOnce just
+		// brought in — into the "Minhas regras" group, once, guarded the
+		// same way. The order between these two is not arbitrary: inverting
+		// them would make a box still on Phase A (nothing in the DB yet,
+		// the real rules only living in the legacy user_rules chain) run
+		// the group migration against an empty rule set, then have
+		// ImportOnce bring the rules in afterwards as orphans nobody ever
+		// adopts into a group.
+		//
+		// Reconcile (Fase C1) is what actually renders the forward chain
+		// (blocks, then the group jumps) and every grp_ chain from the DB —
+		// see its doc comment. It is called unconditionally last, on every
+		// boot, same as the other reconciles above. This is not redundant
+		// with the two calls above even though both of them also reconcile
+		// internally when they do real work (MigrateRulesIntoDefaultGroup
+		// must, to safely retire the legacy user_rules chain — see its doc
+		// comment): on a box with nothing to migrate, that function returns
+		// without reconciling at all, which would leave the forward chain
+		// stuck on whatever was last written to /etc/nftables.conf.
+		if err := frSvc.ImportOnce(ctx); err != nil {
+			slog.Warn("não foi possível importar as regras existentes de user_rules para o banco", "err", err)
+		}
+		if err := frSvc.MigrateRulesIntoDefaultGroup(ctx); err != nil {
+			slog.Warn("não foi possível migrar as regras soltas para o grupo padrão", "err", err)
+		}
+		if err := frSvc.Reconcile(ctx); err != nil {
+			domainBootReady = false
+			slog.Warn("não foi possível reconciliar os grupos de regras (chain forward) a partir do banco no boot", "err", err)
+
+			// m1 da revisão da Fase C2: frSvc.Reconcile → nftSvc.ReconcileGroups
+			// já reconstrói a chain input INTEIRA (passo 3b, ver o doc-comment
+			// de ReconcileGroups) a partir da mesma fonte de estado do NTP que
+			// ntpInputState lê abaixo — no caminho feliz, chamar
+			// nftSvc.ReconcileNTPInput de novo aqui só duplicava o trabalho.
+			// Duplicar não é de graça: cada reconstrução da chain input abre uma
+			// janela entre o `flush chain` e o `add rule` do bloqueio de udp/123
+			// em que ela fica vazia com `policy accept` — NTP de qualquer origem
+			// passaria nesse instante —, e dobrar a chamada dobra essa janela por
+			// boot, além de duplicar o Persist() em /etc/nftables.conf.
+			//
+			// O valor que sobra é estreito mas real: se frSvc.Reconcile FALHOU
+			// (por exemplo abortou em ensureSystemGroupsPresent, antes mesmo de
+			// chamar ReconcileGroups), a chain input pode não ter sido tocada por
+			// ele nesta passada — e é só este `if` que ainda garante que a
+			// proteção do NTP suba no boot. Por isso a chamada fica presa a este
+			// ramo de erro em vez de rodar solta como antes.
+			// TestNTPInputIsReconciledAfterTheGroupChainsExist guarda isto.
+			//
+			// A ordem continua sendo o ponto (I-4 da revisão da Fase C2): desde a
+			// Fase C2 a chain input carrega também um `jump` por grupo de escopo
+			// input, e quem CRIA as chains grp_ é o passo 1 de ReconcileGroups,
+			// chamado (com sucesso ou não) dentro de frSvc.Reconcile acima. Numa
+			// máquina cujo ruleset foi recriado do zero por EnsureTable
+			// (recuperação de desastre, como em 2026-08-10) e cujo banco tenha um
+			// grupo de escopo input, emitir o jump antes disso falha com "No such
+			// file or directory": a passada seguinte conserta, mas o log de boot
+			// fica com um erro que não é erro — e log de boot de firewall é lido
+			// em emergência.
+			//
+			// Erro de LEITURA não vira reconciliação: reconstruir a chain com
+			// "servir NTP: desligado" que na verdade é "não consegui ler"
+			// apagaria a proteção do serviço de hora do firewall vivo (I-1).
+			if networks, serving, err := ntpInputState(); err != nil {
+				slog.Warn("não foi possível ler a configuração de NTP no boot; a chain input não foi tocada nesta passada", "err", err)
+			} else if err := nftSvc.ReconcileNTPInput(ctx, networks, serving); err != nil {
+				slog.Warn("não foi possível reconciliar a chain de proteção do NTP no boot", "err", err)
+			}
+		}
+
+		// Só agora sets/map e grupos estão coerentes. Uma falha em qualquer
+		// etapa fecha o gate de novo e publica ensaio/boot_pending, inclusive
+		// numa tentativa posterior de provisionamento.
 		if domainRouting != nil {
 			if domainBootReady {
 				if err := domainRouting.Prepare(ctx); err != nil {
@@ -1468,7 +1292,7 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 	//
 	// A distinção é o ponto: `httpServer.Shutdown` espera as requisições HTTP e
 	// o processo sai, abandonando as goroutines onde estiverem. Para quem só lê
-	// (monitor de link, leitura do journal) isso é inofensivo. Para quem tem
+	// (leitura do journal, por exemplo) isso é inofensivo. Para quem tem
 	// estado em memória para gravar, não é — o tsdb perdia o balde da janela
 	// corrente a cada reinício, e o auto-update reinicia.
 	var writers sync.WaitGroup
@@ -1481,16 +1305,10 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 		}()
 	}
 
-	go monitor.Run(ctx)
 	spawnWriter("metrics", func() { metricsCollector.Run(ctx, interval) })
 	spawnWriter("tsdb", func() { rrdSvc.Run(ctx) })
 	// Escritor: o Run grava o acumulado do minuto na saída, e perder isso a
-	// cada reinício abriria um buraco justamente na contagem que a franquia
-	// existe para fazer.
-	spawnWriter("cota", func() { quotaSvc.Run(ctx) })
-	// Escritor pelo mesmo motivo da cota por link: o Run grava o acumulado do
-	// minuto na saída, e perder isso a cada reinício abriria um buraco na
-	// contagem que a cota existe para fazer.
+	// cada reinício abriria um buraco na contagem que a cota existe para fazer.
 	spawnWriter("cota-por-aparelho", func() { hostQuotaSvc.Run(ctx) })
 	// Escritor: grava a série por host, e perder a última amostra num
 	// reinício abre buraco justamente na série que o histórico existe para ter.
@@ -1533,20 +1351,13 @@ func startBackground(ctx context.Context, s *services) *sync.WaitGroup {
 			slog.Warn("dnstap: o coletor não subiu; o mapa endereço → nome fica vazio", "err", err)
 		}
 	}()
-	go balancerSvc.Run(ctx)
 	spawnWriter("backup", func() { backupSched.Run(ctx) })
 	go journalSched.Run(ctx)
 	go updatesSched.Run(ctx)
-	go ai.RunDigest(ctx, aiClient, rrdSvc, alertSvc, db, func() []string {
-		all, _ := db.GetLinks()
-		names := make([]string, 0, len(all))
-		for _, l := range all {
-			if l.Enabled {
-				names = append(names, l.Name)
-			}
-		}
-		return names
-	})
+	// O resumo diário lia a saúde de cada link WAN; sem links, ele resume os
+	// alertas do dia. A análise de ataque e de tráfego de saída é a próxima
+	// forma da camada de IA.
+	go ai.RunDigest(ctx, aiClient, rrdSvc, alertSvc, db, func() []string { return nil })
 
 	return &writers
 }

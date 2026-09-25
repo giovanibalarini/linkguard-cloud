@@ -246,16 +246,9 @@ func sanitizeNetworks(in []string) []string {
 // where each item is either a jump into a rule group or the managed
 // blocklist/host-block drops, in the position the admin chose (see
 // forwardChainRules; blocks first is the migration's default, not a code
-// invariant). MarkHostsChain
-// steers a host's forwarded traffic to a specific WAN by fwmark, looked up
-// from the host_wan map. Both are structural — created once at
-// EnsureTable/bootstrap — and reconciled on every boot exactly like
-// postrouting/input: mark_hosts by ReconcileStructuralChains, forward by
-// ReconcileGroups.
-const (
-	ForwardChain   = "forward"
-	MarkHostsChain = "mark_hosts"
-)
+// invariant). It is structural — created once at EnsureTable/bootstrap — and
+// reconciled on every boot by ReconcileGroups.
+const ForwardChain = "forward"
 
 // forwardChainRules rende a chain forward a partir de UMA lista ordenada —
 // a mesma que o admin vê na tela, na mesma ordem. Antes desta mudança a
@@ -346,115 +339,10 @@ func forwardChainRules(groups []StoredGroup, logarBloqueios bool) [][]string {
 	return rules
 }
 
-// markHostsChainRules é a definição canônica da mark_hosts. O direcionamento
-// por domínio vem primeiro e só decide conexões novas ainda sem marca; a
-// fixação manual por host vem depois e, por isso, continua prevalecendo.
-//
-// Não se escreve `ct mark` aqui. O bit 0x10000 e o pinning de conexão pertencem
-// a conn_mark_out (#194); duplicar essa escrita reintroduziria a colisão que a
-// issue corrigiu.
-func markHostsChainRules(z Zone) [][]string {
-	rules := make([][]string, 0, 2)
-	// Este `if` sempre existiu — era `len(ifaces) > 0` — e é o contraexemplo
-	// que mostrou a forma certa aos outros geradores: a regra do eixo é
-	// OMITIDA quando não há como discriminar, em vez de emitida com um set
-	// vazio que o nft recusa. A linha do @host_wan abaixo é incondicional e a
-	// chain nunca fica sem conteúdo.
-	if z.Discriminates() {
-		rules = append(rules, zoneRule(z.FromLocal(),
-			"ct", "state", "new", "meta", "mark", "0x0", "counter",
-			"meta", "mark", "set", "ip", "daddr", "map", "@"+DomWanMap,
-		))
-	}
-	rules = append(rules, []string{"counter", "meta", "mark", "set", "ip", "saddr", "map", "@" + HostWanMap})
-	return rules
-}
-
-// wanMarkIfaces extrai as interfaces de uma lista de WANMark na forma que a
-// mark_hosts sempre usou: sem nome inseguro, sem repetição, e ORDENADAS.
-//
-// A ORDENAÇÃO É CONTRATO, e é o motivo de esta função existir em vez de um
-// `for` no lugar. A chain mark_hosts da produção tem as WANs em ordem
-// alfabética; a mss_clamp e a acct têm na ordem do cadastro. As duas formas
-// estão congeladas em golden. Quem monta a Zone para a mark_hosts monta com
-// ESTA lista — uma zona construída com a ordem do cadastro reescreveria a
-// chain de uma caixa que está no ar.
-//
-// NÃO filtra por Mark: buildBootstrapRuleset chama com WANMark{Interface: …} e
-// marca zero, porque no bootstrap as marcas ainda não foram atribuídas.
-func wanMarkIfaces(wans []WANMark) []string {
-	ifaces := make([]string, 0, len(wans))
-	vistos := make(map[string]bool, len(wans))
-	for _, wan := range wans {
-		if !reIface.MatchString(wan.Interface) || vistos[wan.Interface] {
-			continue
-		}
-		vistos[wan.Interface] = true
-		ifaces = append(ifaces, wan.Interface)
-	}
-	sort.Strings(ifaces)
-	return ifaces
-}
-
-// ReconcileStructuralChains rebuilds the mark_hosts chain from its canonical
-// definition above, on every boot — not just once at EnsureTable/bootstrap
-// time — mirroring ReconcileMasquerade's safety properties exactly: the
-// chain is flushed on its own (never the table or the ruleset), the result
-// is idempotent, it's a no-op in dry-run, and it persists afterward.
-//
-// The forward chain left this function with rule groups (Phase C1): it now
-// depends on the admin's groups and is rebuilt by ReconcileGroups, the only
-// place that knows them. Reconciling it in two places would make whichever
-// ran last wipe the other's rules — so whoever calls this at boot must call
-// ReconcileGroups too, or the forward stops being reconciled at all.
-//
-// Why this exists (design spec §1/§6): unlike postrouting/input, these two
-// chains were, until now, only ever created once at bootstrap and never
-// touched again — the exact gap that let a double-load of the ruleset
-// (2026-08-10 incident: the same file applied twice) leave every rule in
-// both chains permanently duplicated. Duplicates survived every reboot
-// because Persist snapshots whatever is live, and nothing ever flushed
-// these two chains again to clear the second copy. Reconciling on every
-// boot closes that gap the same way it was already closed for masquerade
-// and the NTP input rules: a duplicate cannot outlive the next restart.
-//
-// Every rule in every canonical definition here — and in forwardChainRules,
-// which now lives with ReconcileGroups — carries `counter`. Production's
-// forward-chain drop rules were hand-created in June 2026 already WITH
-// counters (the whole reason Phase A exists is to surface those counts on
-// the panel) — reconciling to a counter-less definition would flush the
-// chain and rebuild it from scratch every boot, silently resetting that
-// data to zero each time. mark_hosts never had a counter in production
-// (nothing reconciled it before this); this is what starts counting it,
-// on the same schedule as everything else from now on.
-func (s *Service) ReconcileStructuralChains(ctx context.Context, wans ...WANMark) error {
-	if s.exec.IsDryRun() {
-		return nil
-	}
-
-	// A zona sai da lista ORDENADA de interfaces, e não da ordem em que os
-	// links foram cadastrados: é a forma que esta chain tem em produção hoje.
-	// Ver wanMarkIfaces.
-	z, err := s.zone(wanMarkIfaces(wans))
-	if err != nil {
-		return err
-	}
-	if err := s.rebuildChain(ctx, MarkHostsChain, markHostsChainRules(z)); err != nil {
-		return err
-	}
-
-	slog.Info("chains estruturais reconciliadas a partir da definição canônica", "chains", []string{MarkHostsChain})
-
-	if err := s.Persist(ctx); err != nil {
-		slog.Warn("chains estruturais reconciliadas, mas não foi possível persistir para o próximo boot", "err", err)
-	}
-	return nil
-}
-
 // rebuildChain flushes exactly the named chain and re-adds each rule from
-// the given canonical token lists, in order. Shared by
-// ReconcileStructuralChains' two chains and ReconcileUserRules so the
-// flush-then-rewrite sequence can't drift between them.
+// the given canonical token lists, in order. Shared by every chain rebuilt
+// from a canonical definition so the flush-then-rewrite sequence can't drift
+// between them.
 //
 // C-1 (fix): a flush failure still aborts immediately — nothing can safely
 // proceed without knowing the chain is actually empty first. But a failure

@@ -36,8 +36,8 @@ func TestDomainTargetRoutesUseLinksReadAndWriteRBAC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	readerRole := &storage.Role{Name: "Leitor de links", Permissions: []string{string(auth.PermLinksRead)}}
-	writerRole := &storage.Role{Name: "Editor de links", Permissions: []string{string(auth.PermLinksWrite)}}
+	readerRole := &storage.Role{Name: "Leitor do firewall", Permissions: []string{string(auth.PermFirewallRead)}}
+	writerRole := &storage.Role{Name: "Editor do firewall", Permissions: []string{string(auth.PermFirewallWrite)}}
 	for _, role := range []*storage.Role{readerRole, writerRole} {
 		if err := db.CreateRole(role); err != nil {
 			t.Fatal(err)
@@ -83,17 +83,17 @@ func TestDomainTargetRoutesUseLinksReadAndWriteRBAC(t *testing.T) {
 		t.Fatalf("sem sessão = %d: %s", got.Code, got.Body.String())
 	}
 	if got := request(http.MethodGet, "/api/domain-targets", reader.ID, ""); got.Code != http.StatusOK {
-		t.Fatalf("links.read GET = %d: %s", got.Code, got.Body.String())
+		t.Fatalf("firewall.read GET = %d: %s", got.Code, got.Body.String())
 	}
 	if got := request(http.MethodPost, "/api/domain-targets", reader.ID,
 		`{"domain":"ads.example.com","capability":"barrar"}`); got.Code != http.StatusForbidden {
-		t.Fatalf("links.read POST = %d: %s", got.Code, got.Body.String())
+		t.Fatalf("firewall.read POST = %d: %s", got.Code, got.Body.String())
 	}
 	if got := request(http.MethodPost, "/api/domain-targets", writer.ID,
 		`{"domain":"ads.example.com","capability":"barrar"}`); got.Code != http.StatusCreated {
-		t.Fatalf("links.write POST = %d: %s", got.Code, got.Body.String())
+		t.Fatalf("firewall.write POST = %d: %s", got.Code, got.Body.String())
 	}
 	if got := request(http.MethodGet, "/api/domain-targets", writer.ID, ""); got.Code != http.StatusForbidden {
-		t.Fatalf("links.write sem read GET = %d: %s", got.Code, got.Body.String())
+		t.Fatalf("firewall.write sem read GET = %d: %s", got.Code, got.Body.String())
 	}
 }

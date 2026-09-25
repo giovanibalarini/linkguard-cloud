@@ -26,162 +26,6 @@ func newTestDB(t *testing.T) *storage.DB {
 
 // ─── Links ─────────────────────────────────────────────────────────────────
 
-func TestCreateAndGetLink(t *testing.T) {
-	db := newTestDB(t)
-
-	l := &storage.Link{
-		Name:         "WAN1",
-		Interface:    "eth0",
-		IPAddress:    "192.168.1.1",
-		Gateway:      "192.168.1.254",
-		Weight:       100,
-		DNSTest:      "8.8.8.8",
-		MonitorHosts: "1.1.1.1",
-		TableID:      100,
-		Enabled:      true,
-	}
-	if err := db.CreateLink(l); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-	if l.ID == "" {
-		t.Error("expected ID to be set after create")
-	}
-
-	got, err := db.GetLink(l.ID)
-	if err != nil {
-		t.Fatalf("GetLink: %v", err)
-	}
-	if got == nil {
-		t.Fatal("expected link, got nil")
-	}
-	if got.Name != "WAN1" {
-		t.Errorf("expected Name=WAN1, got %s", got.Name)
-	}
-	if got.Interface != "eth0" {
-		t.Errorf("expected Interface=eth0, got %s", got.Interface)
-	}
-	if got.TableID != 100 {
-		t.Errorf("expected TableID=100, got %d", got.TableID)
-	}
-}
-
-func TestListLinks(t *testing.T) {
-	db := newTestDB(t)
-
-	for i, name := range []string{"WAN1", "WAN2", "WAN3"} {
-		l := &storage.Link{
-			Name:      name,
-			Interface: "eth" + string(rune('0'+i)),
-			Gateway:   "10.0.0.254",
-			Enabled:   true,
-		}
-		if err := db.CreateLink(l); err != nil {
-			t.Fatalf("CreateLink %s: %v", name, err)
-		}
-	}
-
-	links, err := db.GetLinks()
-	if err != nil {
-		t.Fatalf("GetLinks: %v", err)
-	}
-	if len(links) != 3 {
-		t.Errorf("expected 3 links, got %d", len(links))
-	}
-}
-
-func TestUpdateLink(t *testing.T) {
-	db := newTestDB(t)
-
-	l := &storage.Link{Name: "WAN1", Interface: "eth0", Gateway: "10.0.0.1", Enabled: true}
-	if err := db.CreateLink(l); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-
-	l.Name = "WAN1-updated"
-	l.Weight = 200
-	if err := db.UpdateLink(l); err != nil {
-		t.Fatalf("UpdateLink: %v", err)
-	}
-
-	got, err := db.GetLink(l.ID)
-	if err != nil {
-		t.Fatalf("GetLink: %v", err)
-	}
-	if got.Name != "WAN1-updated" {
-		t.Errorf("expected Name=WAN1-updated, got %s", got.Name)
-	}
-	if got.Weight != 200 {
-		t.Errorf("expected Weight=200, got %d", got.Weight)
-	}
-}
-
-func TestUpdateLinkStatus(t *testing.T) {
-	db := newTestDB(t)
-
-	l := &storage.Link{Name: "WAN1", Interface: "eth0", Gateway: "10.0.0.1", Enabled: true}
-	if err := db.CreateLink(l); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-
-	now := time.Now()
-	l.Status = "online"
-	l.LatencyMs = 12.5
-	l.PacketLoss = 0.0
-	l.LastCheck = &now
-	if err := db.UpdateLink(l); err != nil {
-		t.Fatalf("UpdateLink (status): %v", err)
-	}
-
-	got, err := db.GetLink(l.ID)
-	if err != nil {
-		t.Fatalf("GetLink: %v", err)
-	}
-	if got.Status != "online" {
-		t.Errorf("expected status=online, got %s", got.Status)
-	}
-	if got.LatencyMs != 12.5 {
-		t.Errorf("expected LatencyMs=12.5, got %f", got.LatencyMs)
-	}
-}
-
-func TestDeleteLink(t *testing.T) {
-	db := newTestDB(t)
-
-	l := &storage.Link{Name: "WAN1", Interface: "eth0", Gateway: "10.0.0.1", Enabled: true}
-	if err := db.CreateLink(l); err != nil {
-		t.Fatalf("CreateLink: %v", err)
-	}
-
-	if err := db.DeleteLink(l.ID); err != nil {
-		t.Fatalf("DeleteLink: %v", err)
-	}
-
-	got, err := db.GetLink(l.ID)
-	if err != nil {
-		t.Fatalf("GetLink: %v", err)
-	}
-	if got != nil {
-		t.Error("expected nil link after delete")
-	}
-}
-
-func TestLinkTableIDUnique(t *testing.T) {
-	db := newTestDB(t)
-
-	l1 := &storage.Link{Name: "WAN1", Interface: "eth0", Gateway: "10.0.0.1", TableID: 100, Enabled: true}
-	l2 := &storage.Link{Name: "WAN2", Interface: "eth1", Gateway: "10.0.1.1", TableID: 101, Enabled: true}
-
-	if err := db.CreateLink(l1); err != nil {
-		t.Fatalf("CreateLink l1: %v", err)
-	}
-	if err := db.CreateLink(l2); err != nil {
-		t.Fatalf("CreateLink l2: %v", err)
-	}
-	if l1.TableID == l2.TableID {
-		t.Errorf("expected unique TableIDs, both got %d", l1.TableID)
-	}
-}
-
 // ─── Alerts ──────────────────────────────────────────────────────────────────
 
 func TestCreateAndGetAlerts(t *testing.T) {
@@ -1263,7 +1107,7 @@ func TestUnknownWidgetIsDroppedItemByItemNotWholeLayout(t *testing.T) {
 	if err := db.SaveDashboardLayout("u1", []dashboard.LayoutItem{
 		{Widget: "system_health", X: 0, Y: 0, W: 6, H: 2},
 		{Widget: "widget_que_nao_existe_mais", X: 6, Y: 0, W: 6, H: 2},
-		{Widget: "wan_links", X: 0, Y: 2, W: 12, H: 3},
+		{Widget: "interface_traffic", X: 0, Y: 2, W: 12, H: 3},
 	}); err != nil {
 		t.Fatalf("salvar: %v", err)
 	}
@@ -1289,7 +1133,7 @@ func TestLayoutIsPerUser(t *testing.T) {
 	db := newTestDB(t)
 
 	doU1 := []dashboard.LayoutItem{
-		{Widget: "wan_links", X: 0, Y: 0, W: 12, H: 3},
+		{Widget: "interface_traffic", X: 0, Y: 0, W: 12, H: 3},
 	}
 	if err := db.SaveDashboardLayout("u1", doU1); err != nil {
 		t.Fatalf("salvar u1: %v", err)
@@ -1351,7 +1195,7 @@ func TestDashboardLayoutMigrationIsIdempotentAndKeepsSavedLayouts(t *testing.T) 
 	if err != nil {
 		t.Fatalf("primeiro Open: %v", err)
 	}
-	meu := []dashboard.LayoutItem{{Widget: "wan_links", X: 0, Y: 0, W: 12, H: 3}}
+	meu := []dashboard.LayoutItem{{Widget: "interface_traffic", X: 0, Y: 0, W: 12, H: 3}}
 	if err := db.SaveDashboardLayout("u1", meu); err != nil {
 		t.Fatalf("salvar: %v", err)
 	}
@@ -1378,7 +1222,7 @@ func TestDashboardLayoutMigrationIsIdempotentAndKeepsSavedLayouts(t *testing.T) 
 func TestDeleteDashboardLayoutRestoresTheFactoryDefault(t *testing.T) {
 	db := newTestDB(t)
 	if err := db.SaveDashboardLayout("u1", []dashboard.LayoutItem{
-		{Widget: "wan_links", X: 0, Y: 0, W: 12, H: 3},
+		{Widget: "interface_traffic", X: 0, Y: 0, W: 12, H: 3},
 	}); err != nil {
 		t.Fatalf("salvar: %v", err)
 	}
@@ -1419,10 +1263,10 @@ func TestOutOfGridItemIsDroppedItemByItem(t *testing.T) {
 	db := newTestDB(t)
 	if err := db.SaveDashboardLayout("u1", []dashboard.LayoutItem{
 		{Widget: "system_health", X: 0, Y: 0, W: 6, H: 2},
-		{Widget: "wan_links", X: 8, Y: 0, W: 6, H: 2},      // passa da coluna 12
-		{Widget: "open_alerts", X: 0, Y: 2, W: 6, H: 0},    // sem altura
-		{Widget: "lan_hosts", X: -1, Y: 0, W: 6, H: 2},     // fora à esquerda
-		{Widget: "top_talkers", X: 0, Y: 4, W: 12, H: 999}, // altura absurda
+		{Widget: "interface_traffic", X: 8, Y: 0, W: 6, H: 2}, // passa da coluna 12
+		{Widget: "open_alerts", X: 0, Y: 2, W: 6, H: 0},       // sem altura
+		{Widget: "lan_hosts", X: -1, Y: 0, W: 6, H: 2},        // fora à esquerda
+		{Widget: "top_talkers", X: 0, Y: 4, W: 12, H: 999},    // altura absurda
 		{Widget: "system_resources", X: 0, Y: 6, W: 12, H: 2},
 	}); err != nil {
 		t.Fatalf("salvar: %v", err)

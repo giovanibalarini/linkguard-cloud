@@ -170,21 +170,6 @@ func (c *Collector) checkResource(key, name string, pct float64, thresholdPct in
 	}
 }
 
-// trackLinks reflects link status into the health map for the dashboard. Link
-// UP/DOWN alerts stay owned by the monitor's OnStatusChange path (Task 9).
-func (c *Collector) trackLinks() {
-	links, err := c.db.GetLinks()
-	if err != nil {
-		return
-	}
-	now := c.nowFn()
-	for _, l := range links {
-		key := "link:" + l.ID
-		c.observe(key, l.Status == "online", now)
-		c.ensureMeta(key, l.Name, "link")
-	}
-}
-
 // ensureMeta sets the display name/kind on an item the first time we see it.
 func (c *Collector) ensureMeta(key, name, kind string) {
 	c.healthMu.Lock()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -62,14 +61,11 @@ func buildTestServices(t *testing.T) *services {
 	t.Cleanup(func() { db.Close() })
 
 	cfg := &config.Config{
-		ListenAddr:           "127.0.0.1",
-		Port:                 0,
-		DBPath:               filepath.Join(dir, "test.db"),
-		JWTSecret:            "segredo-de-teste-que-nao-vai-a-lugar-nenhum",
-		MonitorInterval:      30,
-		ProbeIntervalSeconds: 5,
-		ProbeCount:           3,
-		FailoverEnabled:      false,
+		ListenAddr:      "127.0.0.1",
+		Port:            0,
+		DBPath:          filepath.Join(dir, "test.db"),
+		JWTSecret:       "segredo-de-teste-que-nao-vai-a-lugar-nenhum",
+		MonitorInterval: 30,
 	}
 
 	// A plataforma entra como DESCONHECIDA de propósito: é o estado permissivo
@@ -170,23 +166,5 @@ func TestBuildServicesWiresThePersistGuard(t *testing.T) {
 	_ = s.nftSvc.Persist(ctx)
 	if st := s.nftSvc.PersistState(); !st.Attempted {
 		t.Fatal("controle quebrado: fechada a janela, o Persist tinha que TENTAR gravar. Se ele parou mesmo assim, o assert acima pode estar verde por outro motivo — reveja os dois juntos")
-	}
-}
-
-func TestBuildServicesUsesTheSameQosServiceForAPIAndBoot(t *testing.T) {
-	s := buildTestServices(t)
-	if s.qosSvc == nil {
-		t.Fatal("buildServices did not create a QoS service for boot reconciliation")
-	}
-	serverField := reflect.ValueOf(s.server).Elem().FieldByName("qosSvc")
-	if !serverField.IsValid() || serverField.IsNil() {
-		t.Fatal("api.Server does not hold the QoS service created by buildServices")
-	}
-	if serverField.Pointer() != reflect.ValueOf(s.qosSvc).Pointer() {
-		t.Fatalf("API and boot received different QoS service instances: api=%#x boot=%p", serverField.Pointer(), s.qosSvc)
-	}
-	storeField := reflect.ValueOf(s.qosSvc).Elem().FieldByName("store")
-	if !storeField.IsValid() || storeField.IsNil() {
-		t.Fatal("production QoS service has no durable operation store")
 	}
 }

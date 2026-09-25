@@ -30,11 +30,6 @@ const (
 	qrencodePackage  = "qrencode"
 )
 
-// EndpointResolver chooses the client-facing endpoint. Main wires this to the
-// selected link's enabled DDNS hostname and falls back to the validated
-// explicit host.
-type EndpointResolver func(linkID, explicitHost string) (string, error)
-
 type QREncoder interface {
 	Encode(ctx context.Context, value string) (dataURL string, err error)
 }
@@ -78,7 +73,6 @@ type Service struct {
 	exec        firewall.Executor
 	installExec firewall.Executor
 	configPath  string
-	resolve     EndpointResolver
 	qr          QREncoder
 	now         func() time.Time
 	mu          sync.Mutex
@@ -97,8 +91,6 @@ func (s *Service) SetInstallExecutor(executor firewall.Executor) {
 	}
 }
 
-func (s *Service) SetEndpointResolver(resolve EndpointResolver) { s.resolve = resolve }
-
 func (s *Service) Config() (Config, error) {
 	row, err := s.db.GetWireGuardConfig()
 	if err != nil {
@@ -112,7 +104,7 @@ func (s *Service) Config() (Config, error) {
 
 func configFromStorage(row *storage.WireGuardConfig) Config {
 	return Config{Enabled: row.Enabled, ListenPort: row.ListenPort, Address: row.Address,
-		EndpointHost: row.EndpointHost, EndpointLinkID: row.EndpointLinkID}
+		EndpointHost: row.EndpointHost}
 }
 
 func (s *Service) UpdateConfig(ctx context.Context, c Config) error {
@@ -126,7 +118,7 @@ func (s *Service) UpdateConfig(ctx context.Context, c Config) error {
 		return err
 	}
 	row := storage.WireGuardConfig{Enabled: c.Enabled, ListenPort: c.ListenPort,
-		Address: c.Address, EndpointHost: c.EndpointHost, EndpointLinkID: c.EndpointLinkID}
+		Address: c.Address, EndpointHost: c.EndpointHost}
 	if prior != nil {
 		row.LastApplyOK, row.LastApplyError, row.LastAppliedAt = prior.LastApplyOK, prior.LastApplyError, prior.LastAppliedAt
 	}
@@ -181,7 +173,7 @@ func (s *Service) recordApply(c Config, applyErr error) {
 	row, err := s.db.GetWireGuardConfig()
 	if err != nil || row == nil {
 		row = &storage.WireGuardConfig{Enabled: c.Enabled, ListenPort: c.ListenPort,
-			Address: c.Address, EndpointHost: c.EndpointHost, EndpointLinkID: c.EndpointLinkID}
+			Address: c.Address, EndpointHost: c.EndpointHost}
 	}
 	row.LastApplyOK = applyErr == nil
 	row.LastAppliedAt = s.now().Unix()
@@ -363,13 +355,6 @@ func peersFromStorage(rows []storage.WireGuardPeer) []Peer {
 
 func (s *Service) resolveEndpoint(c Config) (string, error) {
 	host := c.EndpointHost
-	if s.resolve != nil {
-		var err error
-		host, err = s.resolve(c.EndpointLinkID, c.EndpointHost)
-		if err != nil {
-			return "", err
-		}
-	}
 	if !validEndpointHost(host) {
 		return "", fmt.Errorf("configure o endereço público da VPN (hostname ou IP)")
 	}

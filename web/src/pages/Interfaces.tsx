@@ -8,6 +8,7 @@ import Tabs, { type TabItem } from '../components/ui/Tabs';
 import Tag, { type TagVariant } from '../components/ui/Tag';
 import PortIcon from '../components/ui/PortIcon';
 import BackPanel from '../components/BackPanel';
+import UplinkCard from '../components/UplinkCard';
 import { portIsAbnormal, portState } from '../lib/portState';
 import type { IfaceView } from '../types';
 
@@ -110,6 +111,8 @@ export default function Interfaces() {
           {t('net.if.loadFailed')}
         </div>
       )}
+
+      <UplinkCard />
 
       <Tabs items={TABS} active={tab} onChange={setTab} />
 

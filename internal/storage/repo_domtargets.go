@@ -31,25 +31,20 @@ const (
 	DomainStageAtivo = "ativo"
 )
 
-// Capacidades de um domínio.
-const (
-	DomainCapBarrar     = "barrar"
-	DomainCapDirecionar = "direcionar"
-)
+// DomainCapBarrar é a capacidade de um domínio listado. Havia uma segunda,
+// "direcionar" (escolher a WAN por domínio), que saiu com o multi-WAN.
+const DomainCapBarrar = "barrar"
 
 // DomainTarget é um domínio listado.
 type DomainTarget struct {
 	ID     string `json:"id"`
 	Domain string `json:"domain"`
-	// Capability é "barrar" ou "direcionar".
+	// Capability é "barrar". Linhas antigas podem trazer "direcionar" (a
+	// escolha de WAN por domínio, que saiu com o multi-WAN): elas continuam
+	// legíveis para a tela poder mostrar e apagar, e nunca são publicadas.
 	Capability string `json:"capability"`
 	// Stage é "ensaio" ou "ativo".
-	Stage string `json:"stage"`
-	// LinkID é a identidade persistente. Nome e mark são só denormalização.
-	LinkID string `json:"link_id"`
-	// LinkName é só para a tela; quem vai para o kernel é Mark.
-	LinkName  string    `json:"link_name"`
-	Mark      uint32    `json:"mark"`
+	Stage     string    `json:"stage"`
 	Note      string    `json:"note"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -58,7 +53,7 @@ type DomainTarget struct {
 // ListDomainTargets devolve a lista inteira, em ordem de domínio.
 func (db *DB) ListDomainTargets() ([]DomainTarget, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, domain, capability, stage, link_id, link_name, mark, note, created_at, updated_at
+		SELECT id, domain, capability, stage, note, created_at, updated_at
 		FROM domain_targets ORDER BY domain`)
 	if err != nil {
 		return nil, fmt.Errorf("listar os alvos por domínio: %w", err)
@@ -67,8 +62,7 @@ func (db *DB) ListDomainTargets() ([]DomainTarget, error) {
 	out := []DomainTarget{}
 	for rows.Next() {
 		var t DomainTarget
-		if err := rows.Scan(&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.LinkID,
-			&t.LinkName, &t.Mark, &t.Note, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.Note, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ler um alvo por domínio: %w", err)
 		}
 		out = append(out, t)
@@ -97,16 +91,16 @@ func (db *DB) SaveDomainTarget(t DomainTarget) error {
 		t.ID = t.Domain
 	}
 	_, err := db.conn.Exec(`
-		INSERT INTO domain_targets (id, domain, capability, stage, link_id, link_name, mark, note, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO domain_targets (id, domain, capability, stage, note, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(domain) DO UPDATE SET
 			capability = excluded.capability,
-			link_id    = excluded.link_id,
-			link_name  = excluded.link_name,
-			mark       = excluded.mark,
+			link_id    = '',
+			link_name  = '',
+			mark       = 0,
 			note       = excluded.note,
 			updated_at = excluded.updated_at`,
-		t.ID, t.Domain, t.Capability, DomainStageEnsaio, t.LinkID, t.LinkName, t.Mark, t.Note, time.Now())
+		t.ID, t.Domain, t.Capability, DomainStageEnsaio, t.Note, time.Now())
 	if err != nil {
 		return fmt.Errorf("gravar o alvo por domínio %s: %w", t.Domain, err)
 	}
@@ -123,15 +117,8 @@ func normalizeDomainTarget(t *DomainTarget) error {
 		return fmt.Errorf("domínio inválido: %q", t.Domain)
 	}
 	t.Domain = dom
-	if t.Capability != DomainCapBarrar && t.Capability != DomainCapDirecionar {
-		return fmt.Errorf("capacidade inválida: %q", t.Capability)
-	}
-	t.LinkID = strings.TrimSpace(t.LinkID)
-	if t.Capability == DomainCapDirecionar && t.LinkID == "" {
-		return fmt.Errorf("link_id é obrigatório para direcionamento")
-	}
-	if t.Capability == DomainCapBarrar && t.LinkID != "" {
-		return fmt.Errorf("link_id só é aceito para direcionamento")
+	if t.Capability != DomainCapBarrar {
+		return fmt.Errorf("capacidade inválida: %q (a versão cloud só bloqueia por domínio)", t.Capability)
 	}
 	t.Note = strings.TrimSpace(t.Note)
 	if utf8.RuneCountInString(t.Note) > MaxDomainTargetNoteRunes || strings.ContainsFunc(t.Note, unicode.IsControl) {
@@ -155,9 +142,9 @@ func (db *DB) CreateDomainTarget(t *DomainTarget) error {
 	t.Stage, t.CreatedAt, t.UpdatedAt = DomainStageEnsaio, now, now
 	_, err := db.conn.Exec(`
 		INSERT INTO domain_targets
-			(id, domain, capability, stage, link_id, link_name, mark, note, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.Domain, t.Capability, t.Stage, t.LinkID, t.LinkName, t.Mark, t.Note, now, now)
+			(id, domain, capability, stage, note, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.Domain, t.Capability, t.Stage, t.Note, now, now)
 	if err != nil {
 		return fmt.Errorf("criar o alvo por domínio %s: %w", t.Domain, err)
 	}
@@ -168,10 +155,9 @@ func (db *DB) CreateDomainTarget(t *DomainTarget) error {
 func (db *DB) GetDomainTarget(id string) (*DomainTarget, error) {
 	var t DomainTarget
 	err := db.conn.QueryRow(`
-		SELECT id, domain, capability, stage, link_id, link_name, mark, note, created_at, updated_at
+		SELECT id, domain, capability, stage, note, created_at, updated_at
 		  FROM domain_targets WHERE id = ?`, strings.TrimSpace(id)).Scan(
-		&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.LinkID,
-		&t.LinkName, &t.Mark, &t.Note, &t.CreatedAt, &t.UpdatedAt)
+		&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.Note, &t.CreatedAt, &t.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -188,9 +174,9 @@ func (db *DB) UpdateDomainTarget(id string, t DomainTarget) error {
 	}
 	res, err := db.conn.Exec(`
 		UPDATE domain_targets
-		   SET domain = ?, capability = ?, link_id = ?, link_name = ?, mark = ?, note = ?, updated_at = ?
+		   SET domain = ?, capability = ?, link_id = '', link_name = '', mark = 0, note = ?, updated_at = ?
 		 WHERE id = ?`,
-		t.Domain, t.Capability, t.LinkID, t.LinkName, t.Mark, t.Note, time.Now(), strings.TrimSpace(id))
+		t.Domain, t.Capability, t.Note, time.Now(), strings.TrimSpace(id))
 	if err != nil {
 		return fmt.Errorf("editar o alvo por domínio %s: %w", t.Domain, err)
 	}
@@ -252,15 +238,13 @@ func (db *DB) PromoteDomainTarget(domain, stage string) error {
 
 type DomainRoutingDBSnapshot struct {
 	Targets          []DomainTarget
-	Links            []Link
 	BlocklistPresent bool
 	BlocklistEnabled bool
 }
 
 // DomainRoutingSnapshot lê toda a entrada da reconciliação numa transação
-// read-only. Sem isso, um Link poderia mudar entre o SELECT dos alvos e o dos
-// Links, produzindo por uma rodada uma marca que nunca pertenceu à intenção
-// que veio junto.
+// read-only: os alvos e o estado do grupo de bloqueio têm de ser da mesma
+// rodada.
 func (db *DB) DomainRoutingSnapshot(ctx context.Context) (DomainRoutingDBSnapshot, error) {
 	var snap DomainRoutingDBSnapshot
 	tx, err := db.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -270,39 +254,18 @@ func (db *DB) DomainRoutingSnapshot(ctx context.Context) (DomainRoutingDBSnapsho
 	defer tx.Rollback() //nolint:errcheck // no-op depois do commit
 
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, domain, capability, stage, link_id, link_name, mark, note, created_at, updated_at
+		SELECT id, domain, capability, stage, note, created_at, updated_at
 		  FROM domain_targets ORDER BY domain`)
 	if err != nil {
 		return snap, fmt.Errorf("listar alvos no snapshot: %w", err)
 	}
 	for rows.Next() {
 		var t DomainTarget
-		if err := rows.Scan(&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.LinkID,
-			&t.LinkName, &t.Mark, &t.Note, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.Note, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			rows.Close()
 			return snap, fmt.Errorf("ler alvo no snapshot: %w", err)
 		}
 		snap.Targets = append(snap.Targets, t)
-	}
-	if err := rows.Close(); err != nil {
-		return snap, err
-	}
-	if err := rows.Err(); err != nil {
-		return snap, err
-	}
-
-	rows, err = tx.QueryContext(ctx, linkSelectColumns+`
-		  FROM links ORDER BY name`)
-	if err != nil {
-		return snap, fmt.Errorf("listar links no snapshot: %w", err)
-	}
-	for rows.Next() {
-		l, err := scanLink(rows)
-		if err != nil {
-			rows.Close()
-			return snap, fmt.Errorf("ler link no snapshot: %w", err)
-		}
-		snap.Links = append(snap.Links, l)
 	}
 	if err := rows.Close(); err != nil {
 		return snap, err
@@ -327,9 +290,6 @@ func (db *DB) DomainRoutingSnapshot(ctx context.Context) (DomainRoutingDBSnapsho
 	}
 	if snap.Targets == nil {
 		snap.Targets = []DomainTarget{}
-	}
-	if snap.Links == nil {
-		snap.Links = []Link{}
 	}
 	return snap, nil
 }

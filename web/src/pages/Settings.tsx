@@ -20,8 +20,9 @@ type RetentionProfile = '30d' | '1y' | '5y';
 const PROFILE_ORDER: RetentionProfile[] = ['30d', '1y', '5y'];
 
 const FEATURE_KEYS = [
-  'cfg.about.feature.wan',
-  'cfg.about.feature.failover',
+  'cfg.about.feature.nat',
+  'cfg.about.feature.vpn',
+  'cfg.about.feature.traffic',
   'cfg.about.feature.routes',
   'cfg.about.feature.iptables',
   'cfg.about.feature.backup',

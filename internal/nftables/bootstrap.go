@@ -38,10 +38,10 @@ func (s *Service) EnsureTable(ctx context.Context, wanInterfaces []string) bool 
 	}
 
 	// A MESMA PLATAFORMA QUE A PRIMEIRA RECONCILIAÇÃO VAI USAR. O bootstrap
-	// embute mark_hosts como TEXTO, e a invariante deste arquivo é "instalação
-	// nova == caixa atualizada": se ele nascesse no eixo de interface e o
-	// primeiro ReconcileStructuralChains reescrevesse a chain no eixo de CIDR,
-	// a caixa divergiria de si mesma no primeiro boot.
+	// embute a postrouting como TEXTO, e a invariante deste arquivo é
+	// "instalação nova == caixa atualizada": se ela nascesse no eixo de
+	// interface e a primeira reconciliação a reescrevesse no eixo de CIDR, a
+	// caixa divergiria de si mesma no primeiro boot.
 	//
 	// Erro de leitura NÃO cancela o bootstrap, e esta é a única exceção ao
 	// contrato de propagação das zonas: sem tabela a máquina fica sem firewall
@@ -92,7 +92,6 @@ func (s *Service) EnsureTable(ctx context.Context, wanInterfaces []string) bool 
 func buildBootstrapRuleset(wanInterfaces []string, facts ZoneFacts) string {
 	var b strings.Builder
 	b.WriteString("table inet linkguard {\n")
-	b.WriteString("\tmap host_wan {\n\t\ttype ipv4_addr : mark\n\t}\n\n")
 	b.WriteString("\tset blocklist {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t}\n\n")
 	b.WriteString("\tset blocked_hosts {\n\t\ttype ipv4_addr\n\t}\n\n")
 	// O mesmo host, pela identidade que não tem família (#119, fase 2). Ver o
@@ -107,32 +106,14 @@ func buildBootstrapRuleset(wanInterfaces []string, facts ZoneFacts) string {
 	b.WriteString("\tset dom_blocked6 {\n\t\ttype ipv6_addr\n\t\tflags timeout\n\t\ttimeout 1h\n\t\tsize 8192\n\t}\n\n")
 	b.WriteString("\tmap dom_wan {\n\t\ttype ipv4_addr : mark\n\t\tflags timeout\n\t\ttimeout 1h\n\t\tsize 8192\n\t}\n\n")
 	b.WriteString("\tchain user_rules {\n\t}\n\n")
-	// mark_hosts/forward's rules carry `counter` from the very first boot —
-	// each is reconciled on every subsequent boot from its own canonical
-	// definition (mark_hosts by ReconcileStructuralChains, forward by
-	// ReconcileGroups since rule groups, Phase C1), and a fresh install must
-	// never diverge from an upgraded box's post-reconcile state, the same
-	// "fresh box == upgraded box" invariant already applied to the input
-	// chain above.
+	// forward's rules carry `counter` from the very first boot — it is
+	// reconciled on every subsequent boot by ReconcileGroups, and a fresh
+	// install must never diverge from an upgraded box's post-reconcile state.
 	//
 	// The `counter jump user_rules` line below is the one exception, and it
 	// is deliberate: it is what the production box has had since June 2026,
 	// so a fresh install starts from the same ruleset an upgraded one does.
-	// The first ReconcileGroups is what replaces it with the group jumps —
-	// the admin's own rules migrate into a group ("Minhas regras"), so a
-	// forward reaching user_rules is pre-Phase-C1 state, never a target.
-	b.WriteString("\tchain mark_hosts {\n")
-	b.WriteString("\t\ttype filter hook prerouting priority mangle; policy accept;\n")
-	wans := make([]WANMark, 0, len(wanInterfaces))
-	for _, iface := range wanInterfaces {
-		wans = append(wans, WANMark{Interface: iface})
-	}
-	// wanMarkIfaces, e não a ordem do cadastro: é a lista ORDENADA que
-	// ReconcileStructuralChains usa, e as duas têm de produzir a mesma chain.
-	for _, tokens := range markHostsChainRules(NewZone(wanMarkIfaces(wans), facts.LocalNets, facts.Hairpin, facts.PathMTU)) {
-		fmt.Fprintf(&b, "\t\t%s\n", strings.Join(tokens, " "))
-	}
-	b.WriteString("\t}\n\n")
+	// The first ReconcileGroups is what replaces it with the group jumps.
 	b.WriteString("\tchain forward {\n")
 	b.WriteString("\t\ttype filter hook forward priority filter; policy accept;\n")
 	b.WriteString("\t\tcounter jump user_rules\n")
@@ -159,8 +140,7 @@ func buildBootstrapRuleset(wanInterfaces []string, facts ZoneFacts) string {
 	b.WriteString("\t}\n\n")
 	b.WriteString("\tchain postrouting {\n")
 	b.WriteString("\t\ttype nat hook postrouting priority srcnat; policy accept;\n")
-	// A MESMA fonte que ReconcileMasquerade usa, e não um literal próprio: é o
-	// mesmo motivo declarado no bloco da mark_hosts, logo acima. Uma instalação
+	// A MESMA fonte que ReconcileMasquerade usa, e não um literal próprio. Uma instalação
 	// nova que nascesse com a regra larga e fosse reescrita com a regra
 	// qualificada pela primeira reconciliação divergiria de si mesma no
 	// primeiro boot — e numa chain de NAT isso é a identidade de origem

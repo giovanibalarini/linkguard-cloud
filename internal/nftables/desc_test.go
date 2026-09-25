@@ -20,7 +20,6 @@ func TestDescritorCobreOMesmoQueAFrase(t *testing.T) {
 		{ForwardChain, "ip daddr @blocked_hosts counter drop"},
 		{ForwardChain, "ip saddr @blocklist counter drop"},
 		{ForwardChain, "ip daddr @blocklist counter drop"},
-		{MarkHostsChain, "meta mark set ip saddr map @host_wan"},
 		{DNATChain, "iifname enp3s0 tcp dport 8080 dnat ip to 192.168.1.5:80"},
 	}
 	for _, c := range casos {

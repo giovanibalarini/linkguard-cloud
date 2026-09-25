@@ -52,7 +52,18 @@ func TestDomainTargetLinkIDMigrationBackfillsAnExistingLinkByName(t *testing.T) 
 	if err != nil || target == nil {
 		t.Fatalf("GetDomainTarget: %+v, %v", target, err)
 	}
-	if target.LinkID != "wan-2" {
-		t.Fatalf("link_id não foi retropreenchido: %+v", target)
+	// A migração 17 continua rodando em banco antigo (a versão cloud herda o
+	// schema do linkguard-fw), mesmo sem ninguém ler a coluna depois.
+	var linkID string
+	if err := db.conn.QueryRow(`SELECT link_id FROM domain_targets WHERE id = 'legacy'`).Scan(&linkID); err != nil {
+		t.Fatal(err)
+	}
+	if linkID != "wan-2" {
+		t.Fatalf("link_id não foi retropreenchido: %q", linkID)
+	}
+	// E a linha de direcionamento antiga continua legível, para a tela poder
+	// mostrá-la e apagá-la.
+	if target.Capability != "direcionar" {
+		t.Fatalf("capacidade antiga não foi lida como está: %+v", target)
 	}
 }

@@ -14,7 +14,6 @@ const (
 	PermDashboardRead  Permission = "dashboard.read"
 	PermMonitoringRead Permission = "monitoring.read"
 	PermLogsRead       Permission = "logs.read"
-	PermLinksRead      Permission = "links.read"
 	PermRoutesRead     Permission = "routes.read"
 	PermFirewallRead   Permission = "firewall.read"
 	PermHostsRead      Permission = "hosts.read"
@@ -25,11 +24,8 @@ const (
 
 	// Write / action access per feature area.
 	PermMonitoringWrite Permission = "monitoring.write" // resolver alerta
-	PermLinksWrite      Permission = "links.write"
-	PermRoutesWrite     Permission = "routes.write"
 	PermFirewallWrite   Permission = "firewall.write"
 	PermHostsBlock      Permission = "hosts.block"
-	PermHostsAssign     Permission = "hosts.assign" // mover host/grupo para uma WAN
 	// PermHostsQuota é declarar/remover a COTA DE DADOS de um aparelho (#126).
 	//
 	// SEPARADA DE hosts.block DE PROPÓSITO. hosts.block é a permissão de
@@ -99,18 +95,13 @@ var Catalog = []CatalogEntry{
 	{PermTrafficFlows, "Monitoramento", "Ver com quem os aparelhos falaram", "Ver os destinos com que cada aparelho da LAN conversou na última janela (fica no log de auditoria)"},
 	{PermLogsRead, "Auditoria", "Ver logs", "Consultar o log de auditoria"},
 
-	{PermLinksRead, "Links WAN", "Ver links", "Listar links e seu status"},
-	{PermLinksWrite, "Links WAN", "Gerenciar links", "Criar, editar, remover e auto-detectar links"},
-
-	{PermRoutesRead, "Rotas", "Ver rotas", "Listar rotas e regras de policy routing"},
-	{PermRoutesWrite, "Rotas", "Gerenciar rotas", "Adicionar, editar e remover rotas e regras"},
+	{PermRoutesRead, "Rotas", "Ver rotas", "Ver as rotas e regras de roteamento que o kernel tem (só leitura)"},
 
 	{PermFirewallRead, "Firewall", "Ver firewall", "Inspecionar regras iptables/nftables e backups"},
 	{PermFirewallWrite, "Firewall", "Gerenciar firewall", "Aplicar regras, backup e rollback"},
 
 	{PermHostsRead, "Hosts", "Ver hosts", "Inventário e consumo de hosts da LAN"},
 	{PermHostsBlock, "Hosts", "Bloquear host", "Bloquear/desbloquear um host"},
-	{PermHostsAssign, "Hosts", "Direcionar host", "Mover host/grupo para uma WAN específica"},
 	{PermHostsQuota, "Hosts", "Declarar cota de dados", "Definir e remover o teto de consumo de um aparelho (avisa; não bloqueia nem limita a banda)"},
 
 	{PermSystemRead, "Sistema", "Ver sistema", "Métricas de sistema e configurações"},
@@ -164,7 +155,7 @@ func readOnlyPermissions() []Permission {
 	for _, e := range Catalog {
 		switch e.Key {
 		case PermDashboardRead, PermMonitoringRead, PermLogsRead,
-			PermLinksRead, PermRoutesRead, PermFirewallRead,
+			PermRoutesRead, PermFirewallRead,
 			PermHostsRead, PermSystemRead, PermDNSRead, PermInterfacesRead:
 			perms = append(perms, e.Key)
 		}
@@ -186,10 +177,9 @@ var DefaultRoles = []DefaultRole{
 		Description: "Operação do dia a dia: links, rotas, firewall e hosts (sem administração)",
 		Permissions: []Permission{
 			PermDashboardRead, PermMonitoringRead, PermMonitoringWrite, PermTrafficCapture, PermLogsRead,
-			PermLinksRead, PermLinksWrite,
-			PermRoutesRead, PermRoutesWrite,
+			PermRoutesRead,
 			PermFirewallRead, PermFirewallWrite,
-			PermHostsRead, PermHostsBlock, PermHostsAssign, PermHostsQuota,
+			PermHostsRead, PermHostsBlock, PermHostsQuota,
 			PermSystemRead,
 			PermDNSRead, PermDNSWrite,
 			PermInterfacesRead,

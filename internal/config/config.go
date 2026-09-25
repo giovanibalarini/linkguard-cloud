@@ -34,17 +34,6 @@ type Config struct {
 	// Monitoring
 	MonitorInterval int `json:"monitor_interval_seconds"`
 
-	// Link health probing (drives the link Monitor, decoupled from the metrics
-	// collector which stays on MonitorInterval).
-	ProbeIntervalSeconds int `json:"probe_interval_seconds"` // link health probe cadence
-	ProbeCount           int `json:"probe_count"`            // probes per host per tick
-
-	// Failover
-	FailoverEnabled      bool `json:"failover_enabled"`
-	FailThreshold        int  `json:"fail_threshold"`
-	RecoverThreshold     int  `json:"recover_threshold"`
-	FailoverCooldownSecs int  `json:"failover_cooldown_seconds"`
-
 	// Log file
 	LogFile string `json:"log_file"`
 }
@@ -52,23 +41,17 @@ type Config struct {
 // Default returns a Config with sensible defaults.
 func Default() *Config {
 	return &Config{
-		ListenAddr:           "127.0.0.1",
-		Port:                 8080,
-		DBPath:               "/var/lib/linkguard-cloud/linkguard.db",
-		JWTSecret:            "change-me-in-production",
-		TLSEnabled:           false,
-		TLSCert:              "/etc/linkguard-cloud/tls/cert.pem",
-		TLSKey:               "/etc/linkguard-cloud/tls/key.pem",
-		DryRun:               true,
-		Debug:                false,
-		MonitorInterval:      30,
-		ProbeIntervalSeconds: 10,
-		ProbeCount:           3,
-		FailoverEnabled:      true,
-		FailThreshold:        3,
-		RecoverThreshold:     2,
-		FailoverCooldownSecs: 60,
-		LogFile:              "/var/log/linkguard-cloud/linkguard.log",
+		ListenAddr:      "127.0.0.1",
+		Port:            8080,
+		DBPath:          "/var/lib/linkguard-cloud/linkguard.db",
+		JWTSecret:       "change-me-in-production",
+		TLSEnabled:      false,
+		TLSCert:         "/etc/linkguard-cloud/tls/cert.pem",
+		TLSKey:          "/etc/linkguard-cloud/tls/key.pem",
+		DryRun:          true,
+		Debug:           false,
+		MonitorInterval: 30,
+		LogFile:         "/var/log/linkguard-cloud/linkguard.log",
 	}
 }
 

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/api/handlers"
-	"github.com/giovanibalarini/linkguard-cloud/internal/links"
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 )
 
@@ -18,22 +16,6 @@ type domainReconcileSpy struct {
 func (s *domainReconcileSpy) Reconcile(context.Context) error {
 	s.calls++
 	return s.err
-}
-
-func TestLinkMutationReconcilesDomainRoutingEvenWithoutNftRuntime(t *testing.T) {
-	_, db := newGroupTestHandler(t)
-	spy := &domainReconcileSpy{}
-	h := handlers.NewLinksHandler(links.NewService(db), db, nil, nil)
-	h.SetDomainRouting(spy)
-
-	w := doJSON(t, h.Create, http.MethodPost, "/api/links",
-		`{"name":"WAN 2","interface":"wan2","status":"unknown","enabled":true,"table_id":200}`)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("criar link = %d: %s", w.Code, w.Body.String())
-	}
-	if spy.calls != 1 {
-		t.Fatalf("mudança de link deveria reconciliar domínio uma vez, chamadas=%d", spy.calls)
-	}
 }
 
 func TestBlocklistGroupToggleReconcilesDomainRouting(t *testing.T) {

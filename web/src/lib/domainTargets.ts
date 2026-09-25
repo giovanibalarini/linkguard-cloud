@@ -1,10 +1,10 @@
+// 'direcionar' (escolher a WAN por domínio) saiu com o multi-WAN; ainda pode
+// chegar numa linha antiga, que a tela mostra para ser apagada.
 export type DomainCapability = 'barrar' | 'direcionar';
 export type DomainStage = 'ensaio' | 'ativo';
 
 export interface DomainTargetForm {
   domain: string;
-  capability: DomainCapability;
-  link_id: string;
   note: string;
 }
 
@@ -14,10 +14,6 @@ export interface DomainTargetView {
   capability: DomainCapability;
   stage: DomainStage;
   effective_stage: DomainStage;
-  link_id: string;
-  link_name: string;
-  link_status?: string;
-  mark: number;
   note: string;
   suspended: boolean;
   suspension_reason?: string;
@@ -31,7 +27,6 @@ export interface DomainTargetView {
   rejected: number;
   rejected_own: number;
   no_refcount_slot: number;
-  routed_ipv6_discarded: number;
   last_learned: number;
   rotation: number;
   rotation_truncated: boolean;
@@ -70,22 +65,13 @@ export interface DomainRoutingState {
   last_error?: string;
   blocking_group_present: boolean;
   blocking_group_enabled: boolean;
-  routing_ipv6_supported: boolean;
   runtime: DomainRuntimeState;
   targets: DomainTargetView[];
 }
 
-export type DomainFormError =
-  | 'invalid_domain'
-  | 'invalid_capability'
-  | 'link_required'
-  | 'unknown_link'
-  | 'block_with_link'
-  | 'invalid_note';
+export type DomainFormError = 'invalid_domain' | 'invalid_note';
 
-export const emptyDomainTargetForm = (): DomainTargetForm => ({
-  domain: '', capability: 'barrar', link_id: '', note: '',
-});
+export const emptyDomainTargetForm = (): DomainTargetForm => ({ domain: '', note: '' });
 
 /** Mesma gramática conservadora do backend: nome ASCII, pelo menos 2 labels. */
 export function normalizeDomainTarget(raw: string): string | null {
@@ -101,16 +87,8 @@ export function normalizeDomainTarget(raw: string): string | null {
   return value;
 }
 
-export function validateDomainTargetForm(form: DomainTargetForm, knownLinks: Set<string>): DomainFormError | null {
+export function validateDomainTargetForm(form: DomainTargetForm): DomainFormError | null {
   if (!normalizeDomainTarget(form.domain)) return 'invalid_domain';
-  if (form.capability !== 'barrar' && form.capability !== 'direcionar') return 'invalid_capability';
-  const linkID = form.link_id.trim();
-  if (form.capability === 'direcionar') {
-    if (!linkID) return 'link_required';
-    if (!knownLinks.has(linkID)) return 'unknown_link';
-  } else if (linkID) {
-    return 'block_with_link';
-  }
   const note = form.note.trim();
   if (Array.from(note).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(note)) return 'invalid_note';
   return null;

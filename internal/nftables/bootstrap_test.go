@@ -134,7 +134,7 @@ func TestEnsureTableRunsCheckEvenInDryRun(t *testing.T) {
 // TestBootstrapThenRestoreAppliesSavedState mirrors exactly what main.go does
 // on a from-scratch install: EnsureTable creates the bare skeleton (reports
 // created=true), and the caller then restores the saved live snapshot on top
-// — this is how host_wan/blocklist/user rules/port forwards survive a
+// — this is how blocklist/user rules/port forwards survive a
 // reinstall even though EnsureTable's own skeleton is empty.
 func TestBootstrapThenRestoreAppliesSavedState(t *testing.T) {
 	exec := &recordExec{listTableErr: fmt.Errorf("no such table")}
@@ -145,7 +145,7 @@ func TestBootstrapThenRestoreAppliesSavedState(t *testing.T) {
 		t.Fatal("expected created=true on a missing table")
 	}
 
-	saved := "table inet linkguard {\n\tmap host_wan {\n\t\telements = { 10.0.0.9 : 0x12c }\n\t}\n}\n"
+	saved := "table inet linkguard {\n\tset blocklist {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t\telements = { 203.0.113.9 }\n\t}\n}\n"
 	if _, err := s.Restore(context.Background(), saved); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
@@ -165,12 +165,9 @@ func TestBuildBootstrapRulesetContainsCoreStructure(t *testing.T) {
 	rs := buildBootstrapRuleset([]string{"enp5s0"}, ZoneFacts{})
 	for _, want := range []string{
 		"table inet linkguard {",
-		"map host_wan {",
 		"set blocklist {",
 		"set blocked_hosts {",
 		"chain user_rules {",
-		"chain mark_hosts {",
-		"type filter hook prerouting priority mangle",
 		"chain forward {",
 		"type filter hook forward priority filter",
 		"jump user_rules",
@@ -210,14 +207,12 @@ func TestBuildBootstrapRulesetInputChainPolicyIsAccept(t *testing.T) {
 	}
 }
 
-// TestBuildBootstrapRulesetForwardAndMarkHostsCarryCounter is the fresh-
-// install regression test for the design spec's §6 caution: the canonical
-// definition ReconcileStructuralChains reconciles to (and that this
-// function must match, so a fresh install and an upgraded/reconciled box
-// converge) carries `counter` on every forward/mark_hosts rule — without
-// it, Phase A's whole point (surfacing those counts on the panel) would
-// have nothing to show on a freshly bootstrapped box.
-func TestBuildBootstrapRulesetForwardAndMarkHostsCarryCounter(t *testing.T) {
+// TestBuildBootstrapRulesetForwardCarriesCounter is the fresh-install
+// regression test for the design spec's §6 caution: the canonical definition
+// the forward is reconciled to carries `counter` on every rule — without it,
+// Phase A's whole point (surfacing those counts on the panel) would have
+// nothing to show on a freshly bootstrapped box.
+func TestBuildBootstrapRulesetForwardCarriesCounter(t *testing.T) {
 	rs := buildBootstrapRuleset([]string{"enp5s0"}, ZoneFacts{})
 	for _, want := range []string{
 		"counter jump user_rules",
@@ -226,7 +221,6 @@ func TestBuildBootstrapRulesetForwardAndMarkHostsCarryCounter(t *testing.T) {
 		"ether saddr @blocked_macs counter drop",
 		"ip daddr @blocklist counter drop",
 		"ip saddr @blocklist counter drop",
-		"counter meta mark set ip saddr map @host_wan",
 	} {
 		if !strings.Contains(rs, want) {
 			t.Errorf("bootstrap ruleset missing %q:\n%s", want, rs)
@@ -261,9 +255,9 @@ func TestBuildBootstrapRulesetSanitizesInterfaces(t *testing.T) {
 	if strings.Contains(rs, "evil") || strings.Contains(rs, "flush ruleset;") {
 		t.Errorf("invalid interface name leaked into generated ruleset:\n%s", rs)
 	}
-	// Uma ocorrência exclui tráfego vindo da WAN na mark_hosts; a outra
-	// aplica masquerade. A duplicata da entrada não pode criar uma terceira.
-	if strings.Count(rs, `"enp5s0"`) != 2 {
+	// Uma ocorrência só, a do masquerade: a duplicata da entrada não pode
+	// criar uma segunda.
+	if strings.Count(rs, `"enp5s0"`) != 1 {
 		t.Errorf("expected one occurrence per canonical WAN-derived rule, got:\n%s", rs)
 	}
 }

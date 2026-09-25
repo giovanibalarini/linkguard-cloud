@@ -81,7 +81,7 @@ func TestCycleStartDiarioEhMeiaNoiteLocal(t *testing.T) {
 	}
 }
 
-func TestCycleStartMensalEhODoLinkquota(t *testing.T) {
+func TestCycleStartMensalFechaNoDiaEscolhido(t *testing.T) {
 	loc := time.UTC
 	agora := time.Date(2026, 8, 5, 12, 0, 0, 0, loc)
 	got := CycleStart(agora, storage.HostPeriodMonthly, 10)

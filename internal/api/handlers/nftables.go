@@ -218,37 +218,6 @@ func (h *NftablesHandler) Managed(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, m)
 }
 
-// WanHost adds (POST) or removes (DELETE) a host IP in the host_wan map.
-func (h *NftablesHandler) WanHost(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		IP   string `json:"ip"`
-		Mark string `json:"mark"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	ip := strings.TrimSpace(body.IP)
-	if net.ParseIP(ip) == nil {
-		writeError(w, http.StatusBadRequest, "invalid IP address")
-		return
-	}
-	var err error
-	if r.Method == http.MethodDelete {
-		_, err = h.svc.DelWanHost(r.Context(), ip)
-		auditAction(h.db, r, "nft.wan-host.del", "host_wan:"+ip, "")
-	} else {
-		_, err = h.svc.AddWanHost(r.Context(), ip, strings.TrimSpace(body.Mark))
-		auditAction(h.db, r, "nft.wan-host.add", "host_wan:"+ip, body.Mark)
-	}
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	saveNftSnapshot(r.Context(), h.db, h.svc)
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
 // Blocklist adds (POST) or removes (DELETE) a destination CIDR/IP in the set.
 func (h *NftablesHandler) Blocklist(w http.ResponseWriter, r *http.Request) {
 	var body struct {

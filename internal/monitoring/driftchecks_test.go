@@ -60,20 +60,6 @@ func TestCheckWANInterfacesHealthyWhenAllPresent(t *testing.T) {
 	}
 }
 
-// A disabled link is not a live WAN — it must not raise an alert.
-func TestCheckWANInterfacesIgnoresDisabledLinks(t *testing.T) {
-	c := newDriftTestCollector(t)
-	seedLink(t, c, "WAN VELHA", "enp9s0", false)
-	c.ifaceExists = func(name string) bool { return false }
-
-	c.checkWANInterfaces()
-	c.checkWANInterfaces()
-
-	if up := c.healthUp("wan:interface"); !up {
-		t.Error("a disabled link must not mark wan:interface as down")
-	}
-}
-
 // TestCheckFirewallNATFlagsStaleRule: the live rule still references the old
 // interface while the configured link moved on — precisely the state
 // production was left in.
@@ -297,11 +283,25 @@ func newDriftTestCollector(t *testing.T) *Collector {
 	return c
 }
 
-func seedLink(t *testing.T, c *Collector, name, iface string, enabled bool) {
+// seedLink acrescenta iface à fonte de WANs do vigia, que na versão cloud é o
+// uplink. O nome sobrou da época dos links cadastrados e só identifica o caso.
+func seedLink(t *testing.T, c *Collector, _ string, iface string, enabled bool) {
 	t.Helper()
-	if err := c.db.CreateLink(&storage.Link{ID: name, Name: name, Interface: iface, Weight: 1, Enabled: enabled}); err != nil {
-		t.Fatalf("CreateLink: %v", err)
+	if !enabled {
+		return
 	}
+	prev := c.wanSource
+	c.SetWANSource(func() ([]string, error) {
+		var out []string
+		if prev != nil {
+			o, err := prev()
+			if err != nil {
+				return nil, err
+			}
+			out = o
+		}
+		return append(out, iface), nil
+	})
 }
 
 // healthUp reports the item's current up/down state; healthState also
@@ -377,22 +377,19 @@ func TestCheckDNSResolverFlagsMixedLocalAndExternal(t *testing.T) {
 	}
 }
 
-// TestCheckWANInterfacesDoesNotJudgeWhenLinksUnreadable verifies the
-// no-fake-data contract: when the drift watcher cannot read the configured WAN
-// links from the database, it must not emit a verdict. The item must not appear
-// in the health map at all, so the operator knows the check could not run.
-func TestCheckWANInterfacesDoesNotJudgeWhenLinksUnreadable(t *testing.T) {
+// TestCheckWANInterfacesDoesNotJudgeWhenTheUplinkIsUnreadable verifies the
+// no-fake-data contract: when the drift watcher cannot learn the WAN, it must
+// not emit a verdict. The item must not appear in the health map at all, so
+// the operator knows the check could not run.
+func TestCheckWANInterfacesDoesNotJudgeWhenTheUplinkIsUnreadable(t *testing.T) {
 	c := newDriftTestCollector(t)
-	seedLink(t, c, "WAN VIVO", "enp5s0", true)
-
-	// Close the database connection to make GetLinks() fail on the next query.
-	c.db.Close()
+	c.SetWANSource(func() ([]string, error) { return nil, errors.New("ip route falhou") })
 
 	c.checkWANInterfaces()
 	c.checkWANInterfaces() // call twice to ensure repeated failures never produce a verdict
 
 	if _, known := c.healthState("wan:interface"); known {
-		t.Error("wan:interface must not be reported when GetLinks() fails")
+		t.Error("wan:interface must not be reported when the uplink source fails")
 	}
 }
 
@@ -422,14 +419,11 @@ func TestOVigiaDeNATEntendeARegraQualificada(t *testing.T) {
 // TestOVigiaDeNATVeAMaquinaDeNuvemQuandoOUplinkVemDaPlataforma fecha o ponto
 // cego da plataforma-alvo.
 //
-// Sem a fonte injetada, enabledWANInterfaces varre a tabela `links`, devolve
-// vazio numa VM de nuvem e checkFirewallNAT retorna cedo: o item "Regra de NAT"
-// NUNCA emite veredito justamente onde o NAT passou a ser escrito sem ninguém
-// cadastrar link — isto é, o incidente que este vigia existe para pegar não
-// seria pego ali.
+// Sem a fonte injetada, checkFirewallNAT retornaria cedo e o item "Regra de
+// NAT" NUNCA emitiria veredito justamente na máquina de nuvem — isto é, o
+// incidente que este vigia existe para pegar não seria pego ali.
 func TestOVigiaDeNATVeAMaquinaDeNuvemQuandoOUplinkVemDaPlataforma(t *testing.T) {
 	c := newDriftTestCollector(t)
-	// Nenhum link cadastrado: é o estado de uma VM recém-instalada.
 	c.SetWANSource(func() ([]string, error) { return []string{"ens3"}, nil })
 	c.ifaceExists = func(name string) bool { return name == "ens3" }
 	c.exec = &driftExec{responses: map[string]string{
@@ -447,16 +441,16 @@ func TestOVigiaDeNATVeAMaquinaDeNuvemQuandoOUplinkVemDaPlataforma(t *testing.T) 
 	}
 }
 
-// TestSemFonteDeWANsOVigiaContinuaDerivandoDoBanco: fonte ausente é o
-// comportamento de todo binário anterior a esta entrega, e não um erro.
-func TestSemFonteDeWANsOVigiaContinuaDerivandoDoBanco(t *testing.T) {
+// TestSemFonteDeWANsNaoHaWANAVerificar: sem fonte ligada, não há WAN, e não
+// há veredito a dar (nunca um "está tudo bem" inventado).
+func TestSemFonteDeWANsNaoHaWANAVerificar(t *testing.T) {
 	c := newDriftTestCollector(t)
-	seedLink(t, c, "WAN VIVO", "enp5s0", true)
-	seedLink(t, c, "WAN DESLIGADA", "enp6s0", false)
-
-	got := c.enabledWANInterfaces()
-	if len(got) != 1 || got[0] != "enp5s0" {
-		t.Errorf("sem fonte injetada o vigia tinha de ler os links habilitados do banco, obtive %v", got)
+	if got := c.enabledWANInterfaces(); len(got) != 0 {
+		t.Errorf("sem fonte o vigia inventou WANs: %v", got)
+	}
+	c.checkWANInterfaces()
+	if _, known := c.healthState("wan:interface"); known {
+		t.Error("sem fonte o vigia emitiu veredito sobre a WAN")
 	}
 }
 

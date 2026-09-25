@@ -4,7 +4,7 @@
 // `internal/storage/repository.go`). Um nome diferente aqui não dá erro em
 // lugar nenhum: o item é descartado item a item na leitura, e o painel do
 // operador abre VAZIO, sem mensagem. É o modo de falha mais provável desta
-// fase, e é o que `widgets.check.ts` existe para travar — a lista dos nove
+// fase, e é o que `widgets.check.ts` existe para travar — a lista dos oito
 // nomes está repetida por extenso lá, para que renomear um deles aqui fique
 // vermelho antes de chegar na máquina de alguém.
 //
@@ -17,10 +17,9 @@
 // sem extensão que o resto do app usa.
 import type { LayoutItem } from './grid';
 
-/** Os nove nomes do catálogo. A ordem é a que o "adicionar widget" oferece. */
+/** Os oito nomes do catálogo. A ordem é a que o "adicionar widget" oferece. */
 export const WIDGET_NAMES = [
   'system_health',
-  'wan_links',
   'interface_traffic',
   'top_talkers',
   'open_alerts',
@@ -64,16 +63,6 @@ export const WIDGET_CATALOG: WidgetSpec[] = [
     title: 'Saúde do sistema',
     description: 'Os vigias: firewall, DNS, horário, disco e logs.',
     permission: 'monitoring.read',
-    defaultW: 4,
-    defaultH: 2,
-    minW: 3,
-    minH: 2,
-  },
-  {
-    name: 'wan_links',
-    title: 'Links WAN',
-    description: 'Estado, latência, perda e taxa de cada link de internet.',
-    permission: 'links.read',
     defaultW: 4,
     defaultH: 2,
     minW: 3,
@@ -166,9 +155,8 @@ export const WIDGET_CATALOG: WidgetSpec[] = [
  * passos não terminam (spec §4.5), não porque o padrão o carregue para sempre.
  */
 export const DEFAULT_LAYOUT: LayoutItem[] = [
-  { widget: 'system_health', x: 0, y: 0, w: 4, h: 2 },
-  { widget: 'wan_links', x: 4, y: 0, w: 4, h: 2 },
-  { widget: 'open_alerts', x: 8, y: 0, w: 4, h: 2 },
+  { widget: 'system_health', x: 0, y: 0, w: 6, h: 2 },
+  { widget: 'open_alerts', x: 6, y: 0, w: 6, h: 2 },
   { widget: 'interface_traffic', x: 0, y: 2, w: 8, h: 3 },
   { widget: 'top_talkers', x: 8, y: 2, w: 4, h: 3 },
   { widget: 'system_resources', x: 0, y: 5, w: 12, h: 2 },

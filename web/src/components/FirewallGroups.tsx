@@ -102,7 +102,7 @@ export default function FirewallGroups({ ifaces, canWrite, onMsg }: Props) {
   // sistema. Eles não vêm em `rules` (um grupo do sistema não tem chain):
   // /api/nftables/managed é a leitura do set vivo, os mesmos endpoints que a
   // aba antiga usava.
-  const [managed, setManaged] = useState<NftManaged>({ wan_hosts: [], blocklist: [], blocked_hosts: [] });
+  const [managed, setManaged] = useState<NftManaged>({ blocklist: [], blocked_hosts: [] });
   // hosts é o inventário, só para dar nome e MAC ao IP que está no set — e
   // porque desbloquear exige o MAC. null = não consultado ou sem permissão,
   // que é diferente de "inventário vazio".
@@ -131,7 +131,7 @@ export default function FirewallGroups({ ifaces, canWrite, onMsg }: Props) {
       setGroups(gr.data?.groups ?? []);
       setApplyStatus(gr.data?.apply_status ?? undefined);
       setAllRules(rl.data?.rules ?? []);
-      setManaged(mg.data ?? { wan_hosts: [], blocklist: [], blocked_hosts: [] });
+      setManaged(mg.data ?? { blocklist: [], blocked_hosts: [] });
     } catch (e) {
       if (!quiet) onMsg(t('fwx.error', { msg: errMsg(e) }), 'error');
     } finally {

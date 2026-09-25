@@ -91,10 +91,6 @@ if [[ ! -f "${CONFIG_DIR}/config.json" ]]; then
   "dry_run": false,
   "debug": false,
   "monitor_interval_seconds": 30,
-  "failover_enabled": true,
-  "failover_threshold": 3,
-  "recovery_threshold": 2,
-  "failover_cooldown_seconds": 60,
   "metrics_enabled": true
 }
 EOF

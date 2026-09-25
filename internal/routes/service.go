@@ -1,13 +1,11 @@
-// Package routes manages Linux routing tables using ip route and ip rule.
+// Package routes lê as tabelas de rota do kernel (ip route, ip rule) e liga o
+// encaminhamento de IP. Não escreve rota: na nuvem a rota é da VCN.
 package routes
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
@@ -109,119 +107,6 @@ func (s *Service) ListRules(ctx context.Context) ([]Rule, error) {
 		return nil, err
 	}
 	return parseRules(out), nil
-}
-
-// Validators for values that become `ip route`/`ip rule` arguments. Defense in
-// depth: reject anything outside a strict charset.
-var (
-	reRTable = regexp.MustCompile(`^[a-zA-Z0-9_]{1,32}$`)
-	reRIface = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,15}$`)
-	reRMark  = regexp.MustCompile(`^(0x[0-9a-fA-F]{1,8}|[0-9]{1,10})$`)
-)
-
-func validDest(d string) bool {
-	d = strings.TrimSpace(d)
-	if d == "" || d == "default" {
-		return true
-	}
-	if net.ParseIP(d) != nil {
-		return true
-	}
-	_, _, err := net.ParseCIDR(d)
-	return err == nil
-}
-func optOK(s string, re *regexp.Regexp) bool {
-	s = strings.TrimSpace(s)
-	return s == "" || re.MatchString(s)
-}
-func optIP(s string) bool {
-	s = strings.TrimSpace(s)
-	return s == "" || net.ParseIP(s) != nil
-}
-
-// AddRoute adds a route (dry-run safe).
-func (s *Service) AddRoute(ctx context.Context, dest, gw, iface, table string) (string, error) {
-	if !validDest(dest) || !optIP(gw) || !optOK(iface, reRIface) || !optOK(table, reRTable) {
-		return "", fmt.Errorf("parâmetros de rota inválidos")
-	}
-	args := []string{"route", "add", dest}
-	if gw != "" {
-		args = append(args, "via", gw)
-	}
-	if iface != "" {
-		args = append(args, "dev", iface)
-	}
-	if table != "" {
-		args = append(args, "table", table)
-	}
-	return s.exec.Execute(ctx, "ip", args...)
-}
-
-// DelRoute removes a route (dry-run safe).
-func (s *Service) DelRoute(ctx context.Context, dest, table string) (string, error) {
-	if !validDest(dest) || !optOK(table, reRTable) {
-		return "", fmt.Errorf("parâmetros de rota inválidos")
-	}
-	args := []string{"route", "del", dest}
-	if table != "" {
-		args = append(args, "table", table)
-	}
-	return s.exec.Execute(ctx, "ip", args...)
-}
-
-func optIPOrCIDR(s string) bool {
-	s = strings.TrimSpace(s)
-	// "all" is a literal ip-rule keyword (matches any source — it's how the
-	// kernel's own default rule reads: "0: from all lookup local"), not an
-	// IP/CIDR. Accept it alongside "" the same way validDest accepts "default".
-	if s == "" || s == "all" {
-		return true
-	}
-	if net.ParseIP(s) != nil {
-		return true
-	}
-	_, _, err := net.ParseCIDR(s)
-	return err == nil
-}
-
-// AddRule adds an ip rule (dry-run safe).
-func (s *Service) AddRule(ctx context.Context, from, fwmark, table string, priority int) (string, error) {
-	if !optIPOrCIDR(from) || !optOK(fwmark, reRMark) || !optOK(table, reRTable) {
-		return "", fmt.Errorf("parâmetros de regra inválidos")
-	}
-	args := []string{"rule", "add"}
-	if from != "" {
-		args = append(args, "from", from)
-	}
-	if fwmark != "" {
-		args = append(args, "fwmark", fwmark)
-	}
-	args = append(args, "lookup", table)
-	if priority > 0 {
-		args = append(args, "priority", fmt.Sprintf("%d", priority))
-	}
-	return s.exec.Execute(ctx, "ip", args...)
-}
-
-// DelRule removes an ip rule (dry-run safe).
-func (s *Service) DelRule(ctx context.Context, from, fwmark, table string, priority int) (string, error) {
-	if !optIPOrCIDR(from) || !optOK(fwmark, reRMark) || !optOK(table, reRTable) {
-		return "", fmt.Errorf("parâmetros de regra inválidos")
-	}
-	args := []string{"rule", "del"}
-	if from != "" {
-		args = append(args, "from", from)
-	}
-	if fwmark != "" {
-		args = append(args, "fwmark", fwmark)
-	}
-	if table != "" {
-		args = append(args, "lookup", table)
-	}
-	if priority > 0 {
-		args = append(args, "priority", fmt.Sprintf("%d", priority))
-	}
-	return s.exec.Execute(ctx, "ip", args...)
 }
 
 // ─── Parsers ─────────────────────────────────────────────────────────────────

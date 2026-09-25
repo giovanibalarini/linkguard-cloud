@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from 'react';
 import client from '../api/client';
-import { buildTargets, type Target, type HostLike, type LinkLike } from './netTargets';
+import { buildTargets, type Target, type HostLike } from './netTargets';
 
 export function useNetTargets(): { targets: Target[]; carregando: boolean } {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -32,15 +32,12 @@ export function useNetTargets(): { targets: Target[]; carregando: boolean } {
         }
       };
 
-      const [hosts, links] = await Promise.all([
-        pega<HostLike>('/api/hosts', (d) => (Array.isArray(d) ? d : (d as { hosts?: HostLike[] })?.hosts ?? [])),
-        pega<LinkLike>('/api/links', (d) => (Array.isArray(d) ? d : [])),
-      ]);
+      const hosts = await pega<HostLike>('/api/hosts', (d) => (Array.isArray(d) ? d : (d as { hosts?: HostLike[] })?.hosts ?? []));
 
       if (!vivo) return;
       // A rede local vinha do CIDR do DHCP, que a versão cloud não tem. Volta
       // como alias de rede no redesenho do firewall.
-      setTargets(buildTargets(hosts, links, '', Date.now()));
+      setTargets(buildTargets(hosts, '', Date.now()));
       setCarregando(false);
     })();
     return () => { vivo = false; };

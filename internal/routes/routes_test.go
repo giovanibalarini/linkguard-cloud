@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/firewall"
 	"github.com/giovanibalarini/linkguard-cloud/internal/routes"
 )
 
@@ -125,55 +124,5 @@ func TestListRoutesEmpty(t *testing.T) {
 	}
 	if len(rs) != 0 {
 		t.Errorf("expected 0 routes for empty output, got %d", len(rs))
-	}
-}
-
-func TestDryRunExecutorCaptures(t *testing.T) {
-	exec := firewall.NewDryRunExecutor()
-	svc := routes.NewService(exec)
-	ctx := context.Background()
-
-	if _, err := svc.AddRoute(ctx, "10.0.0.0/8", "10.0.0.1", "eth0", ""); err != nil {
-		t.Fatalf("AddRoute: %v", err)
-	}
-	if _, err := svc.DelRoute(ctx, "10.0.0.0/8", ""); err != nil {
-		t.Fatalf("DelRoute: %v", err)
-	}
-	if _, err := svc.DelRule(ctx, "192.168.1.0/24", "", "100", 100); err != nil {
-		t.Fatalf("DelRule: %v", err)
-	}
-
-	if len(exec.Commands) != 3 {
-		t.Errorf("expected 3 recorded commands, got %d: %v", len(exec.Commands), exec.Commands)
-	}
-}
-
-// TestAddRuleAcceptsFromAll is the regression test for the Dual-WAN wizard's
-// failover mode (web/src/pages/Links.tsx applyDualWanWizard), which posts
-// `from: "all"` to steer all traffic through the primary/secondary tables —
-// exactly the literal `ip rule`'s own kernel default rule uses ("0: from all
-// lookup local", see sampleRules above). optIPOrCIDR rejected it as neither
-// empty nor a parseable IP/CIDR, so the wizard's failover mode failed on
-// every attempt with "parâmetros de regra inválidos".
-func TestAddRuleAcceptsFromAll(t *testing.T) {
-	exec := firewall.NewDryRunExecutor()
-	svc := routes.NewService(exec)
-	ctx := context.Background()
-
-	if _, err := svc.AddRule(ctx, "all", "", "100", 100); err != nil {
-		t.Fatalf("AddRule with from=all: %v", err)
-	}
-	if _, err := svc.DelRule(ctx, "all", "", "100", 100); err != nil {
-		t.Fatalf("DelRule with from=all: %v", err)
-	}
-
-	found := false
-	for _, c := range exec.Commands {
-		if c == "ip rule add from all lookup 100 priority 100" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected a recorded 'from all' rule command, got: %v", exec.Commands)
 	}
 }

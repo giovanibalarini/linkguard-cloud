@@ -55,8 +55,6 @@ func classifyRule(chain, expr string) (managed bool, owner RuleOwner) {
 	switch chain {
 	case masqueradeChain: // postrouting
 		return true, RuleOwner{Key: "nat", Label: "NAT (WANs)"}
-	case MarkHostsChain:
-		return true, RuleOwner{Key: "wan_steering", Label: "Direcionamento por WAN"}
 	case InputChain: // input
 		switch {
 		case strings.Contains(expr, "dport 123"):
@@ -198,11 +196,6 @@ func describeRule(chain, expr string) string {
 			return "Descarta tráfego vindo de destinos bloqueados"
 		}
 
-	case MarkHostsChain:
-		if strings.Contains(expr, "map @host_wan") {
-			return "Marca o host de origem com a WAN definida em Direcionamento por WAN"
-		}
-
 	case DNATChain: // prerouting_dnat
 		if m := reDNATRule.FindStringSubmatch(expr); m != nil {
 			proto, extPort, destIP, destPort := m[1], m[2], m[3], m[4]
@@ -267,11 +260,6 @@ func descStructured(chain, expr string, managed bool) RuleDesc {
 				return RuleDesc{Key: "desc.blocklist.to"}
 			}
 			return RuleDesc{Key: "desc.blocklist.from"}
-		}
-
-	case MarkHostsChain:
-		if strings.Contains(expr, "map @host_wan") {
-			return RuleDesc{Key: "desc.markHost"}
 		}
 
 	case DNATChain:

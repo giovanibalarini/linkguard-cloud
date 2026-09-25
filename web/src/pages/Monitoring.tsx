@@ -1,13 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  ComposedChart, Area, Brush, ReferenceArea,
 } from 'recharts';
 import client from '../api/client';
 import Panel from '../components/ui/Panel';
-import type { WanLink, SystemMetrics, TimelineResponse } from '../types';
+import type { SystemMetrics } from '../types';
 import { useI18n } from '../i18n';
 
 interface HistoryPoint {
@@ -17,41 +15,22 @@ interface HistoryPoint {
 
 export default function Monitoring() {
   const { t } = useI18n();
-  const [links, setLinks] = useState<WanLink[]>([]);
   const [sys, setSys] = useState<SystemMetrics | null>(null);
-  const [latencyHistory, setLatencyHistory] = useState<HistoryPoint[]>([]);
   const [cpuHistory, setCpuHistory] = useState<HistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const tickRef = useRef(0);
-  const [searchParams] = useSearchParams();
-  const [periodHours, setPeriodHours] = useState(1);
-  const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [linksRes, sysRes] = await Promise.all([
-        client.get<WanLink[]>('/api/links'),
-        client.get<SystemMetrics>('/api/system/status'),
-      ]);
-      const newLinks = linksRes.data ?? [];
+      const sysRes = await client.get<SystemMetrics>('/api/system/status');
       const newSys = sysRes.data;
-      setLinks(newLinks);
       setSys(newSys);
 
       // Accumulate history (last 20 points)
       const timeLabel = new Date().toLocaleTimeString();
-      tickRef.current++;
-
-      const latencyPoint: HistoryPoint = { time: timeLabel };
-      newLinks.forEach(l => { latencyPoint[l.name] = l.latency_ms; });
-      setLatencyHistory(prev => [...prev.slice(-19), latencyPoint]);
 
       const cpuPoint: HistoryPoint = { time: timeLabel, CPU: newSys?.cpu_percent ?? 0, Memória: newSys?.mem_percent ?? 0 };
       setCpuHistory(prev => [...prev.slice(-19), cpuPoint]);
@@ -65,39 +44,11 @@ export default function Monitoring() {
     }
   };
 
-  const fetchTimeline = async () => {
-    setTimelineLoading(true);
-    try {
-      const at = searchParams.get('at');
-      const centerSec = at ? Math.floor(new Date(at).getTime() / 1000) : Math.floor(Date.now() / 1000);
-      const halfWindow = (periodHours * 3600) / 2;
-      const from = centerSec - halfWindow;
-      const to = centerSec + halfWindow;
-      const series = links.map(l => `link.latency_ms:${l.name}`).join(',');
-      const states = links.map(l => `link:${l.name}`).join(',');
-      const res = await client.get<TimelineResponse>('/api/monitoring/timeline', {
-        params: { from, to, series, states },
-      });
-      setTimeline(res.data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setTimelineLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (links.length > 0) {
-      fetchTimeline();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [links.length, periodHours, searchParams]);
 
   // Tick once per second to refresh the "atualizado há Xs" caption
   useEffect(() => {
@@ -128,74 +79,12 @@ export default function Monitoring() {
       {error && <div className="card border border-red-500/30 bg-red-500/10 text-red-400 text-sm flex items-center justify-between"><span>{t('mon.error.load')}</span><button onClick={fetchData} className="btn-secondary">{t('mon.error.retry')}</button></div>}
 
       {/* Initial loading skeleton */}
-      {loading && links.length === 0 && !sys && (
+      {loading && !sys && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[0, 1, 2].map(i => (
             <div key={i} className="card text-gray-500 text-sm animate-pulse">{t('mon.loading')}</div>
           ))}
         </div>
-      )}
-
-      {/* Link status cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {links.map((link, i) => (
-          <div key={link.id} className="card">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white font-medium">{link.name}</span>
-              <span title={link.status} className={`w-2 h-2 rounded-full ${
-                link.status === 'online' ? 'bg-green-400' :
-                link.status === 'offline' ? 'bg-red-400' :
-                link.status === 'degraded' ? 'bg-yellow-400' : 'bg-gray-400'
-              } animate-pulse`} />
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t('mon.link.interface')}</span>
-                <span className="text-gray-300 font-mono">{link.interface}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t('mon.link.latency')}</span>
-                <span style={{ color: COLORS[i % COLORS.length] }} className="font-mono">
-                  {link.latency_ms > 0 ? `${link.latency_ms.toFixed(1)} ms` : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t('mon.link.packetLoss')}</span>
-                <span className={`font-mono ${link.packet_loss > 10 ? 'text-red-400' : 'text-gray-300'}`}>
-                  {link.packet_loss.toFixed(1)}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t('mon.link.lastCheck')}</span>
-                <span className="text-gray-400 text-xs">
-                  {link.last_check ? new Date(link.last_check).toLocaleTimeString() : '—'}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Latency chart */}
-      {links.length > 0 && (
-        <Panel title={<span className="flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /><span className="text-white font-semibold">{t('mon.chart.latency.title')}</span></span>}>
-          {latencyHistory.length > 1 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={latencyHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                <XAxis dataKey="time" tick={{ fill: '#6b7280', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8 }} />
-                <Legend />
-                {links.map((link, i) => (
-                  <Line key={link.id} type="monotone" dataKey={link.name} stroke={COLORS[i % COLORS.length]} dot={false} strokeWidth={2} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-gray-500 text-sm text-center py-12">{t('mon.chart.collecting')}</p>
-          )}
-        </Panel>
       )}
 
       {/* CPU / Memory chart */}
@@ -214,100 +103,6 @@ export default function Monitoring() {
           </ResponsiveContainer>
         ) : (
           <p className="text-gray-500 text-sm text-center py-12">{t('mon.chart.collecting')}</p>
-        )}
-      </Panel>
-
-      {/* Correlated diagnostic timeline */}
-      <Panel
-        title={<span className="flex items-center gap-2"><Activity className="w-4 h-4 text-emerald-400" /><span className="text-white font-semibold">{t('mon.timeline.title')}</span></span>}
-        action={
-          <div className="flex gap-2">
-            {[1, 6, 24].map(h => (
-              <button
-                key={h}
-                onClick={() => setPeriodHours(h)}
-                className={`px-3 py-1 rounded text-xs ${periodHours === h ? 'bg-blue-600 text-white' : 'btn-secondary'}`}
-              >
-                {h === 1 ? '1h' : h === 6 ? '6h' : '24h'}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        {timelineLoading && !timeline && (
-          <p className="text-gray-500 text-sm text-center py-12">{t('mon.timeline.loading')}</p>
-        )}
-        {timeline && timeline.series.every(s => s.points.length === 0) && (
-          <p className="text-gray-500 text-sm text-center py-12">{t('mon.timeline.empty')}</p>
-        )}
-        {timeline && timeline.series.some(s => s.points.length > 0) && (
-          <div className="space-y-6">
-            {links.map((link, i) => {
-              const latSeries = timeline.series.find(s => s.name === 'link.latency_ms' && s.label === link.name);
-              if (!latSeries || latSeries.points.length === 0) return null;
-              const data = latSeries.points.map(p => ({
-                ts: p.ts * 1000, min: p.min, avg: p.avg, max: p.max,
-              }));
-              const episodes = timeline.states.filter(s => s.label === link.name && s.state !== 'online');
-              const color = COLORS[i % COLORS.length];
-              return (
-                <div key={link.id}>
-                  <p className="text-gray-400 text-xs mb-1">
-                    {t('mon.timeline.linkCaption', { link: link.name })}
-                  </p>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <ComposedChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis
-                        dataKey="ts" type="number" scale="time"
-                        domain={['dataMin', 'dataMax']}
-                        tickFormatter={formatTickTime}
-                        tick={{ fill: '#6b7280', fontSize: 10 }}
-                      />
-                      <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} unit=" ms" width={56} />
-                      <Tooltip content={<LatencyTooltip />} />
-                      {episodes.map((s, idx) => (
-                        <ReferenceArea
-                          key={idx}
-                          x1={s.started_at * 1000}
-                          x2={s.ended_at ? s.ended_at * 1000 : Date.now()}
-                          fill={s.state === 'offline' ? '#ef4444' : '#f59e0b'}
-                          fillOpacity={0.12}
-                          strokeOpacity={0}
-                        />
-                      ))}
-                      <Area type="monotone" dataKey={(d: { min: number; max: number }) => [d.min, d.max]}
-                        stroke="none" fill={color} fillOpacity={0.15} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="avg" stroke={color} dot={false} strokeWidth={2} isAnimationActive={false} />
-                      <Brush
-                        dataKey="ts" height={22} travellerWidth={8}
-                        stroke="#374151" fill="#111827"
-                        tickFormatter={formatTickTime}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              );
-            })}
-            {timeline.states.filter(s => s.state !== 'online').length > 0 && (
-              <div>
-                <p className="text-gray-400 text-xs mb-1">{t('mon.timeline.episodes')}</p>
-                <ul className="text-xs text-gray-300 space-y-1">
-                  {timeline.states
-                    .filter(s => s.state !== 'online')
-                    .map((s, idx) => (
-                      <li key={idx} className="flex justify-between">
-                        <span>{s.label} → {s.state}</span>
-                        <span className="text-gray-500">
-                          {new Date(s.started_at * 1000).toLocaleTimeString()}
-                          {s.ended_at ? ` – ${new Date(s.ended_at * 1000).toLocaleTimeString()}` : t('mon.timeline.ongoing')}
-                        </span>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            )}
-          </div>
         )}
       </Panel>
 
@@ -374,38 +169,4 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-// Short tick label for chart axes/brush: just the time for today, date+time
-// otherwise, so browsing a longer period (or an alert deep-link into an
-// older day) doesn't lose date context.
-function formatTickTime(ms: number): string {
-  const d = new Date(ms);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay
-    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-interface LatencyTooltipProps {
-  active?: boolean;
-  payload?: { payload: { ts: number; min: number; avg: number; max: number } }[];
-}
-
-function LatencyTooltip({ active, payload }: LatencyTooltipProps) {
-  const { t } = useI18n();
-  if (!active || !payload || payload.length === 0) return null;
-  const p = payload[0].payload;
-  return (
-    <div className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs shadow-lg">
-      <p className="text-gray-400 mb-1">{new Date(p.ts).toLocaleString()}</p>
-      <p className="text-white font-mono">
-        {p.avg.toFixed(1)} ms <span className="text-gray-500">{t('mon.tooltip.avg')}</span>
-      </p>
-      <p className="text-gray-400 font-mono">
-        {t('mon.tooltip.range', { min: p.min.toFixed(1), max: p.max.toFixed(1) })}
-      </p>
-    </div>
-  );
 }

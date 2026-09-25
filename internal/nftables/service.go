@@ -40,8 +40,6 @@ const (
 	// bloqueio é pedido por MAC (hosts.SetBlocked), e só era traduzido para IP
 	// na hora de escrever no firewall.
 	BlockedMACSet = "blocked_macs"
-	// HostWanMap maps a host IP to the fwmark that steers it to a given WAN.
-	HostWanMap = "host_wan"
 )
 
 // Service wraps nft operations.
@@ -665,20 +663,10 @@ var ConfPath = defaultConfPath
 // para um temporário durante a suíte.
 const defaultConfPath = "/etc/nftables.conf"
 
-// DefaultWanMark steers a host to the secondary WAN (sumicity).
-const DefaultWanMark = "0x12c"
-
-// WanHost is one entry of the host_wan map (a host steered to a WAN by fwmark).
-type WanHost struct {
-	IP   string `json:"ip"`
-	Mark string `json:"mark"`
-}
-
 // Managed is the editable, element-level view of the linkguard ruleset.
 type Managed struct {
-	WanHosts     []WanHost `json:"wan_hosts"`
-	Blocklist    []string  `json:"blocklist"`
-	BlockedHosts []string  `json:"blocked_hosts"`
+	Blocklist    []string `json:"blocklist"`
+	BlockedHosts []string `json:"blocked_hosts"`
 	// BlockedMACs acompanha BlockedHosts: os dois descrevem os MESMOS hosts,
 	// por identidades diferentes. Sem o MAC aqui, uma reinstalação restauraria
 	// o bloqueio só para IPv4 (#119).
@@ -687,18 +675,8 @@ type Managed struct {
 
 // Managed returns the current elements of the host_wan map and the sets.
 func (s *Service) Managed(ctx context.Context) (*Managed, error) {
-	m := &Managed{WanHosts: []WanHost{}, Blocklist: []string{}, BlockedHosts: []string{}, BlockedMACs: []string{}}
+	m := &Managed{Blocklist: []string{}, BlockedHosts: []string{}, BlockedMACs: []string{}}
 
-	if out, err := s.exec.ExecuteRead(ctx, "nft", "list", "map", Family, Table, HostWanMap); err == nil {
-		for _, e := range parseElements(out) {
-			parts := strings.SplitN(e, ":", 2)
-			h := WanHost{IP: strings.TrimSpace(parts[0])}
-			if len(parts) == 2 {
-				h.Mark = strings.TrimSpace(parts[1])
-			}
-			m.WanHosts = append(m.WanHosts, h)
-		}
-	}
 	if out, err := s.exec.ExecuteRead(ctx, "nft", "list", "set", Family, Table, "blocklist"); err == nil {
 		m.Blocklist = parseElements(out)
 	}
@@ -759,38 +737,6 @@ func (s *Service) UnblockMAC(ctx context.Context, mac string) (string, error) {
 	}
 	out, err := s.exec.Execute(ctx, "nft", "delete", "element", Family, Table, BlockedMACSet, "{", mac, "}")
 	return out, err
-}
-
-// AddWanHost steers a host IP to a WAN by adding it to the host_wan map.
-func (s *Service) AddWanHost(ctx context.Context, ip, mark string) (string, error) {
-	if mark == "" {
-		mark = DefaultWanMark
-	}
-	ip = strings.TrimSpace(ip)
-	if net.ParseIP(ip) == nil {
-		return "", fmt.Errorf("ip inválido")
-	}
-	if !ValidMark(mark) {
-		return "", fmt.Errorf("marca inválida")
-	}
-	out, err := s.exec.Execute(ctx, "nft", "add", "element", Family, Table, HostWanMap, "{", ip, ":", mark, "}")
-	if err != nil {
-		return out, err
-	}
-	return out, s.Persist(ctx)
-}
-
-// DelWanHost removes a host from the host_wan map (reverts it to the primary WAN).
-func (s *Service) DelWanHost(ctx context.Context, ip string) (string, error) {
-	ip = strings.TrimSpace(ip)
-	if net.ParseIP(ip) == nil {
-		return "", fmt.Errorf("ip inválido")
-	}
-	out, err := s.exec.Execute(ctx, "nft", "delete", "element", Family, Table, HostWanMap, "{", ip, "}")
-	if err != nil {
-		return out, err
-	}
-	return out, s.Persist(ctx)
 }
 
 // AddBlocklist blocks a destination CIDR by adding it to the blocklist set.

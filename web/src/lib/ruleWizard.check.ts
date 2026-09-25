@@ -9,7 +9,7 @@ const check = (c: unknown, m: string) => { assert.ok(c, m); n++; };
 
 const host: Target = { id: 'h', kind: 'host', label: 'notebook-maria', hint: '', value: '192.168.3.47' };
 const rede: Target = { id: 'r', kind: 'rede', label: 'A LAN inteira', hint: '', value: '192.168.3.0/24' };
-const wan: Target  = { id: 'w', kind: 'wan',  label: 'Fibra 500M',    hint: '', value: 'enp3s0' };
+const placa: Target = { id: 'w', kind: 'manual', label: 'enp3s0', hint: '', value: 'enp3s0' };
 const smb: Service = { name: 'SMB', what: 'compartilhamento de arquivos', port: '445', proto: 'tcp' };
 
 {
@@ -41,11 +41,11 @@ const smb: Service = { name: 'SMB', what: 'compartilhamento de arquivos', port: 
 }
 
 {
-  // Link WAN não tem endereço: ele fala por interface.
-  const bloq = buildRule('bloquear', wan, null);
-  eq(bloq.iif, 'enp3s0', 'o link WAN vira interface de entrada');
+  // Nome de placa não é endereço: a regra fala por interface.
+  const bloq = buildRule('bloquear', placa, null);
+  eq(bloq.iif, 'enp3s0', 'a placa vira interface de entrada');
   eq(bloq.saddr, '', 'e não endereço');
-  const porta = buildRule('porta', wan, smb);
+  const porta = buildRule('porta', placa, smb);
   eq(porta.oif, 'enp3s0', 'como destino, vira interface de saída');
 }
 

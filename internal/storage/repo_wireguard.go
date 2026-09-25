@@ -16,7 +16,6 @@ type WireGuardConfig struct {
 	ListenPort     int       `json:"listen_port"`
 	Address        string    `json:"address"`
 	EndpointHost   string    `json:"endpoint_host"`
-	EndpointLinkID string    `json:"endpoint_link_id"`
 	LastApplyOK    bool      `json:"last_apply_ok"`
 	LastApplyError string    `json:"last_apply_error,omitempty"`
 	LastAppliedAt  int64     `json:"last_applied_at,omitempty"`
@@ -74,10 +73,10 @@ func (db *DB) GetWireGuardConfig() (*WireGuardConfig, error) {
 	var c WireGuardConfig
 	var enabled, ok int
 	err := db.conn.QueryRow(`
-		SELECT enabled, listen_port, address, endpoint_host, endpoint_link_id,
+		SELECT enabled, listen_port, address, endpoint_host,
 		       last_apply_ok, last_apply_error, last_applied_at, updated_at
 		  FROM wireguard_config WHERE only_row = 1`).
-		Scan(&enabled, &c.ListenPort, &c.Address, &c.EndpointHost, &c.EndpointLinkID,
+		Scan(&enabled, &c.ListenPort, &c.Address, &c.EndpointHost,
 			&ok, &c.LastApplyError, &c.LastAppliedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -93,18 +92,18 @@ func (db *DB) SaveWireGuardConfig(c *WireGuardConfig) error {
 	c.UpdatedAt = time.Now()
 	_, err := db.conn.Exec(`
 		INSERT INTO wireguard_config
-			(only_row, enabled, listen_port, address, endpoint_host, endpoint_link_id,
+			(only_row, enabled, listen_port, address, endpoint_host,
 			 last_apply_ok, last_apply_error, last_applied_at, updated_at)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(only_row) DO UPDATE SET
 			enabled=excluded.enabled, listen_port=excluded.listen_port,
 			address=excluded.address, endpoint_host=excluded.endpoint_host,
-			endpoint_link_id=excluded.endpoint_link_id,
+			endpoint_link_id='',
 			last_apply_ok=excluded.last_apply_ok,
 			last_apply_error=excluded.last_apply_error,
 			last_applied_at=excluded.last_applied_at,
 			updated_at=excluded.updated_at`,
-		boolToInt(c.Enabled), c.ListenPort, c.Address, c.EndpointHost, c.EndpointLinkID,
+		boolToInt(c.Enabled), c.ListenPort, c.Address, c.EndpointHost,
 		boolToInt(c.LastApplyOK), c.LastApplyError, c.LastAppliedAt, c.UpdatedAt)
 	return err
 }

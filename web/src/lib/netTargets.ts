@@ -6,12 +6,12 @@
 // digitar. O produto já conhece esse aparelho pelo nome — ele aparece na tela
 // de Hosts, tem apelido —, e mesmo assim pedia o endereço.
 //
-// Este módulo é só a TRADUÇÃO: recebe o que as telas de Hosts e Links
-// devolvem e produz uma lista única, agrupada, com o endereço que a regra vai
+// Este módulo é só a TRADUÇÃO: recebe o que a tela de Hosts
+// devolve e produz uma lista única, agrupada, com o endereço que a regra vai
 // usar de verdade. Nada de I/O aqui — quem busca é o componente, e é isso que
 // deixa esta parte coberta por asserção.
 
-export type TargetKind = 'host' | 'rede' | 'wan' | 'manual';
+export type TargetKind = 'host' | 'rede' | 'manual';
 
 export interface Target {
   /** Chave estável para o React e para comparar seleção. */
@@ -31,7 +31,6 @@ export interface HostLike {
   mac: string; ip: string; hostname: string; alias: string;
   blocked?: boolean; last_seen?: string;
 }
-export interface LinkLike { id: string; name: string; interface: string; ip_address?: string }
 
 /**
  * hostName escolhe como chamar um aparelho.
@@ -62,13 +61,10 @@ export function onlineRecently(lastSeen: string | undefined, agora: number): boo
  *  - host SEM IP fica de fora: uma regra precisa de endereço, e oferecer um
  *    item que não dá para usar é pior do que não oferecer;
  *  - a LAN inteira entra como rede, porque "bloquear tudo menos X" é um caso
- *    comum e ninguém deveria digitar o CIDR de cabeça;
- *  - os links WAN entram porque "saindo pela Fibra" é como o admin pensa, e
- *    ele não deveria precisar lembrar que a Fibra é a wlp0s20f3.
+ *    comum e ninguém deveria digitar o CIDR de cabeça.
  */
 export function buildTargets(
   hosts: HostLike[],
-  links: LinkLike[],
   lanCidr: string,
   agora: number,
 ): Target[] {
@@ -96,19 +92,6 @@ export function buildTargets(
     });
   }
 
-  for (const l of links || []) {
-    if (!(l.interface || '').trim()) continue;
-    out.push({
-      id: `wan:${l.id}`,
-      kind: 'wan',
-      label: l.name || l.interface,
-      hint: `link WAN · ${l.interface}`,
-      // O valor é a INTERFACE, e não um IP: é assim que a regra fala de "por
-      // onde o tráfego entra ou sai". Quem consome sabe distinguir pelo kind.
-      value: l.interface,
-    });
-  }
-
   return out;
 }
 
@@ -116,11 +99,10 @@ export function buildTargets(
 export const KIND_LABEL: Record<TargetKind, string> = {
   host: 'Aparelhos na rede',
   rede: 'Redes',
-  wan: 'Links WAN',
   manual: 'Endereço digitado',
 };
 
-export const KIND_ORDER: TargetKind[] = ['host', 'rede', 'wan', 'manual'];
+export const KIND_ORDER: TargetKind[] = ['host', 'rede', 'manual'];
 
 /**
  * searchTargets filtra pela busca, casando por nome E por endereço.
@@ -156,7 +138,6 @@ export function searchTargets(query: string, alvos: Target[]): Target[] {
 /** describeTarget: como a regra pronta se refere a este alvo, em português. */
 export function describeTarget(t: Target | null, vazio = 'qualquer origem'): string {
   if (!t || !t.value) return vazio;
-  if (t.kind === 'wan') return `pelo link ${t.label}`;
   if (t.kind === 'rede') return `${t.label} (${t.value})`;
   if (t.kind === 'manual') return t.value;
   return `${t.label} (${t.value})`;

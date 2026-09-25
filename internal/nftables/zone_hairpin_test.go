@@ -519,9 +519,9 @@ func (e *execDeZona) regras() []string {
 //
 // POR QUE A DIFERENÇA IMPORTA: nenhum teste de gerador consegue ver uma chain
 // que não nasceu, porque `add chain` não é regra de chain nenhuma. Até aqui,
-// numa caixa sem link cadastrado, EnsureAccounting, EnsureMSSClamp e
-// EnsureConnMark devolviam nil ANTES do `add chain` — e o ruleset simplesmente
-// não tinha acct, mss_clamp, conn_mark, conn_mark_out nem output_mark. Quem
+// numa caixa sem link cadastrado, EnsureAccounting e EnsureMSSClamp
+// devolviam nil ANTES do `add chain` — e o ruleset simplesmente não tinha
+// acct nem mss_clamp. Quem
 // fosse conferir não achava a chain e não sabia dizer se a feature estava
 // desligada ou quebrada.
 func TestAsChainsNascemVaziasEmVezDeNaoNascerQuandoNaoHaWANCadastrada(t *testing.T) {
@@ -530,7 +530,7 @@ func TestAsChainsNascemVaziasEmVezDeNaoNascerQuandoNaoHaWANCadastrada(t *testing
 		rodar  func(context.Context, *Service) error
 		chains []string
 		// regrasEsperadas é quantas regras a chain deve ganhar. Zero = nasce
-		// vazia; a output_mark é a exceção, e é ganho líquido.
+		// vazia.
 		regrasEsperadas int
 	}{
 		{
@@ -542,18 +542,6 @@ func TestAsChainsNascemVaziasEmVezDeNaoNascerQuandoNaoHaWANCadastrada(t *testing
 			nome:   "ajuste de MSS",
 			rodar:  func(ctx context.Context, s *Service) error { return s.EnsureMSSClamp(ctx, nil) },
 			chains: []string{"add chain inet linkguard mss_clamp"},
-		},
-		{
-			nome:  "marcação de conexão",
-			rodar: func(ctx context.Context, s *Service) error { return s.EnsureConnMark(ctx, nil) },
-			chains: []string{
-				"add chain inet linkguard conn_mark ",
-				"add chain inet linkguard conn_mark_out",
-				"add chain inet linkguard output_mark",
-			},
-			// A output_mark NÃO depende de WAN nenhuma: a regra dela é
-			// restoreMarkRule() puro. Ela passa a existir, e isso é correto.
-			regrasEsperadas: 1,
 		},
 	}
 	for _, c := range casos {
@@ -580,12 +568,8 @@ func TestAsChainsNascemVaziasEmVezDeNaoNascerQuandoNaoHaWANCadastrada(t *testing
 // TestEmHairpinAsChainsPorLinkNascemVaziasPorqueNaoHaLinkAEscolher documenta a
 // outra metade da decisão, que é fácil de ler como esquecimento.
 //
-// Numa VM de VNIC única, marcar conexão por WAN e ajustar MSS por WAN não
-// decidem nada: existe um caminho só, nenhuma `ip rule fwmark` consome a marca,
-// e platform.DeriveCapabilities já desligou MultiWAN, LinkFailover,
-// LoadBalancing e PerLinkPolicyRouting na mesma máquina. As chains existem e
-// ficam vazias — a forma do ruleset continua a mesma entre plataformas, e o
-// gating de verdade fica para o incremento do uplink, onde ele pertence.
+// Numa VM de VNIC única, ajustar MSS por `rt mtu` não decide nada: a MTU
+// anunciada é a da placa. A chain existe e fica vazia sem a MTU do caminho.
 func TestEmHairpinAsChainsPorLinkNascemVaziasPorqueNaoHaLinkAEscolher(t *testing.T) {
 	z := zonaDaVM()
 	if z.PerLink() {
@@ -594,16 +578,9 @@ func TestEmHairpinAsChainsPorLinkNascemVaziasPorqueNaoHaLinkAEscolher(t *testing
 	if !z.Discriminates() {
 		t.Fatal("com CIDR local conhecido a zona TEM de discriminar: é o que liga a medição na nuvem")
 	}
-	marcas := []WANMark{{Interface: "ens3", Mark: 0x64}}
 	if r := mssClampRules(z); len(r) != 0 {
 		t.Errorf("mss_clamp tinha de nascer vazia em hairpin, veio %v.\n"+
 			"`rt mtu` leria a MTU ANUNCIADA pela interface (9000 na OCI), não a real (1500).", r)
-	}
-	if r := connMarkChainRules(z, marcas); len(r) != 0 {
-		t.Errorf("conn_mark tinha de nascer vazia em hairpin, veio %v", r)
-	}
-	if r := connMarkOutChainRules(z, marcas); len(r) != 0 {
-		t.Errorf("conn_mark_out tinha de nascer vazia em hairpin, veio %v", r)
 	}
 }
 
@@ -622,7 +599,6 @@ func TestEmHairpinAsChainsPorLinkNascemVaziasPorqueNaoHaLinkAEscolher(t *testing
 // aparece — e aparece como uma linha de diff, não como 24 goldens vermelhos.
 func TestLigarAZonaNaoMudaUmByteNaTopologiaDeProducao(t *testing.T) {
 	wans := []string{"ppp0", "enp2s0"}
-	marcas := []WANMark{{Interface: "ppp0", Mark: 0x64}, {Interface: "enp2s0", Mark: 0xc8}}
 	acesso := AdminAccess{SSHPorts: []int{22}, PanelPort: 9997, LANNetworks: []string{"192.168.3.0/24"}}
 
 	// A zona "com" vai alimentada nos DOIS eixos que a plataforma sabe afirmar:
@@ -638,16 +614,9 @@ func TestLigarAZonaNaoMudaUmByteNaTopologiaDeProducao(t *testing.T) {
 		"acctChainRules":  acctChainRules,
 		"mssClampRules":   mssClampRules,
 		"flowsChainRules": flowsChainRules,
-		"markHostsChainRules": func(z Zone) [][]string {
-			return markHostsChainRules(NewZone(wanMarkIfaces(marcas), z.localNets, z.hairpin, z.pathMTU))
-		},
-		"connMarkChainRules":    func(z Zone) [][]string { return connMarkChainRules(z, marcas) },
-		"connMarkOutChainRules": func(z Zone) [][]string { return connMarkOutChainRules(z, marcas) },
-		"restoreReplyMarkRule":  func(z Zone) [][]string { return [][]string{restoreReplyMarkRule(z)} },
-		"restoreOutbound":       func(z Zone) [][]string { return [][]string{restoreOutboundMarkRule(z)} },
-		"abuseRules":            func(z Zone) [][]string { return abuseRules(z, "{ 22, 9997 }") },
-		"WANInputRules":         func(z Zone) [][]string { return WANInputRules(z, acesso, false, true, 51820) },
-		"masqueradeRules":       masqueradeRules,
+		"abuseRules":      func(z Zone) [][]string { return abuseRules(z, "{ 22, 9997 }") },
+		"WANInputRules":   func(z Zone) [][]string { return WANInputRules(z, acesso, false, true, 51820) },
+		"masqueradeRules": masqueradeRules,
 	}
 	for nome, gerar := range geradores {
 		t.Run(nome, func(t *testing.T) {
@@ -659,7 +628,7 @@ func TestLigarAZonaNaoMudaUmByteNaTopologiaDeProducao(t *testing.T) {
 		})
 	}
 
-	// E o bootstrap, que embute mark_hosts como texto.
+	// E o bootstrap, que embute a postrouting como texto.
 	if a, b := buildBootstrapRuleset(wans, ZoneFacts{}), buildBootstrapRuleset(wans, ZoneFacts{LocalNets: []string{"192.168.3.0/24"}, PathMTU: 1500}); a != b {
 		t.Error("o ruleset de instalação nova mudou só por a zona ter redes locais alimentadas")
 	}
@@ -697,9 +666,6 @@ func TestErroAoLerAPlataformaAbortaEmVezDeVirarCaixaComum(t *testing.T) {
 	}
 	if err := s.EnsureMSSClamp(context.Background(), []string{"ens3"}); err == nil {
 		t.Error("EnsureMSSClamp seguiu em frente sem saber em que máquina está")
-	}
-	if err := s.EnsureConnMark(context.Background(), []WANMark{{Interface: "ens3", Mark: 1}}); err == nil {
-		t.Error("EnsureConnMark seguiu em frente sem saber em que máquina está")
 	}
 }
 

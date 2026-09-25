@@ -20,12 +20,6 @@ wid.status.online:
 wid.status.offline:
   pt: "offline"
   en: "offline"
-wid.status.degraded:
-  pt: "degradado"
-  en: "degraded"
-wid.status.unknown:
-  pt: "desconhecido"
-  en: "unknown"
 
 # ─── CPU, memória e disco ────────────────────────────────────────────────────
 wid.sys.title:
@@ -82,21 +76,6 @@ wid.talkers.note:
   en: "Active flows right now — not a running total."
 
 # ─── Links WAN ───────────────────────────────────────────────────────────────
-wid.wan.title:
-  pt: "Links WAN"
-  en: "WAN Links"
-wid.wan.error:
-  pt: "Não foi possível ler os links agora."
-  en: "Could not read the links right now."
-wid.wan.empty:
-  pt: "Nenhum link WAN configurado ainda."
-  en: "No WAN link configured yet."
-wid.wan.count:
-  pt: "{online}/{total} online"
-  en: "{online}/{total} online"
-wid.wan.latency.loss:
-  pt: "{lat} · {loss}% perda"
-  en: "{lat} · {loss}% loss"
 
 # ─── Alertas abertos ─────────────────────────────────────────────────────────
 wid.alerts.title:

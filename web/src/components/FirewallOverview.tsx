@@ -13,8 +13,7 @@ type Unit = 'bytes' | 'bits';
 interface Props {
   chains: NftChainInfo[];
   onOpenGroupsTab: () => void;
-  onOpenSteeringTab: () => void;
-  onOpenPortForwardTab: () => void;
+    onOpenPortForwardTab: () => void;
 }
 
 // The packet-path stages from the design spec (§3): a fixed, human grouping
@@ -50,14 +49,12 @@ const CHAIN_LABELS: Record<string, string> = {
 // Where "abrir" takes the admin for a managed rule's owning control. `to`
 // navigates to another page; `tab` switches a tab on this same page.
 //
-// A aba "Bloqueios e direcionamento" deixou de existir: os dois bloqueios
-// viraram grupos do sistema (blocklist e host_block agora se editam na lista
-// de grupos, cada um com sua lista de membros) e o direcionamento por WAN
-// ganhou aba própria. Os links seguem os painéis, não o nome da chain que
-// eles ainda dividem com user_rules.
-const OWNER_LINKS: Record<string, { to?: string; tab?: 'groups' | 'steering' | 'portforward' }> = {
-  nat: { to: '/links' },
-  wan_steering: { tab: 'steering' },
+// Os dois bloqueios viraram grupos do sistema (blocklist e host_block se
+// editam na lista de grupos, cada um com sua lista de membros). O NAT é o da
+// saída para a Internet, que a tela de Interfaces mostra. Os links seguem os
+// painéis, não o nome da chain que eles ainda dividem com user_rules.
+const OWNER_LINKS: Record<string, { to?: string; tab?: 'groups' | 'portforward' }> = {
+  nat: { to: '/interfaces' },
   blocklist: { tab: 'groups' },
   host_block: { tab: 'groups' },
   port_forward: { tab: 'portforward' },
@@ -100,10 +97,10 @@ function ruleVerb(expr: string): { label: string; color: string; ring: string; I
 }
 
 function RuleRow({
-  rule, unit, expanded, onToggle, isUserRule, onOpenGroupsTab, onOpenSteeringTab, onOpenPortForwardTab,
+  rule, unit, expanded, onToggle, isUserRule, onOpenGroupsTab, onOpenPortForwardTab,
 }: {
   rule: NftChainRule; unit: Unit; expanded: boolean; onToggle: () => void;
-  isUserRule: boolean; onOpenGroupsTab: () => void; onOpenSteeringTab: () => void; onOpenPortForwardTab: () => void;
+  isUserRule: boolean; onOpenGroupsTab: () => void; onOpenPortForwardTab: () => void;
 }) {
   const { t } = useI18n();
   const v = ruleVerb(rule.expression);
@@ -111,7 +108,7 @@ function RuleRow({
   // — not the chain it lives in (the forward chain alone mixes blocklist
   // and host-block rules, each pointing somewhere different).
   const link = rule.owner.key ? OWNER_LINKS[rule.owner.key] : undefined;
-  const openTab = link?.tab === 'groups' ? onOpenGroupsTab : link?.tab === 'steering' ? onOpenSteeringTab : link?.tab === 'portforward' ? onOpenPortForwardTab : undefined;
+  const openTab = link?.tab === 'groups' ? onOpenGroupsTab : link?.tab === 'portforward' ? onOpenPortForwardTab : undefined;
   // A disabled admin rule exists in the DB but was never sent to nft
   // (Phase B, design spec §4.1) — shown here, not hidden, but visibly
   // dimmed and labelled so it can never be mistaken for an active rule.
@@ -217,7 +214,7 @@ function RuleRow({
  * here via the pencil icon, so the CRUD/reorder controls already shipped
  * are not duplicated or regressed).
  */
-export default function FirewallOverview({ chains, onOpenGroupsTab, onOpenSteeringTab, onOpenPortForwardTab }: Props) {
+export default function FirewallOverview({ chains, onOpenGroupsTab, onOpenPortForwardTab }: Props) {
   const { t } = useI18n();
   const [unit, setUnit] = useState<Unit>('bytes');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -312,7 +309,6 @@ export default function FirewallOverview({ chains, onOpenGroupsTab, onOpenSteeri
                           onToggle={() => toggle(key)}
                           isUserRule={chain.name === 'user_rules'}
                           onOpenGroupsTab={onOpenGroupsTab}
-                          onOpenSteeringTab={onOpenSteeringTab}
                           onOpenPortForwardTab={onOpenPortForwardTab}
                         />
                       );
@@ -345,7 +341,6 @@ export default function FirewallOverview({ chains, onOpenGroupsTab, onOpenSteeri
                         onToggle={() => toggle(key)}
                         isUserRule={false}
                         onOpenGroupsTab={onOpenGroupsTab}
-                        onOpenSteeringTab={onOpenSteeringTab}
                         onOpenPortForwardTab={onOpenPortForwardTab}
                       />
                     );

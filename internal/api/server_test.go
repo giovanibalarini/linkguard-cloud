@@ -122,22 +122,19 @@ func TestLegacyIptablesBackupAndRollbackRoutesStayRemoved(t *testing.T) {
 // ReplaceRule — não passava por validateTableChain. Aceitava qualquer
 // table/chain e apagava regra viva de terceiros: filter/DOCKER-USER derruba o
 // isolamento de containers, nat/POSTROUTING derruba o MASQUERADE do Docker.
-// Nenhuma tela chamava o verbo; o frontend só faz POST, no assistente de
-// balanceamento WAN. O PUT foi junto pelo mesmo motivo de superfície morta.
+// Nenhuma tela chamava o verbo. O PUT foi junto pelo mesmo motivo de
+// superfície morta.
 func TestLegacyIptablesRuleMutationRoutesStayRemoved(t *testing.T) {
 	src, err := os.ReadFile("server.go")
 	if err != nil {
 		t.Fatalf("ReadFile server.go: %v", err)
 	}
-	for _, verb := range []string{"Put", "Delete"} {
+	// O POST saiu depois, junto com o assistente de balanceamento de duas WANs,
+	// que era o único que o usava: a versão cloud não tem multi-WAN.
+	for _, verb := range []string{"Post", "Put", "Delete"} {
 		if bytes.Contains(src, []byte(verb+`("/api/firewall/rules"`)) {
-			t.Errorf("a rota legada %s /api/firewall/rules voltou a ser registrada. O DeleteRule do pacote iptables não valida table/chain, então ela apaga regra de outro programa (as chains do Docker); regra de firewall se gerencia por /api/nftables/*.", verb)
+			t.Errorf("a rota legada %s /api/firewall/rules voltou a ser registrada. O pacote iptables só lê; regra de firewall se gerencia por /api/nftables/*.", verb)
 		}
-	}
-	// O POST fica: é ele que o assistente de balanceamento WAN usa, e ele passa
-	// por validateTableChain (restrito a mangle/PREROUTING).
-	if !bytes.Contains(src, []byte(`Post("/api/firewall/rules"`)) {
-		t.Error("POST /api/firewall/rules sumiu: é o que o assistente de balanceamento WAN usa para marcar tráfego em mangle/PREROUTING")
 	}
 }
 

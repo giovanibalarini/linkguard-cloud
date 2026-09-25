@@ -8,11 +8,6 @@ import (
 
 // Metrics holds all Prometheus metric collectors.
 type Metrics struct {
-	// Link metrics
-	LinkStatus  *prometheus.GaugeVec
-	LinkLatency *prometheus.GaugeVec
-	LinkLoss    *prometheus.GaugeVec
-
 	// Interface traffic
 	InterfaceRxBytes *prometheus.GaugeVec
 	InterfaceTxBytes *prometheus.GaugeVec
@@ -24,9 +19,6 @@ type Metrics struct {
 	MemPercent    prometheus.Gauge
 	DiskPercent   prometheus.Gauge
 	UptimeSeconds prometheus.Gauge
-
-	// Failover
-	FailoverEvents prometheus.Counter
 
 	// Service
 	ServiceUptime prometheus.Gauge
@@ -41,24 +33,6 @@ func New(reg prometheus.Registerer) *Metrics {
 	f := promauto.With(reg)
 
 	return &Metrics{
-		LinkStatus: f.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "linkguard",
-			Name:      "link_status",
-			Help:      "WAN link status: 1=online, 0=offline, 0.5=degraded",
-		}, []string{"link", "interface"}),
-
-		LinkLatency: f.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "linkguard",
-			Name:      "link_latency_ms",
-			Help:      "WAN link average latency in milliseconds",
-		}, []string{"link", "interface"}),
-
-		LinkLoss: f.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "linkguard",
-			Name:      "link_packet_loss_percent",
-			Help:      "WAN link packet loss percentage",
-		}, []string{"link", "interface"}),
-
 		InterfaceRxBytes: f.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "linkguard",
 			Name:      "interface_rx_bytes_total",
@@ -107,12 +81,6 @@ func New(reg prometheus.Registerer) *Metrics {
 			Help:      "System uptime in seconds",
 		}),
 
-		FailoverEvents: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "linkguard",
-			Name:      "failover_events_total",
-			Help:      "Total number of failover events recorded",
-		}),
-
 		ServiceUptime: f.NewGauge(prometheus.GaugeOpts{
 			Namespace: "linkguard",
 			Name:      "service_uptime_seconds",
@@ -124,17 +92,5 @@ func New(reg prometheus.Registerer) *Metrics {
 			Name:      "alerts_unresolved_total",
 			Help:      "Number of unresolved alerts",
 		}),
-	}
-}
-
-// LinkStatusValue converts a status string to a numeric gauge value.
-func LinkStatusValue(status string) float64 {
-	switch status {
-	case "online":
-		return 1
-	case "degraded":
-		return 0.5
-	default:
-		return 0
 	}
 }

@@ -35,7 +35,7 @@ const HOSTS: HostLike[] = [
 }
 
 {
-  const t = buildTargets(HOSTS, [], '192.168.3.0/24', AGORA);
+  const t = buildTargets(HOSTS, '192.168.3.0/24', AGORA);
   // Host SEM IP fica de fora: uma regra precisa de endereço, e um item que não
   // dá para usar é pior do que nenhum item.
   check(!t.some((x) => x.label === 'sem-ip'), 'host sem IP não entra na lista');
@@ -43,16 +43,7 @@ const HOSTS: HostLike[] = [
 }
 
 {
-  // O link WAN carrega a INTERFACE, e não um IP: é assim que a regra fala de
-  // "por onde o tráfego entra ou sai".
-  const t = buildTargets([], [{ id: 'l1', name: 'Fibra 500M', interface: 'enp3s0' }], '', AGORA);
-  const wan = t.find((x) => x.kind === 'wan')!;
-  eq(wan.value, 'enp3s0', 'o valor do link é a interface');
-  eq(wan.label, 'Fibra 500M', 'e o rótulo é o nome que o admin deu');
-}
-
-{
-  const t = buildTargets(HOSTS, [], '192.168.3.0/24', AGORA);
+  const t = buildTargets(HOSTS, '192.168.3.0/24', AGORA);
   // Quem lembra do nome digita o nome; quem está olhando um log digita o IP.
   eq(searchTargets('maria', t)[0].label, 'notebook-maria', 'acha pelo nome');
   eq(searchTargets('3.51', t)[0].label, 'tv-sala', 'acha pelo endereço');
@@ -61,28 +52,26 @@ const HOSTS: HostLike[] = [
 
 {
   // Na hora de bloquear alguém, é quase sempre alguém que está na rede AGORA.
-  const t = buildTargets(HOSTS, [], '', AGORA);
+  const t = buildTargets(HOSTS, '', AGORA);
   const hosts = searchTargets('', t).filter((x) => x.kind === 'host');
   eq(hosts[0].label, 'notebook-maria', 'host online vem antes do offline');
 }
 
 {
-  const t = buildTargets(HOSTS, [{ id: 'l1', name: 'Fibra', interface: 'e0' }], '192.168.3.0/24', AGORA);
+  const t = buildTargets(HOSTS, '192.168.3.0/24', AGORA);
   const ordem = searchTargets('', t).map((x) => x.kind);
   const pos = (k: string) => ordem.indexOf(k as never);
   check(pos('host') < pos('rede'), 'aparelhos antes de redes');
-  check(pos('rede') < pos('wan'), 'redes antes de links WAN');
 }
 
 {
   const alvo: Target = { id: 'x', kind: 'host', label: 'notebook-maria', hint: '', value: '192.168.3.47' };
   eq(describeTarget(alvo), 'notebook-maria (192.168.3.47)', 'descrição mostra nome E endereço');
   eq(describeTarget(null), 'qualquer origem', 'sem alvo, o texto do vazio');
-  eq(describeTarget({ ...alvo, kind: 'wan', label: 'Fibra', value: 'e0' }), 'pelo link Fibra', 'link vira "pelo link"');
 }
 
 {
-  eq(buildTargets([], [], '', AGORA).length, 0, 'sem dado nenhum, lista vazia — não quebra');
+  eq(buildTargets([], '', AGORA).length, 0, 'sem dado nenhum, lista vazia — não quebra');
   eq(searchTargets('x', []).length, 0, 'busca em lista vazia');
 }
 

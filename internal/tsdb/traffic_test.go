@@ -315,47 +315,6 @@ func (s *sinkFalso) AddInterfaceBytes(iface string, rx, tx uint64) {
 	s.tx[iface] += tx
 }
 
-func TestUsageSinkRecebeOsMesmosDeltasDaSerie(t *testing.T) {
-	sink := novoSink()
-	sampler := tsdb.NewTrafficSampler(&fakeRecorder{})
-	sampler.SetUsageSink(sink)
-
-	sampler.SampleInterfacesForTest([]system.InterfaceMetrics{
-		{Name: "wan1", RxBytes: 1000, TxBytes: 500},
-	}, 100)
-	// Primeira amostra só semeia o contador anterior: não há delta ainda.
-	if sink.rx["wan1"] != 0 {
-		t.Errorf("a primeira amostra não pode virar consumo: %d", sink.rx["wan1"])
-	}
-
-	sampler.SampleInterfacesForTest([]system.InterfaceMetrics{
-		{Name: "wan1", RxBytes: 3000, TxBytes: 800},
-	}, 101)
-	if sink.rx["wan1"] != 2000 || sink.tx["wan1"] != 300 {
-		t.Errorf("delta entregue: rx=%d tx=%d, queria 2000/300", sink.rx["wan1"], sink.tx["wan1"])
-	}
-}
-
-func TestUsageSinkNaoRecebeOSaltoFalsoDeUmReset(t *testing.T) {
-	// Reboot zera os contadores de /proc. Sem a proteção, a subtração de
-	// uint64 daria um número perto de 2^64 e a franquia estouraria sozinha no
-	// primeiro reinício da máquina.
-	sink := novoSink()
-	sampler := tsdb.NewTrafficSampler(&fakeRecorder{})
-	sampler.SetUsageSink(sink)
-
-	sampler.SampleInterfacesForTest([]system.InterfaceMetrics{
-		{Name: "wan1", RxBytes: 9_000_000, TxBytes: 9_000_000},
-	}, 100)
-	sampler.SampleInterfacesForTest([]system.InterfaceMetrics{
-		{Name: "wan1", RxBytes: 10, TxBytes: 10},
-	}, 101)
-
-	if sink.rx["wan1"] != 0 || sink.tx["wan1"] != 0 {
-		t.Errorf("reset de contador virou consumo: rx=%d tx=%d", sink.rx["wan1"], sink.tx["wan1"])
-	}
-}
-
 func TestHostStepNuncaPedeUmBaldeQueNaoExiste(t *testing.T) {
 	// A série por host é amostrada a cada 10s, então não existe balde de 1s
 	// para ela. As janelas curtas resolvem para passo 1 (o nativo das

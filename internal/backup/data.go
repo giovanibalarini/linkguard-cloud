@@ -20,14 +20,13 @@ import (
 const PassphraseSecretName = "backup_passphrase"
 
 // BackupData is the portable snapshot of the panel's configuration. Settings
-// carry the bulk of it (balancer, port forwards, notifications, DHCP/DNS,
-// 2FA), plus the DNS blocklist. Links are exported for
-// reference but not auto-restored (they tie into live routing/table IDs).
+// carry the bulk of it (port forwards, notifications, DNS, 2FA), plus the DNS
+// blocklist. An old backup's "links" field (the WAN links of the multi-WAN
+// era) is ignored on read.
 type BackupData struct {
 	Version   string            `json:"version"`
 	Kind      string            `json:"kind"`
 	Settings  map[string]string `json:"settings"`
-	Links     []storage.Link    `json:"links"`
 	Blocklist []string          `json:"dns_blocklist"`
 }
 
@@ -38,10 +37,6 @@ var ErrPassphraseNotConfigured = errors.New("nenhuma senha de backup configurada
 // Snapshot builds the current BackupData from the database.
 func Snapshot(db *storage.DB, version string) (BackupData, error) {
 	settings, err := db.ExportSettings()
-	if err != nil {
-		return BackupData{}, err
-	}
-	links, err := db.GetLinks()
 	if err != nil {
 		return BackupData{}, err
 	}
@@ -56,7 +51,6 @@ func Snapshot(db *storage.DB, version string) (BackupData, error) {
 		Version:   version,
 		Kind:      "linkguard-fw-backup",
 		Settings:  settings,
-		Links:     links,
 		Blocklist: block,
 	}, nil
 }

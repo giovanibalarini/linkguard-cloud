@@ -11,7 +11,6 @@ export interface VPNConfig {
   listen_port: number;
   address: string;
   endpoint_host: string;
-  endpoint_link_id: string;
 }
 
 export interface VPNPeer {

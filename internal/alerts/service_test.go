@@ -66,30 +66,6 @@ func TestServiceOnlineDeliversViaRecovery(t *testing.T) {
 	}
 }
 
-func TestLinkDegradedMessageIncludesMeasuredValues(t *testing.T) {
-	db := openTestDB(t)
-	svc := NewService(db)
-
-	if err := svc.LinkDegraded("WAN SUMICITY", "link-1", 842.5, 33.3); err != nil {
-		t.Fatalf("LinkDegraded: %v", err)
-	}
-
-	alerts, err := svc.List(false, 10)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(alerts) != 1 {
-		t.Fatalf("expected 1 alert, got %d", len(alerts))
-	}
-	msg := alerts[0].Message
-	if !strings.Contains(msg, "842.5") {
-		t.Errorf("expected message to include the measured latency, got: %q", msg)
-	}
-	if !strings.Contains(msg, "33.3") {
-		t.Errorf("expected message to include the measured packet loss, got: %q", msg)
-	}
-}
-
 func TestBackupFailedIsWarningNormal(t *testing.T) {
 	db := openTestDB(t)
 	s := NewService(db)
@@ -1038,29 +1014,6 @@ func TestResolveStaleOnStartupClosesPreFixServiceAlert(t *testing.T) {
 	}
 }
 
-// TestBalancerNoWANEhEstadoENaoPegaTudo é a regressão da issue #147.
-//
-// Em produção um `rule_error` com a mensagem "Balanceamento: nenhuma interface
-// WAN ativa" ficou SEIS DIAS vermelho numa caixa saudável — a condição durou
-// minutos, o alerta não. rule_error é um pega-tudo levantado de sete lugares
-// sem nada que observe a transição "resolvido", e o código já documentava isso.
-//
-// Um vermelho que nunca apaga ensina quem opera a ignorar vermelho.
-func TestBalancerNoWANEhEstadoENaoPegaTudo(t *testing.T) {
-	var achou bool
-	for _, tipo := range stateAlertTypes {
-		if tipo == TypeBalancerNoWAN {
-			achou = true
-		}
-		if tipo == TypeRuleError {
-			t.Error("rule_error entrou em stateAlertTypes: ele não tem quem o feche")
-		}
-	}
-	if !achou {
-		t.Error("balancer_no_wan não está em stateAlertTypes: ficaria vermelho para sempre")
-	}
-}
-
 // TestAlertaQueNomeiaAparelhoNaoSaiSemEscolha é a rede que a regra escrita em
 // internal/metrics/exposicao.go exige.
 //
@@ -1167,5 +1120,24 @@ func TestCotaPorAparelhoTambemPassaPeloPortao(t *testing.T) {
 	}
 	if !achou {
 		t.Error("o alerta de cota não foi criado; o portão não pode calar a tela")
+	}
+}
+
+// Um alerta de link que ficou aberto na caixa migrada do linkguard-fw é
+// fechado no boot: ninguém mais o levanta nem o resolve.
+func TestResolveStaleOnStartupFechaAlertasDasFuncionalidadesQueSairam(t *testing.T) {
+	db := openTestDB(t)
+	for _, tipo := range []string{"link_offline", "failover", "link_quota_exceeded", "steer_inativo"} {
+		if err := db.CreateAlert(&storage.Alert{Type: tipo, Severity: "critical", Title: tipo, LinkID: "wan-1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	NewService(db).ResolveStaleOnStartup()
+	abertos, err := db.GetAlerts(true, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(abertos) != 0 {
+		t.Errorf("sobraram %d alerta(s) de funcionalidade que saiu: %+v", len(abertos), abertos)
 	}
 }

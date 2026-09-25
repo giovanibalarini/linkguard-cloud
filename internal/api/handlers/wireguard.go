@@ -70,7 +70,6 @@ func (h *WireGuardHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	config.Address = strings.TrimSpace(config.Address)
 	config.EndpointHost = strings.TrimSpace(config.EndpointHost)
-	config.EndpointLinkID = strings.TrimSpace(config.EndpointLinkID)
 	if err := wireguard.ValidateConfig(config); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

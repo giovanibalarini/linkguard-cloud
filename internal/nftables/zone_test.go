@@ -23,21 +23,3 @@ func zonaHairpin(localNets []string, wanIfaces ...string) Zone {
 func zonaHairpinComMTU(pathMTU int, localNets []string, wanIfaces ...string) Zone {
 	return NewZone(wanIfaces, localNets, true, pathMTU)
 }
-
-// zonaDasMarcasDe é a zona das chains que derivam de WANMark — conn_mark,
-// conn_mark_out e mark_hosts. A lista de interfaces sai ORDENADA, que é a
-// forma que essas chains têm em produção.
-func zonaDasMarcasDe(wans []WANMark) Zone {
-	return NewZone(wanMarkIfaces(wans), nil, false, 0)
-}
-
-// connMarkChainRulesDe e connMarkOutChainRulesDe montam a zona a partir das
-// próprias marcas, que é o que EnsureConnMark faz. Existem para que os testes
-// de conn_mark continuem falando de marcas, e não de zonas.
-func connMarkChainRulesDe(wans []WANMark) [][]string {
-	return connMarkChainRules(zonaDasMarcasDe(wans), wans)
-}
-
-func connMarkOutChainRulesDe(wans []WANMark) [][]string {
-	return connMarkOutChainRules(zonaDasMarcasDe(wans), wans)
-}

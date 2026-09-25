@@ -44,7 +44,7 @@ func TestDefaultLayoutOnlyReferencesKnownWidgets(t *testing.T) {
 func TestSanitizeDescartaWidgetRepetido(t *testing.T) {
 	entrada := []LayoutItem{
 		{Widget: "system_health", X: 0, Y: 0, W: 4, H: 2},
-		{Widget: "wan_links", X: 4, Y: 0, W: 4, H: 2},
+		{Widget: "open_alerts", X: 4, Y: 0, W: 4, H: 2},
 		{Widget: "system_health", X: 0, Y: 2, W: 4, H: 2}, // repetido
 	}
 	got := Sanitize(entrada)
@@ -55,7 +55,7 @@ func TestSanitizeDescartaWidgetRepetido(t *testing.T) {
 	if got[0].Widget != "system_health" || got[0].Y != 0 {
 		t.Errorf("o dedupe tem que manter a PRIMEIRA ocorrência; veio %+v", got[0])
 	}
-	if got[1].Widget != "wan_links" {
+	if got[1].Widget != "open_alerts" {
 		t.Errorf("a ordem dos demais tem que ser preservada; veio %+v", got[1])
 	}
 }

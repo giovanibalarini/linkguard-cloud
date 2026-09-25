@@ -44,11 +44,10 @@ const (
 )
 
 type Config struct {
-	Enabled        bool   `json:"enabled"`
-	ListenPort     int    `json:"listen_port"`
-	Address        string `json:"address"`
-	EndpointHost   string `json:"endpoint_host"`
-	EndpointLinkID string `json:"endpoint_link_id"`
+	Enabled      bool   `json:"enabled"`
+	ListenPort   int    `json:"listen_port"`
+	Address      string `json:"address"`
+	EndpointHost string `json:"endpoint_host"`
 }
 
 type Peer struct {
@@ -115,7 +114,6 @@ func decodeKey(v string) ([]byte, error) {
 
 var (
 	hostnameRE = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
-	linkIDRE   = regexp.MustCompile(`^[A-Za-z0-9_-]{0,64}$`)
 	userIDRE   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 )
 
@@ -129,9 +127,6 @@ func ValidateConfig(c Config) error {
 	}
 	if c.ListenPort < 1 || c.ListenPort > 65535 {
 		return fmt.Errorf("porta WireGuard inválida")
-	}
-	if !linkIDRE.MatchString(c.EndpointLinkID) {
-		return fmt.Errorf("link do endpoint inválido")
 	}
 	if c.EndpointHost != "" && !validEndpointHost(c.EndpointHost) {
 		return fmt.Errorf("endpoint inválido: use um endereço IP ou hostname")

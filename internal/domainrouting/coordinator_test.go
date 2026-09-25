@@ -2,6 +2,7 @@ package domainrouting_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/domainrouting"
 	"github.com/giovanibalarini/linkguard-cloud/internal/domtargets"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	_ "modernc.org/sqlite"
 )
 
 type fakeRuntime struct {
@@ -60,23 +62,9 @@ func addBlockGroup(t *testing.T, db *storage.DB, enabled bool) {
 	}
 }
 
-func addLink(t *testing.T, db *storage.DB, status string, enabled bool, table int) *storage.Link {
+func addActiveBlock(t *testing.T, db *storage.DB) *storage.DomainTarget {
 	t.Helper()
-	link := &storage.Link{
-		ID: "wan-2", Name: "WAN 2", Interface: "wan2", Status: status,
-		Enabled: enabled, TableID: table,
-	}
-	if err := db.CreateLink(link); err != nil {
-		t.Fatal(err)
-	}
-	return link
-}
-
-func addActiveRoute(t *testing.T, db *storage.DB, linkID string) *storage.DomainTarget {
-	t.Helper()
-	target := &storage.DomainTarget{
-		Domain: "video.example.com", Capability: storage.DomainCapDirecionar, LinkID: linkID,
-	}
+	target := &storage.DomainTarget{Domain: "video.example.com", Capability: storage.DomainCapBarrar}
 	if err := db.CreateDomainTarget(target); err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +88,7 @@ func targetView(t *testing.T, state domainrouting.State, domain string) domainro
 func TestBootGateKeepsActiveIntentSuspendedUntilPrepare(t *testing.T) {
 	db := newDB(t)
 	addBlockGroup(t, db, true)
-	link := addLink(t, db, "online", true, 200)
-	addActiveRoute(t, db, link.ID)
+	addActiveBlock(t, db)
 	runtime := &fakeRuntime{}
 	coordinator := domainrouting.New(db, runtime)
 
@@ -122,19 +109,18 @@ func TestBootGateKeepsActiveIntentSuspendedUntilPrepare(t *testing.T) {
 	}
 	afterState := coordinator.State(context.Background())
 	after := targetView(t, afterState, "video.example.com")
-	if !afterState.Ready || after.EffectiveStage != storage.DomainStageAtivo || after.Suspended || after.Mark != 200 {
-		t.Fatalf("Prepare não ativou com a mark atual: state=%+v target=%+v", afterState, after)
+	if !afterState.Ready || after.EffectiveStage != storage.DomainStageAtivo || after.Suspended {
+		t.Fatalf("Prepare não ativou: state=%+v target=%+v", afterState, after)
 	}
-	if got, _ := runtime.alvo(after.Domain); got.Estagio != domtargets.Ativo || got.Marca != 200 {
-		t.Fatalf("runtime não recebeu alvo ativo/mark 200: %+v", got)
+	if got, _ := runtime.alvo(after.Domain); got.Estagio != domtargets.Ativo || got.Capacidade != domtargets.Barrar {
+		t.Fatalf("runtime não recebeu o bloqueio ativo: %+v", got)
 	}
 }
 
 func TestHoldClosesAnAlreadyOpenBootGate(t *testing.T) {
 	db := newDB(t)
 	addBlockGroup(t, db, true)
-	link := addLink(t, db, "online", true, 200)
-	addActiveRoute(t, db, link.ID)
+	addActiveBlock(t, db)
 	runtime := &fakeRuntime{}
 	coordinator := domainrouting.New(db, runtime)
 	if err := coordinator.Prepare(context.Background()); err != nil {
@@ -154,86 +140,41 @@ func TestHoldClosesAnAlreadyOpenBootGate(t *testing.T) {
 	}
 }
 
-func TestWANStatusSuspendsAndReenablesWithoutResurrectingStoredMark(t *testing.T) {
-	db := newDB(t)
+// Uma linha de "direcionar" vinda do linkguard-fw (escolher a WAN por
+// domínio, que saiu com o multi-WAN) aparece suspensa para ser vista e
+// apagada, e nunca chega ao runtime.
+func TestOldSteeringRowIsShownSuspendedAndNeverPublished(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "domain-routing.db")
+	db, err := storage.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
 	addBlockGroup(t, db, true)
-	link := addLink(t, db, "online", true, 200)
-	addActiveRoute(t, db, link.ID)
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO domain_targets (id, domain, capability, stage, link_id, mark)
+		VALUES ('velho', 'video.example.com', 'direcionar', 'ativo', 'wan-2', 200)`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
 	runtime := &fakeRuntime{}
 	coordinator := domainrouting.New(db, runtime)
 	if err := coordinator.Prepare(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	link.Status = "offline"
-	link.TableID = 250
-	if err := db.UpdateLink(link); err != nil {
-		t.Fatal(err)
+	row := targetView(t, coordinator.State(context.Background()), "video.example.com")
+	if !row.Suspended || row.SuspensionReason != domainrouting.ReasonInvalidIntent || row.EffectiveStage != storage.DomainStageEnsaio {
+		t.Fatalf("a linha de direcionamento antiga não ficou suspensa: %+v", row)
 	}
-	if err := coordinator.Reconcile(context.Background()); err != nil {
-		t.Fatal(err)
+	if _, ok := runtime.alvo("video.example.com"); ok {
+		t.Fatal("a linha de direcionamento antiga chegou ao runtime")
 	}
-	offline := targetView(t, coordinator.State(context.Background()), "video.example.com")
-	if !offline.Suspended || offline.SuspensionReason != domainrouting.ReasonLinkOffline || offline.EffectiveStage != storage.DomainStageEnsaio {
-		t.Fatalf("WAN offline não suspendeu: %+v", offline)
-	}
-	if got, _ := runtime.alvo(offline.Domain); got.Estagio != domtargets.Ensaio {
-		t.Fatalf("runtime continuou ativo com WAN offline: %+v", got)
-	}
-
-	link.Status = "degraded"
-	if err := db.UpdateLink(link); err != nil {
-		t.Fatal(err)
-	}
-	if err := coordinator.Reconcile(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	reenabled := targetView(t, coordinator.State(context.Background()), "video.example.com")
-	if reenabled.Suspended || reenabled.EffectiveStage != storage.DomainStageAtivo || reenabled.Mark != 250 || reenabled.LinkStatus != "degraded" {
-		t.Fatalf("WAN degradada não reabilitou com table_id atual: %+v", reenabled)
-	}
-	if got, _ := runtime.alvo(reenabled.Domain); got.Marca != 250 {
-		t.Fatalf("runtime ressuscitou mark persistida em vez da atual: %+v", got)
-	}
-}
-
-func TestEveryUnsafeWANStateHasAnObservableSuspensionReason(t *testing.T) {
-	tests := []struct {
-		name      string
-		withLink  bool
-		enabled   bool
-		status    string
-		iface     string
-		table     int
-		wantCause string
-	}{
-		{name: "missing", wantCause: domainrouting.ReasonLinkMissing},
-		{name: "disabled", withLink: true, enabled: false, status: "online", iface: "wan2", table: 200, wantCause: domainrouting.ReasonLinkDisabled},
-		{name: "no interface", withLink: true, enabled: true, status: "online", table: 200, wantCause: domainrouting.ReasonLinkUnconfigured},
-		{name: "no table", withLink: true, enabled: true, status: "online", iface: "wan2", wantCause: domainrouting.ReasonLinkUnconfigured},
-		{name: "unknown", withLink: true, enabled: true, status: "unknown", iface: "wan2", table: 200, wantCause: domainrouting.ReasonLinkNotReady},
-		{name: "offline", withLink: true, enabled: true, status: "offline", iface: "wan2", table: 200, wantCause: domainrouting.ReasonLinkOffline},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := newDB(t)
-			addBlockGroup(t, db, true)
-			if tt.withLink {
-				link := &storage.Link{ID: "wan-2", Name: "WAN 2", Interface: tt.iface, Status: tt.status, Enabled: tt.enabled, TableID: tt.table}
-				if err := db.CreateLink(link); err != nil {
-					t.Fatal(err)
-				}
-			}
-			addActiveRoute(t, db, "wan-2")
-			coordinator := domainrouting.New(db, &fakeRuntime{})
-			if err := coordinator.Prepare(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			got := targetView(t, coordinator.State(context.Background()), "video.example.com")
-			if !got.Suspended || got.SuspensionReason != tt.wantCause || got.EffectiveStage != storage.DomainStageEnsaio {
-				t.Fatalf("estado inseguro não ficou observável: %+v", got)
-			}
-		})
+	if _, err := coordinator.Delete(context.Background(), row.ID); err != nil {
+		t.Fatalf("a linha antiga tem de poder ser apagada: %v", err)
 	}
 }
 
@@ -272,12 +213,11 @@ func TestDisabledBlockGroupSuspendsBlockTargetsAndReenableRestoresIntent(t *test
 func TestCRUDRequiresExplicitStageAndReturnsKernelObservability(t *testing.T) {
 	db := newDB(t)
 	addBlockGroup(t, db, true)
-	link := addLink(t, db, "online", true, 200)
 	runtime := &fakeRuntime{state: domtargets.Estado{
 		Vivo: true, KernelLido: true,
 		Dominios: []domtargets.EstadoDominio{{
 			Dominio: "video.example.com", NoIndice: 2, NoKernel: intPtr(1),
-			Rotatividade: 7, DirecionadoV6: 3,
+			Rotatividade: 7,
 		}},
 	}}
 	coordinator := domainrouting.New(db, runtime)
@@ -286,7 +226,7 @@ func TestCRUDRequiresExplicitStageAndReturnsKernelObservability(t *testing.T) {
 	}
 
 	created, err := coordinator.Create(context.Background(), domainrouting.Input{
-		Domain: "video.example.com", Capability: storage.DomainCapDirecionar, LinkID: link.ID, Note: "vídeo",
+		Domain: "video.example.com", Capability: storage.DomainCapBarrar, Note: "vídeo",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -302,15 +242,12 @@ func TestCRUDRequiresExplicitStageAndReturnsKernelObservability(t *testing.T) {
 	}
 	row = targetView(t, promoted, "video.example.com")
 	if row.Stage != storage.DomainStageAtivo || row.EffectiveStage != storage.DomainStageAtivo ||
-		row.NoKernel == nil || *row.NoKernel != 1 || row.NoIndex != 2 || row.Rotation != 7 || row.RoutedIPv6Discarded != 3 {
+		row.NoKernel == nil || *row.NoKernel != 1 || row.NoIndex != 2 || row.Rotation != 7 {
 		t.Fatalf("promoção/observabilidade incompleta: %+v", row)
-	}
-	if promoted.RoutingIPv6Supported {
-		t.Fatal("API afirmou suporte a direcionamento IPv6")
 	}
 
 	updated, err := coordinator.Update(context.Background(), row.ID, domainrouting.Input{
-		Domain: "media.example.com", Capability: storage.DomainCapDirecionar, LinkID: link.ID, Note: "editado",
+		Domain: "media.example.com", Capability: storage.DomainCapBarrar, Note: "editado",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -321,9 +258,9 @@ func TestCRUDRequiresExplicitStageAndReturnsKernelObservability(t *testing.T) {
 	}
 
 	if _, err := coordinator.Create(context.Background(), domainrouting.Input{
-		Domain: "other.example.com", Capability: storage.DomainCapDirecionar, LinkID: "missing",
+		Domain: "other.example.com", Capability: "direcionar",
 	}); !errors.Is(err, domainrouting.ErrInvalid) {
-		t.Fatalf("link desconhecido não virou ErrInvalid: %v", err)
+		t.Fatalf("direcionar (saiu com o multi-WAN) não virou ErrInvalid: %v", err)
 	}
 	if _, err := coordinator.SetStage(context.Background(), row.ID, "talvez"); !errors.Is(err, domainrouting.ErrInvalid) {
 		t.Fatalf("stage desconhecido não virou ErrInvalid: %v", err)
