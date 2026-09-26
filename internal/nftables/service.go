@@ -37,50 +37,11 @@ const (
 	// O endereço físico não tem família: bloquear por ele vale para IPv4, IPv6
 	// e para o que vier. E é a identidade que o produto JÁ usa para host — o
 	// bloqueio é pedido por MAC (hosts.SetBlocked), e só era traduzido para IP
-	// na hora de escrever no firewall.
-	BlockedMACSet = "blocked_macs"
 )
 
 // Service wraps nft operations.
 type Service struct {
 	exec firewall.Executor
-
-	// groupsSource e ntpInputSource são as duas metades da chain input que
-	// este pacote não conhece por si (ver SetInputChainSources).
-	groupsSource   func() ([]StoredGroup, error)
-	ntpInputSource func() (networks []string, serving bool, err error)
-	// inputPolicySource é a política padrão da chain input (#81). Opcional por
-	// natureza — nil resolve para accept, que é o comportamento de sempre. Ver
-	// policy.go para a razão de ela não abortar quando ausente, ao contrário
-	// das duas acima.
-	inputPolicySource func() (Policy, error)
-
-	// blockLogSource diz se o admin ligou o registro do que é bloqueado
-	// (#122). Opcional, como inputPolicySource: fonte não ligada resolve para
-	// "desligado", que é o estado de toda máquina anterior a esta entrega.
-	// Erro de leitura NÃO derruba a reconciliação — o firewall continua
-	// bloqueando; o que se perde é o registro, e perder o registro é
-	// infinitamente melhor que perder o bloqueio.
-	blockLogSource func() (bool, error)
-	// adminAccessSource alimenta as regras de sobrevivência. Só consultada com
-	// política restritiva; ausente nesse caso é ERRO (ver adminAccess).
-	adminAccessSource func() (AdminAccess, error)
-	// wanInterfacesSource é a lista de WANs habilitadas, para a proteção de
-	// entrada da chain input (#119). Ausente resolve para lista vazia — que
-	// emite regra nenhuma, o comportamento de toda máquina anterior a esta
-	// entrega. Erro de leitura ABORTA: ver wanInterfaces.
-	wanInterfacesSource func() ([]string, error)
-	// wireGuardInputSource é a porta UDP do serviço VPN quando habilitado.
-	// Ausente resolve para desligado; erro/porta inválida aborta a reconstrução
-	// para não apagar uma liberação válida por causa de estado ilegível.
-	wireGuardInputSource func() (enabled bool, port int, err error)
-	// wanMgmtClosedSource é a decisão do admin de fechar as portas de gerência
-	// nas WANs (#119, fase 3b). Ausente resolve para aberto — o estado que não
-	// tranca ninguém. Ver wanMgmtClosed.
-	wanMgmtClosedSource func() (bool, error)
-	// edgeContainmentSource liga a contenção de tentativa repetida (#127).
-	// Ausente resolve para DESLIGADA — ver EdgeContainmentSettingKey.
-	edgeContainmentSource func() (bool, error)
 
 	// zoneFactsSource diz se esta máquina é hairpin — entra e sai pela mesma
 	// interface — e quais são as redes locais. É o que transforma o eixo das
@@ -95,16 +56,6 @@ type Service struct {
 	// que falhou não é "esta máquina não é hairpin", e obedecer a esse silêncio
 	// escreveria a chain no eixo errado numa caixa que depende do outro.
 	zoneFactsSource func() (ZoneFacts, error)
-
-	// ipv6FwdPath é o sysctl que a tela lê para dizer se IPv6 é roteado
-	// (#119, fase 3). Campo, e não const, pelo mesmo motivo de
-	// routes.Service.fwdPath: o teste aponta para um arquivo temporário em vez
-	// de depender do /proc da máquina que roda a suíte.
-	ipv6FwdPath string
-	// forwardPolicySource é a política da chain forward (#92). Independente da
-	// input: bloquear o que atravessa e liberar o que chega ao firewall é uma
-	// combinação legítima.
-	forwardPolicySource func() (Policy, error)
 
 	// confPath é o arquivo que Persist grava — o ruleset de BOOT da máquina
 	// (ver ConfPath e SetConfPath). Injetável no Service, e não só na variável
@@ -207,13 +158,8 @@ func (s *Service) PersistState() PersistState {
 
 // NewService creates an nftables Service.
 func NewService(exec firewall.Executor) *Service {
-	return &Service{exec: exec, confPath: ConfPath, ipv6FwdPath: IPv6ForwardingSysctl}
+	return &Service{exec: exec, confPath: ConfPath}
 }
-
-// SetIPv6ForwardingPath aponta a leitura do sysctl de IPv6 para outro arquivo.
-// Mesmo motivo do SetConfPath: o teste não pode depender do /proc da máquina que
-// roda a suíte, onde o valor é o da estação de quem roda, não o do produto.
-func (s *Service) SetIPv6ForwardingPath(path string) { s.ipv6FwdPath = path }
 
 // SetConfPath aponta o Persist para outro arquivo. Existe para os testes
 // escreverem em t.TempDir() (ver o campo confPath); em produção o valor vem de
@@ -283,83 +229,6 @@ func (s *Service) PersistPath() string {
 		return s.confPath
 	}
 	return ConfPath
-}
-
-// SetInputChainSources liga o Service às duas coisas que dividem a chain
-// input e que ele não tem como conhecer sozinho — o banco mora em
-// internal/storage, que este pacote não pode importar (ciclo; ver o
-// doc-comment de StoredRule).
-//
-// Desde a Fase C2 a chain input é reconstruída INTEIRA a cada passada, por um
-// renderizador só (inputChainRules). Cada chamador sabe explicitamente uma
-// das metades e precisa da outra para não apagá-la:
-//
-//   - ReconcileNTPInput recebe o estado do NTP por parâmetro e lê os GRUPOS
-//     daqui;
-//   - ReconcileGroups recebe os grupos por parâmetro e lê o ESTADO DO NTP
-//     daqui.
-//
-// Ligar isto é obrigatório em produção, e cmd/linkguard-cloud/main.go o faz
-// junto da construção dos serviços (guardado por
-// TestMainWiresTheInputChainSources). Sem a fonte do NTP, ntpInputState
-// devolve erro (m3 da revisão) — não mais um slog.Error e um silêncio que
-// deixava ReconcileGroups seguir como se "servir NTP" fosse desligado.
-//
-// AS DUAS FONTES DEVOLVEM ERRO, e pela mesma razão (I-1 e m3 da revisão da
-// Fase C2): quem lê "não consegui ler" NÃO pode tratar isso como "está
-// desligado"/"não existe" — nem quando o motivo é a leitura em si falhar,
-// nem quando o motivo é a fonte nunca ter sido ligada. Uma leitura de
-// settings que falha (banco travado, IO, JSON corrompido) ou uma fonte
-// ausente devolvendo "servir NTP: não" faria ReconcileGroups dar flush na
-// chain input e reescrevê-la só com os jumps — as duas linhas de udp/123
-// sumiriam do firewall vivo, o painel continuaria mostrando o toggle ligado,
-// e o apply seria reportado ok. Fail-open silencioso. Com o erro explícito
-// nos dois casos, quem reconcilia ABORTA sem tocar na chain, exatamente
-// como já fazia do lado dos grupos.
-func (s *Service) SetInputChainSources(groups func() ([]StoredGroup, error), ntpInput func() ([]string, bool, error)) {
-	s.groupsSource = groups
-	s.ntpInputSource = ntpInput
-}
-
-// inputChainGroups devolve os grupos gravados para quem vai reconstruir a
-// chain input sem tê-los recebido por parâmetro. Erro é propagado (o chamador
-// aborta sem tocar na chain); fonte não ligada devolve lista vazia com aviso.
-func (s *Service) inputChainGroups() ([]StoredGroup, error) {
-	if s.groupsSource == nil {
-		slog.Warn("nenhuma fonte de grupos ligada ao serviço de nftables: a chain input será reconstruída só com as regras do NTP (ver SetInputChainSources)")
-		return nil, nil
-	}
-	return s.groupsSource()
-}
-
-// ntpInputState devolve o estado de "servir NTP para a LAN" para quem vai
-// reconstruir a chain input sem tê-lo recebido por parâmetro. As duas formas
-// de não conseguir responder — ERRO DE LEITURA e fonte NÃO LIGADA — levam ao
-// mesmo tratamento: erro propagado, chamador aborta sem tocar na chain.
-//
-// Antes desta correção (achado m3 da revisão) as duas eram tratadas de forma
-// diferente: erro de leitura virava erro, fonte não ligada virava
-// (nil, false, nil) com só um slog.Error de aviso. Essa segunda forma é
-// exatamente o fail-open que a primeira existe para fechar (I-1) — só que
-// pelo lado da "fonte nunca foi ligada" em vez do lado "SELECT falhou": os
-// dois casos fazem ReconcileGroups/ReconcileNTPInput dar flush na chain input
-// vivendo e reescrevê-la só com os jumps, apagando as duas linhas de udp/123
-// do firewall vivo enquanto o painel continua mostrando o toggle ligado e o
-// apply é reportado ok. Fonte não ligada é bug de binário mal montado (falta
-// a chamada a SetInputChainSources, guardada por
-// TestMainWiresTheInputChainSources em cmd/linkguard-cloud), não estado de
-// produção — mas um guarda de deriva na AST é defesa fraca sozinha para um
-// firewall: se o binário de produção algum dia rodar sem essa ligação (build
-// alternativo, teste que constrói Service direto, refactor que remove a
-// chamada sem que o teste de deriva pegue), o silêncio anterior apagava a
-// proteção do NTP sem avisar. Agora aborta, como o erro de leitura já fazia.
-func (s *Service) ntpInputState() ([]string, bool, error) {
-	if s.ntpInputSource == nil {
-		err := fmt.Errorf("nenhuma fonte de configuração do NTP ligada ao serviço de nftables (SetInputChainSources nunca foi chamado)")
-		slog.Error("a chain input NÃO será tocada: " + err.Error())
-		return nil, false, err
-	}
-	return s.ntpInputSource()
 }
 
 // Ruleset devolve a tabela que o LinkGuard possui — `nft list table inet
@@ -666,15 +535,11 @@ const defaultConfPath = "/etc/nftables.conf"
 type Managed struct {
 	Blocklist    []string `json:"blocklist"`
 	BlockedHosts []string `json:"blocked_hosts"`
-	// BlockedMACs acompanha BlockedHosts: os dois descrevem os MESMOS hosts,
-	// por identidades diferentes. Sem o MAC aqui, uma reinstalação restauraria
-	// o bloqueio só para IPv4 (#119).
-	BlockedMACs []string `json:"blocked_macs"`
 }
 
 // Managed returns the current elements of the host_wan map and the sets.
 func (s *Service) Managed(ctx context.Context) (*Managed, error) {
-	m := &Managed{Blocklist: []string{}, BlockedHosts: []string{}, BlockedMACs: []string{}}
+	m := &Managed{Blocklist: []string{}, BlockedHosts: []string{}}
 
 	if out, err := s.exec.ExecuteRead(ctx, "nft", "list", "set", Family, Table, "blocklist"); err == nil {
 		m.Blocklist = parseElements(out)
@@ -682,24 +547,7 @@ func (s *Service) Managed(ctx context.Context) (*Managed, error) {
 	if out, err := s.exec.ExecuteRead(ctx, "nft", "list", "set", Family, Table, BlockedSet); err == nil {
 		m.BlockedHosts = parseElements(out)
 	}
-	if out, err := s.exec.ExecuteRead(ctx, "nft", "list", "set", Family, Table, BlockedMACSet); err == nil {
-		m.BlockedMACs = parseElements(out)
-	}
 	return m, nil
-}
-
-// EnsureBlockedMACSet cria a set de endereços físicos bloqueados se ela não
-// existir. Idempotente: o nft trata `add set` com a MESMA declaração como no-op.
-//
-// Existe separada do bootstrap porque o bootstrap não roda em máquina já
-// provisionada — ver o comentário em reconcileGroups.
-func (s *Service) EnsureBlockedMACSet(ctx context.Context) error {
-	_, err := s.exec.Execute(ctx, "nft", "add", "set", Family, Table, BlockedMACSet,
-		"{", "type", "ether_addr", ";", "}")
-	if err != nil {
-		return fmt.Errorf("criar a set %s: %w", BlockedMACSet, err)
-	}
-	return nil
 }
 
 // AddBlocklist blocks a destination CIDR by adding it to the blocklist set.
@@ -842,165 +690,8 @@ func (s *Service) Persist(ctx context.Context) error {
 	return err
 }
 
-// ─── Port forwarding (DNAT) ──────────────────────────────────────────────────
+// ─── Input validators ────────────────────────────────────────────────────────
 
-// DNATChain is the prerouting nat chain that holds port-forward rules. It is
-// created on demand and fully rebuilt on every apply, so it is always an exact
-// reflection of the stored forwards.
-const DNATChain = "prerouting_dnat"
-
-// PortForward describes a single external-port → internal-host:port mapping.
-type PortForward struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Enabled   bool   `json:"enabled"`
-	Proto     string `json:"proto"`     // tcp | udp
-	Interface string `json:"interface"` // WAN iif; empty = any
-	ExtPort   int    `json:"ext_port"`
-	DestIP    string `json:"dest_ip"`
-	DestPort  int    `json:"dest_port"`
-}
-
-// ApplyPortForwards rebuilds the DNAT chain from the given forwards atomically
-// (`nft -f` with flush + re-add) and persists the ruleset. Only enabled,
-// well-formed entries are emitted.
-func (s *Service) ApplyPortForwards(ctx context.Context, fwds []PortForward) error {
-	var b strings.Builder
-	// Idempotent chain create, then flush + re-add inside one atomic load.
-	fmt.Fprintf(&b, "add chain %s %s %s { type nat hook prerouting priority dstnat ; policy accept ; }\n",
-		Family, Table, DNATChain)
-	fmt.Fprintf(&b, "flush chain %s %s %s\n", Family, Table, DNATChain)
-	for _, f := range fwds {
-		if !f.Enabled {
-			continue
-		}
-		rule, err := dnatRule(f)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(&b, "add rule %s %s %s %s\n", Family, Table, DNATChain, rule)
-	}
-
-	f, err := os.CreateTemp("", "linkguard-dnat-*.conf")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	defer os.Remove(f.Name())
-	if _, err := f.WriteString(b.String()); err != nil {
-		f.Close()
-		return fmt.Errorf("write dnat: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
-	}
-	if _, err := s.exec.Execute(ctx, "nft", "-f", f.Name()); err != nil {
-		return fmt.Errorf("apply port forwards: %w", err)
-	}
-	return s.Persist(ctx)
-}
-
-// dnatRule renders one PortForward into an nft rule body (inet family DNAT to an
-// IPv4 destination requires the `dnat ip to` form).
-func dnatRule(f PortForward) (string, error) {
-	proto := strings.ToLower(strings.TrimSpace(f.Proto))
-	if proto != "tcp" && proto != "udp" {
-		return "", fmt.Errorf("protocolo inválido: %q (use tcp ou udp)", f.Proto)
-	}
-	if f.ExtPort < 1 || f.ExtPort > 65535 || f.DestPort < 1 || f.DestPort > 65535 {
-		return "", fmt.Errorf("porta fora do intervalo 1-65535")
-	}
-	if net.ParseIP(f.DestIP) == nil || strings.Contains(f.DestIP, ":") {
-		return "", fmt.Errorf("IP de destino inválido: %q", f.DestIP)
-	}
-	var parts []string
-	if iif := strings.TrimSpace(f.Interface); iif != "" {
-		if !reIface.MatchString(iif) {
-			return "", fmt.Errorf("interface inválida: %q", iif)
-		}
-		parts = append(parts, fmt.Sprintf("iifname %q", iif))
-	}
-	parts = append(parts,
-		fmt.Sprintf("%s dport %d", proto, f.ExtPort),
-		fmt.Sprintf("dnat ip to %s:%d", f.DestIP, f.DestPort),
-	)
-	return strings.Join(parts, " "), nil
-}
-
-// ─── User rules (custom allow/block, ordered, edited via modal) ──────────────
-
-// UserChain is the admin-managed chain. It is NO LONGER reached from
-// `forward`: since rule groups (Phase C1) the admin's rules live inside a
-// group chain, and the one-off migration moves the old ones into the group
-// "Minhas regras". The chain and its contents stay put — it is still
-// reconciled from the DB (ReconcileUserRules) and still read by the panel —
-// but nothing jumps into it, so nothing in it is evaluated by the kernel.
-const UserChain = "user_rules"
-
-// RuleFields is the structured, UX-friendly description of a custom rule. The
-// admin fills these in a modal; the spec is built server-side so they never see
-// raw nft syntax.
-type RuleFields struct {
-	Action string `json:"action"` // accept | drop | reject
-	Iif    string `json:"iif"`    // input interface
-	Oif    string `json:"oif"`    // output interface
-	Saddr  string `json:"saddr"`  // source IP/CIDR
-	Daddr  string `json:"daddr"`  // destination IP/CIDR
-	Proto  string `json:"proto"`  // tcp | udp | icmp | ""
-	Dport  string `json:"dport"`  // destination port (tcp/udp)
-}
-
-// UserRule is a stored custom rule with its nft handle (stable id) and the
-// parsed fields so the modal can pre-fill on edit.
-type UserRule struct {
-	Handle int    `json:"handle"`
-	Raw    string `json:"raw"`
-	RuleFields
-}
-
-var (
-	reHandle  = regexp.MustCompile(`# handle (\d+)`)
-	reCounter = regexp.MustCompile(`counter packets \d+ bytes \d+`)
-)
-
-// ListUserRules returns the custom rules in order, with handles and fields.
-// Read-only by design: the admin's rules are now DB-authoritative (design
-// spec §4.1) and rendered into nft by ReconcileUserRules, not edited
-// directly by handle — the handle-based AddUserRule/UpdateUserRule/
-// DeleteUserRule/MoveUserRule this function used to support were removed
-// once every caller moved to the DB (internal/firewallrules,
-// internal/api/handlers/nftables.go); keeping a handle-based mutation path
-// alongside a DB-authoritative reconcile would only invite a future caller
-// that writes straight to nft and drifts from the DB the same way the
-// pre-Phase-B code did. ListUserRules itself stays: the one-time import
-// (firewallrules.Service.ImportOnce) still needs to read the pre-existing
-// live chain.
-func (s *Service) ListUserRules(ctx context.Context) ([]UserRule, error) {
-	out, err := s.exec.ExecuteRead(ctx, "nft", "-a", "list", "chain", Family, Table, UserChain)
-	if err != nil {
-		return nil, err
-	}
-	rules := []UserRule{}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		// Skip the chain header (`chain user_rules { # handle N`) and any block
-		// delimiters — only actual rule lines carry a handle here.
-		if strings.HasPrefix(line, "chain ") || strings.Contains(line, "{") || strings.HasPrefix(line, "}") {
-			continue
-		}
-		m := reHandle.FindStringSubmatch(line)
-		if m == nil {
-			continue // not a rule line
-		}
-		handle, _ := strconv.Atoi(m[1])
-		clean := reHandle.ReplaceAllString(line, "")
-		clean = reCounter.ReplaceAllString(clean, "")
-		clean = strings.Join(strings.Fields(clean), " ")
-		rules = append(rules, UserRule{Handle: handle, Raw: clean, RuleFields: parseRuleFields(clean)})
-	}
-	return rules, nil
-}
-
-// buildRuleTokens turns structured fields into nft rule tokens (validated).
 // Input validators. nft parses its argv joined by spaces, so an unvalidated
 // token containing spaces/";" could inject extra nft commands (e.g. flush
 // ruleset). Every user-supplied token below is constrained to a safe charset.
@@ -1076,222 +767,6 @@ func validPort(s string) bool {
 	return start <= end
 }
 
-func buildRuleTokens(f RuleFields) ([]string, error) {
-	action := strings.ToLower(strings.TrimSpace(f.Action))
-	if action != "accept" && action != "drop" && action != "reject" {
-		return nil, fmt.Errorf("ação inválida (use accept, drop ou reject)")
-	}
-	var t []string
-	if f.Iif != "" {
-		if !reIface.MatchString(f.Iif) {
-			return nil, fmt.Errorf("interface de entrada inválida")
-		}
-		t = append(t, "iifname", f.Iif)
-	}
-	if f.Oif != "" {
-		if !reIface.MatchString(f.Oif) {
-			return nil, fmt.Errorf("interface de saída inválida")
-		}
-		t = append(t, "oifname", f.Oif)
-	}
-	if f.Saddr != "" {
-		if !validIPv4OrCIDR(f.Saddr) {
-			return nil, fmt.Errorf("origem inválida: use um IP/CIDR IPv4 (IPv6 ainda não é suportado nas regras personalizadas)")
-		}
-		t = append(t, "ip", "saddr", f.Saddr)
-	}
-	if f.Daddr != "" {
-		if !validIPv4OrCIDR(f.Daddr) {
-			return nil, fmt.Errorf("destino inválido: use um IP/CIDR IPv4 (IPv6 ainda não é suportado nas regras personalizadas)")
-		}
-		t = append(t, "ip", "daddr", f.Daddr)
-	}
-	proto := strings.ToLower(strings.TrimSpace(f.Proto))
-	switch proto {
-	case "tcp", "udp":
-		if f.Dport != "" {
-			if !validPort(f.Dport) {
-				return nil, fmt.Errorf("porta inválida: use um valor entre 1 e 65535, ou um intervalo início-fim válido (ex.: 8000-8080)")
-			}
-			t = append(t, proto, "dport", f.Dport)
-		} else {
-			t = append(t, "ip", "protocol", proto)
-		}
-	case "icmp":
-		t = append(t, "ip", "protocol", "icmp")
-	case "", "all", "any":
-		// no L4 match
-	default:
-		return nil, fmt.Errorf("protocolo inválido")
-	}
-	t = append(t, "counter", action)
-	return t, nil
-}
-
-// expressionTokens renders f into the exact token sequence buildRuleTokens
-// would hand to nft, minus the literal "counter" keyword. Every rule this
-// package builds always carries it, so on its own it carries no identifying
-// information — and ListUserRules/ListRuleset strip the whole "counter
-// packets N bytes M" runtime clause, keyword included, out of a live rule's
-// text (packet/byte counts are instance state, not part of what the rule
-// means). Stripping it here the same way lets the two be compared, word for
-// word, as the identical rule they claim to be.
-func expressionTokens(f RuleFields) (string, error) {
-	tokens, err := buildRuleTokens(f)
-	if err != nil {
-		return "", err
-	}
-	out := make([]string, 0, len(tokens))
-	for _, tok := range tokens {
-		if tok == "counter" {
-			continue
-		}
-		out = append(out, tok)
-	}
-	return strings.Join(out, " "), nil
-}
-
-// ExpressionMatches reports whether f, once rendered and normalized exactly
-// like a live rule's own text already is (see expressionTokens), equals
-// live word for word. This is the single building block behind two
-// independent honesty checks that both boil down to the same question —
-// "does this structured RuleFields really mean what this raw nft text
-// says" — and where a false positive was a documented production risk:
-//
-//   - C-2 (internal/firewallrules.ImportOnce's round-trip check): a rule
-//     richer than the 7-field model (e.g. `ct state established,related
-//     counter accept`) best-effort-parses into whatever survived (here,
-//     just {Action: accept}) — which then silently means "accept
-//     everything" once re-rendered, not what the live rule actually said.
-//   - I-4 (MergeUserRules' live-rule identity check): pairing a DB row to
-//     a live nft rule by position alone attributes one rule's handle and
-//     counters to a different rule the moment the two lists diverge.
-//
-// A mismatch in either case must fall back to an honest "could not verify"
-// state rather than silently treating the parsed fields as equivalent.
-//
-// Both sides go through normalizeExpression first: nft does not echo back
-// the rule it was given, it re-prints its own parsed form of it, and that
-// form differs from what buildRuleTokens emits in ways that say nothing
-// about whether the two rules mean the same thing (quoted interface
-// operands, addresses re-printed in canonical form). Comparing raw text
-// made every rule carrying an interface or a /32 mismatch forever — the
-// rule got imported disabled and then reconciled away, and MergeUserRules
-// marked it Applied=false and (never advancing past the unmatched live
-// entry) dragged every rule after it into the same fate, duplicating the
-// whole live chain at the end of the panel's list.
-func ExpressionMatches(f RuleFields, live string) bool {
-	expected, err := expressionTokens(f)
-	if err != nil {
-		return false
-	}
-	return normalizeExpression(expected) == normalizeExpression(live)
-}
-
-// normalizeExpression rewrites an nft rule expression — ours or the
-// kernel's — into the one shape both can be compared in. It is deliberately
-// narrow: it only touches the operands whose printed form nft is known,
-// empirically, to differ on, and leaves every other token byte for byte so
-// a genuinely different rule still reads as different.
-//
-//   - iifname/oifname (and the iif/oif variants parseRuleFields accepts):
-//     nft quotes the operand (`iifname "enp5s0"`), buildRuleTokens does
-//     not. The quotes are stripped here rather than emitted by
-//     buildRuleTokens — unlike dnatRule, which builds a single rule string
-//     and quotes for the same reason — because buildRuleTokens' output is
-//     also the text the panel shows for a rule nft has never seen
-//     (syntheticUserRule), and because quoting alone would not fix the
-//     address case below: a normalizer on both sides is needed regardless,
-//     so there is exactly one of them instead of two half-measures.
-//   - ip saddr/ip daddr: nft re-prints addresses canonically — a host
-//     mask is dropped (`10.0.0.1/32` → `10.0.0.1`) and any other prefix is
-//     reduced to its network address (`10.0.0.5/24` → `10.0.0.0/24`).
-//     canonicalAddr does the same to both sides.
-func normalizeExpression(expr string) string {
-	toks := strings.Fields(expr)
-	for i := 0; i < len(toks); i++ {
-		switch toks[i] {
-		case "iifname", "oifname", "iif", "oif":
-			if i+1 < len(toks) {
-				toks[i+1] = strings.Trim(toks[i+1], `"`)
-				i++
-			}
-		case "ip":
-			if i+2 < len(toks) && (toks[i+1] == "saddr" || toks[i+1] == "daddr") {
-				toks[i+2] = canonicalAddr(toks[i+2])
-				i += 2
-			}
-		}
-	}
-	return strings.Join(toks, " ")
-}
-
-// canonicalAddr renders an address operand the way nft prints it back:
-// a full-mask CIDR as the bare address, any other CIDR as its network
-// address plus prefix. Anything that is not an address literal (a set
-// reference like `@blocklist`, an anonymous set, a range) is returned
-// untouched — normalizing what we don't understand would be inventing
-// equality.
-func canonicalAddr(s string) string {
-	if strings.Contains(s, "/") {
-		ip, ipnet, err := net.ParseCIDR(s)
-		if err != nil {
-			return s
-		}
-		if ones, bits := ipnet.Mask.Size(); ones == bits {
-			return ip.String()
-		}
-		return ipnet.String()
-	}
-	if ip := net.ParseIP(s); ip != nil {
-		return ip.String()
-	}
-	return s
-}
-
-// parseRuleFields best-effort parses our generated rule text back into fields
-// (so the edit modal can pre-fill). Unknown tokens are ignored.
-func parseRuleFields(clean string) RuleFields {
-	f := RuleFields{}
-	toks := strings.Fields(clean)
-	unq := func(s string) string { return strings.Trim(s, `"`) }
-	for i := 0; i < len(toks); i++ {
-		switch toks[i] {
-		case "iif", "iifname":
-			if i+1 < len(toks) {
-				f.Iif = unq(toks[i+1])
-				i++
-			}
-		case "oif", "oifname":
-			if i+1 < len(toks) {
-				f.Oif = unq(toks[i+1])
-				i++
-			}
-		case "ip":
-			if i+2 < len(toks) {
-				switch toks[i+1] {
-				case "saddr":
-					f.Saddr = toks[i+2]
-				case "daddr":
-					f.Daddr = toks[i+2]
-				case "protocol":
-					f.Proto = toks[i+2]
-				}
-				i += 2
-			}
-		case "tcp", "udp":
-			f.Proto = toks[i]
-			if i+2 < len(toks) && toks[i+1] == "dport" {
-				f.Dport = toks[i+2]
-				i += 2
-			}
-		case "accept", "drop", "reject":
-			f.Action = toks[i]
-		}
-	}
-	return f
-}
-
 // parseElements extracts the comma-separated tokens inside an `elements = { ... }`
 // block from `nft list set/map` output (the block may span multiple lines).
 func parseElements(out string) []string {
@@ -1312,50 +787,4 @@ func parseElements(out string) []string {
 		}
 	}
 	return res
-}
-
-// RenderRule devolve a linha nft exata que esta regra vira no kernel —
-// incluindo o `counter`, ao contrário de expressionTokens, que o remove porque
-// existe para COMPARAR com uma regra viva (a saída do nft traz "counter packets
-// N bytes M", que é estado de instância, não parte do que a regra significa).
-//
-// Existe para que a pré-visualização da tela seja a linha, e não uma paráfrase
-// dela. Antes, o frontend remontava esses tokens em TypeScript, à mão, e nada
-// verificava que as duas versões continuavam iguais — num painel onde uma regra
-// errada corta o SSH do operador, a tela podia afirmar uma coisa e o kernel
-// receber outra, sem teste, sem log e sem apply falhando.
-func RenderRule(f RuleFields) (string, error) {
-	tokens, err := buildRuleTokens(f)
-	if err != nil {
-		return "", err
-	}
-	return strings.Join(tokens, " "), nil
-}
-
-// RenderGroupJump devolve a linha de jump que o grupo põe na chain hospedeira:
-// a condição de entrada, o estado de conexão quando houver, e o salto.
-func RenderGroupJump(g StoredGroup) (string, error) {
-	tokens, err := groupJumpTokens(g)
-	if err != nil {
-		return "", err
-	}
-	return strings.Join(tokens, " "), nil
-}
-
-// SetBlockLogSource liga a fonte da opção de registrar bloqueios (#122).
-func (s *Service) SetBlockLogSource(src func() (bool, error)) { s.blockLogSource = src }
-
-// logBlocks resolve a opção. Sem fonte, ou com fonte que falhou, devolve
-// false: é o estado de quem nunca ligou a opção, e é o lado seguro — a
-// alternativa seria registrar sem o admin ter pedido, gastando disco dele.
-func (s *Service) logBlocks() bool {
-	if s.blockLogSource == nil {
-		return false
-	}
-	on, err := s.blockLogSource()
-	if err != nil {
-		slog.Warn("não consegui ler a opção de registrar bloqueios; seguindo sem registrar", "err", err)
-		return false
-	}
-	return on
 }

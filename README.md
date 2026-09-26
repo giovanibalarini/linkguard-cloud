@@ -93,10 +93,9 @@ links actually passing traffic.
 
 ## Telas / Screenshots
 
-**🇧🇷** Painel, tráfego, a postura padrão do firewall e a janela de confirmação
-que evita você se trancar para fora. **🇺🇸** Dashboard, traffic, the firewall's
-default posture, and the confirmation window that keeps you from locking
-yourself out.
+**🇧🇷** Painel, tráfego, o firewall por zonas e a janela de confirmação
+que evita você se trancar para fora. **🇺🇸** Dashboard, traffic, zone-based
+firewall, and the confirmation window that keeps you from locking yourself out.
 
 | Painel / Dashboard | Tráfego / Traffic |
 |---|---|
@@ -106,14 +105,8 @@ yourself out.
 |---|---|
 | ![Janela de confirmação](docs/images/confirm-window.png) | ![Catálogo de widgets](docs/images/widget-catalog.png) |
 
-**🇧🇷** Bloquear por padrão e liberar só o que você autorizar — com a lista do
-que continua passando lida da própria máquina, não de um exemplo.
-**🇺🇸** Default-deny with an explicit allowlist — and the "what still gets
-through" list read from this very machine, not from an example.
-
-| Postura padrão do firewall / Firewall default posture |
-|---|
-| ![Postura padrão do firewall](docs/images/firewall-posture.png) |
+**🇧🇷** Firewall por zonas (Internet, VCN, VPN, Flutuantes) com aliases, agendamentos e aplicação atômica.
+**🇺🇸** Zone-based firewall (Internet, VCN, VPN, Floating) with aliases, schedules, and atomic application.
 
 ## Futuro do Projeto
 

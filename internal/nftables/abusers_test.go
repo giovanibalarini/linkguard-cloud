@@ -75,3 +75,11 @@ func TestSetVaziaNaoEhErro(t *testing.T) {
 		t.Errorf("set sem elementos virou %v", got)
 	}
 }
+
+func linhas(rules [][]string) []string {
+	out := make([]string, len(rules))
+	for i, r := range rules {
+		out[i] = strings.Join(r, " ")
+	}
+	return out
+}

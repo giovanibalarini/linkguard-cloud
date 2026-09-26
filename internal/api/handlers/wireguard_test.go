@@ -97,10 +97,6 @@ func (s wireGuardReconcilerStub) AplicarMudancaVPN(ctx context.Context, por, res
 	return &firewallrules.Applied{}, nil
 }
 
-type wireGuardInputStub struct{ err error }
-
-func (s wireGuardInputStub) ReconcileInputProtection(context.Context) error { return s.err }
-
 func newWireGuardHandlerTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -141,7 +137,7 @@ func TestWireGuardEnrollUsesAuthenticatedUserAndNeverAuditsPrivateConfig(t *test
 		ClientConfig: "[Interface]\nPrivateKey = " + private,
 		QRDataURL:    "data:image/svg+xml;base64,PHN2Zz4=",
 	}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	req := httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment", nil)
 	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{
 		UserID: "local-user", Username: "luan",
@@ -174,7 +170,7 @@ func TestWireGuardEnrollUsesAuthenticatedUserAndNeverAuditsPrivateConfig(t *test
 func TestWireGuardUpdateRejectsInjectionBeforeCallingService(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	body := `{"enabled":true,"listen_port":51820,"address":"10.7.0.1/24\nPostUp = touch /tmp/pwn","endpoint_host":"vpn.example.test"}`
 	w := httptest.NewRecorder()
 
@@ -191,7 +187,7 @@ func TestWireGuardUpdateRejectsInjectionBeforeCallingService(t *testing.T) {
 func TestWireGuardEnrollmentSurvivesIntegrationFailure(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "one-time-private"}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{err: errors.New("nft unavailable")}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{err: errors.New("nft unavailable")})
 	req := httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment", nil)
 	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "local-user"}))
 	w := httptest.NewRecorder()
@@ -212,7 +208,7 @@ func TestWireGuardSetPeerAccess(t *testing.T) {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
 	svc := &wireGuardServiceStub{}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 
 	r := chi.NewRouter()
 	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
@@ -240,7 +236,7 @@ func TestWireGuardSetPeerAccessGuardaOPerfilDeTunel(t *testing.T) {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
 	svc := &wireGuardServiceStub{}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 
 	r := chi.NewRouter()
 	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
@@ -268,7 +264,7 @@ func TestWireGuardSetPeerAccessRecusaAliasInexistente(t *testing.T) {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
 	svc := &wireGuardServiceStub{}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	r := chi.NewRouter()
 	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
 
@@ -313,7 +309,7 @@ func TestWireGuardSetPeerAccessReverteEmFalhaDoFirewall(t *testing.T) {
 	}
 	svc := &wireGuardServiceRealUpdateStub{db: db}
 	applierFalha := wireGuardReconcilerStub{err: errors.New("falha nftables")}
-	h := NewWireGuardHandler(db, svc, applierFalha, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, applierFalha)
 	r := chi.NewRouter()
 	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
 
@@ -344,7 +340,7 @@ func TestWireGuardSetPeerAccessRecusaTunelERotaInvalidosAntesDoServico(t *testin
 		t.Run(nome, func(t *testing.T) {
 			db := newWireGuardHandlerTestDB(t)
 			svc := &wireGuardServiceStub{}
-			h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+			h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 			r := chi.NewRouter()
 			r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
 
@@ -365,7 +361,7 @@ func TestWireGuardSetPeerAccessRecusaTunelERotaInvalidosAntesDoServico(t *testin
 func TestWireGuardReemiteConfigDoProprioUsuario(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "config-reemitida"}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment/config", nil)
 	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "local-user"}))
@@ -392,7 +388,7 @@ func TestWireGuardReemiteConfigDoProprioUsuario(t *testing.T) {
 func TestWireGuardReemissaoExigeAutenticacao(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	w := httptest.NewRecorder()
 
 	h.ReissueSelf(w, httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment/config", nil))
@@ -408,7 +404,7 @@ func TestWireGuardReemissaoExigeAutenticacao(t *testing.T) {
 func TestWireGuardAdminEntregaAVPNDeOutraPessoaComOPerfil(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "config-do-diego"}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	r := chi.NewRouter()
 	r.Post("/api/vpn/peers/{userID}/enrollment", h.EnrollPeer)
 
@@ -437,7 +433,7 @@ func TestWireGuardAdminEntregaAVPNDeOutraPessoaComOPerfil(t *testing.T) {
 func TestWireGuardAdminEntregaSemPerfilMantemOAtual(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	r := chi.NewRouter()
 	r.Post("/api/vpn/peers/{userID}/enrollment", h.EnrollPeer)
 
@@ -459,7 +455,7 @@ func TestWireGuardAdminEntregaRecusaPerfilInvalidoAntesDoServico(t *testing.T) {
 		t.Run(nome, func(t *testing.T) {
 			db := newWireGuardHandlerTestDB(t)
 			svc := &wireGuardServiceStub{}
-			h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+			h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 			r := chi.NewRouter()
 			r.Post("/api/vpn/peers/{userID}/enrollment", h.EnrollPeer)
 
@@ -477,7 +473,7 @@ func TestWireGuardAdminEntregaRecusaPerfilInvalidoAntesDoServico(t *testing.T) {
 func TestWireGuardAdminReemiteAConfigDeOutraPessoa(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "config-atual"}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 	r := chi.NewRouter()
 	r.Post("/api/vpn/peers/{userID}/config", h.ReissuePeer)
 
@@ -497,7 +493,7 @@ func TestWireGuardAdminReemiteAConfigDeOutraPessoa(t *testing.T) {
 func TestWireGuardMinhaVPNUsaSoOUsuarioDoToken(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	svc := &wireGuardServiceStub{mine: wireguard.MyVPN{Enabled: true, Reach: []wireguard.Reach{}}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/vpn/me?user=outra-pessoa", nil)
 	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "u-diego"}))
@@ -525,7 +521,7 @@ func TestWireGuardCandidatosSaoQuemAindaNaoTemVPN(t *testing.T) {
 	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-bia", PublicKey: "pk", Address: "10.7.0.2/32", SecretName: "s"}); err != nil {
 		t.Fatalf("UpsertWireGuardPeer: %v", err)
 	}
-	h := NewWireGuardHandler(db, &wireGuardServiceStub{}, wireGuardReconcilerStub{}, wireGuardInputStub{})
+	h := NewWireGuardHandler(db, &wireGuardServiceStub{}, wireGuardReconcilerStub{})
 	w := httptest.NewRecorder()
 	h.Candidates(w, httptest.NewRequest(http.MethodGet, "/api/vpn/candidates", nil))
 

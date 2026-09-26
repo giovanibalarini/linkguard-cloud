@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -80,34 +81,6 @@ const captureTimeout = 3 * time.Minute
 
 func main() {
 	os.Exit(run())
-}
-
-// algumaPlacaPorDHCP diz se alguma placa da máquina pega endereço por DHCP.
-//
-// Decide se a chain input precisa aceitar udp/68: a renovação unicast em T1
-// passa por conntrack, mas o REBIND sai de 0.0.0.0:68 para broadcast e não casa
-// a tupla de retorno. Sem a linha, a WAN nunca mais renova depois de um flap de
-// link — e o sintoma aparece dias depois, como "a internet caiu sozinha".
-//
-// Lê o KERNEL (o flag `dynamic` do endereço), e não a tabela de interfaces
-// editadas pelo painel: na nuvem ninguém edita a placa, e a VNIC primária da
-// Oracle pega endereço por DHCP. A tabela vazia fazia esta função dizer "não"
-// justamente na máquina que depende da linha.
-//
-// Erro de leitura devolve TRUE: emitir a linha à toa numa máquina estática não
-// abre nada (ninguém manda DHCP para ela), enquanto omiti-la numa máquina que
-// precisa dela derruba a internet. O lado seguro é o permissivo aqui, e só aqui.
-func algumaPlacaPorDHCP(ctx context.Context, svc *netif.Service) bool {
-	views, err := svc.List(ctx)
-	if err != nil {
-		return true
-	}
-	for _, v := range views {
-		if !v.Live.System && v.AddrMode == netif.AddrModeDHCP {
-			return true
-		}
-	}
-	return false
 }
 
 func run() int {
@@ -508,27 +481,12 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// produção (reshuffle de PCI, enp4s0 → enp5s0). Esta ligação é o que permite
 	// ao produto AVISAR; corrigir sozinho seria adivinhar qual interface o admin
 	// queria, e desativar a regra em silêncio é o mesmo defeito com outro nome.
-	// A postura do firewall (issue #78). As duas fontes andam juntas: sem a de
-	// acesso administrativo, uma política restritiva renderiza sem saber o que
-	// manter aberto — e é assim que o admin se tranca fora. O renderizador
-	// aborta nesse caso, e esta ligação é o que faz o caso não acontecer.
-	nftSvc.SetInputPolicySource(frSvc.InputPolicy)
-	// A decisão de fechar a gerência nas WANs é lida a cada reconciliação, e não
-	// guardada em memória, pelo mesmo motivo da política: a reversão automática
-	// da janela de 90 s reescreve o valor no banco, e a reconciliação seguinte
-	// tem de obedecer ao que a reversão gravou — não ao que o processo lembrava.
-	nftSvc.SetWANMgmtClosedSource(frSvc.WANMgmtClosed)
 	// Alerta que NOMEIA aparelho só sai da caixa com escolha explícita (#117).
 	// Ver tiposQueNomeiamAparelho em internal/alerts e a regra escrita em
 	// internal/metrics/exposicao.go.
 	alertSvc.SetNotificarAparelho(func() (bool, error) {
 		return notifySvc.LoadConfig().NotificarAparelho, nil
 	})
-	// A contenção de tentativa repetida (#127) é opt-in e lida a cada
-	// reconciliação, pelo mesmo motivo das outras: o valor pode mudar pela tela
-	// e tem de valer na reconciliação seguinte, sem reiniciar nada.
-	nftSvc.SetEdgeContainmentSource(frSvc.EdgeContainment)
-	nftSvc.SetForwardPolicySource(frSvc.ForwardPolicy)
 	// O EIXO DAS REGRAS DE FIREWALL SAI DAQUI.
 	//
 	// Numa caixa com várias interfaces, "veio de dentro" é `iifname != { WANs
@@ -568,39 +526,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 			PathMTU: uplinkDaPlataforma(plat).PathMTU,
 		}, nil
 	})
-	nftSvc.SetAdminAccessSource(func() (nftables.AdminAccess, error) {
-		// As sub-redes das placas, como a fabric informa. Nunca um default
-		// cravado: essa lista existe justamente para o admin não se trancar
-		// para fora, e uma rede de terceiro aqui dentro seria buraco.
-		redes := redesDasPlacas(plat)
-		// A porta do painel NÃO é fixa: 8080 é o default do binário, 9997 o do
-		// .deb, e quem põe proxy usa outra. Fixá-la aqui deixaria o anti-lockout
-		// mudo justamente em quem não usa o padrão.
-		// A porta do SSH sai de onde o sshd está ESCUTANDO, não de um literal.
-		// Fixá-la em 22 era o mesmo erro que o comentário acima denuncia para a
-		// porta do painel, cometido para o outro serviço: numa caixa com
-		// `Port 2222`, a regra que existe para não trancar o admin descartaria
-		// exatamente a porta por onde ele entra.
-		return nftables.AdminAccess{
-			PanelPort:   cfg.Port,
-			SSHPorts:    system.SSHPorts(context.Background(), exec),
-			ExtraPorts:  cfg.ExtraPorts,
-			LANNetworks: redes,
-			WANIsDHCP:   algumaPlacaPorDHCP(context.Background(), netifSvc),
-		}, nil
-	})
 
-	frSvc.SetIfaceLister(func() ([]string, error) {
-		views, err := netifSvc.List(context.Background())
-		if err != nil {
-			return nil, err
-		}
-		nomes := make([]string, 0, len(views))
-		for _, v := range views {
-			nomes = append(nomes, v.Name)
-		}
-		return nomes, nil
-	})
 	sysCollector := system.NewCollector()
 	// O consumo por host passa a vir dos contadores do nftables (#112), e não
 	// mais das conexões vivas do conntrack — que perdiam os bytes assim que a
@@ -611,23 +537,6 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// Persist não dumpa — ver o topo de internal/nftables/flows.go. Nasce
 	// desligado; quem liga é o administrador, na tela.
 	fluxosSvc := hostflows.NovoServico(nftSvc, db)
-
-	// A opção de registrar bloqueios (#122) é lida do banco a cada
-	// reconciliação, e não guardada em memória: o admin pode ligá-la pelo
-	// painel, e o valor tem de valer na reconciliação seguinte sem reiniciar
-	// nada. Mesmo desenho da política padrão da chain input.
-	nftSvc.SetBlockLogSource(func() (bool, error) { return handlers.BlockLogEnabled(db) })
-
-	// A proteção de entrada das WANs (#119) lê a MESMA lista que o masquerade e
-	// a contabilidade, e pelo mesmo motivo lê a cada reconciliação em vez de
-	// guardar em memória: trocar a interface de um link tem de valer na
-	// reconciliação seguinte, sem reiniciar nada.
-	//
-	// E é wansEfetivas, e não o laço sobre os links: numa VM de nuvem sem link
-	// cadastrado a lista passa a ser a do uplink derivado da plataforma, e a
-	// proteção de entrada (mais a tela de exposição) deixa de dizer "sem WAN
-	// conhecida" numa máquina que tem uma.
-	nftSvc.SetWANInterfacesSource(func() ([]string, error) { return wansEfetivas(context.Background(), exec, plat) })
 
 	rrdSvc := tsdb.NewService(db)
 
@@ -651,10 +560,9 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// which exists on no interface and so cannot be discovered here.
 	wgSvc := wireguard.NewService(db, secretsSvc, exec)
 	wgSvc.SetInstallExecutor(pkgExec)
-	// These callbacks are read at every reconcile. No WireGuard state is
-	// duplicated into nftables or netsvc persistence, so boot and retries are
+	// This callback is read at every reconcile. No WireGuard state is
+	// duplicated into netsvc persistence, so boot and retries are
 	// idempotent and a disabled tunnel removes both projections.
-	nftSvc.SetWireGuardInputSource(wgSvc.InputPort)
 	unboundSvc.SetDNSBindingSource(wgSvc.DNSBinding)
 
 	frSvc.SetFonteInsumos(func(ctx context.Context) (nftables.Insumos, error) {
@@ -696,11 +604,7 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 			return nftables.Insumos{}, err
 		}
 
-		portasGerencia := nftables.PortasDeGerenciaLista(nftables.AdminAccess{
-			PanelPort:  cfg.Port,
-			SSHPorts:   system.SSHPorts(ctx, exec),
-			ExtraPorts: cfg.ExtraPorts,
-		})
+		portasGerencia := portasDeGerenciaLista(cfg.Port, system.SSHPorts(ctx, exec), cfg.ExtraPorts)
 
 		return nftables.Insumos{
 			RedesVCN:       redesLocais(db, plat),
@@ -1485,4 +1389,32 @@ func generateInitialPassword() (string, error) {
 		out[i] = alphabet[n.Int64()]
 	}
 	return string(out), nil
+}
+
+func portasDeGerenciaLista(panelPort int, sshPorts, extraPorts []int) []int {
+	seen := make(map[int]bool)
+	var out []int
+	add := func(p int) {
+		if p > 0 && p <= 65535 && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	if len(sshPorts) == 0 {
+		add(22)
+	} else {
+		for _, p := range sshPorts {
+			add(p)
+		}
+	}
+	if panelPort > 0 {
+		add(panelPort)
+	} else {
+		add(8080)
+	}
+	for _, p := range extraPorts {
+		add(p)
+	}
+	sort.Ints(out)
+	return out
 }

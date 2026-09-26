@@ -182,26 +182,14 @@ Hoje a auth é single-user (`admin/admin` + JWT). Evoluir para:
 - [x] Remover linha morta `ip rule add 192.168.18.1 from sumicity` — o script
       que a continha não existe mais.
 
-### Fase 1 — Firewall básico em 1 clique
-Para máquinas que querem virar firewall "do zero".
-- [x] Habilitar `ip_forward` + NAT (MASQUERADE) escopado por WAN.
-- [x] Política FORWARD sã por padrão — decisão diferente da esperada
-      originalmente: a política é sempre `accept` (nunca restritiva), e o
-      bloqueio é só por regra explícita. É deliberado — numa máquina só
-      acessível remotamente, uma política restritiva tranca o operador para
-      fora no instante em que é aplicada. Ver `docs/TRAJETORIA.md`.
-- [x] **Grupos de regras via chains nativas** (nft chains) — ativar/desativar um
-      grupo inteiro removendo/inserindo o jump, sem mexer regra a regra. Tela
-      própria ("Grupos de regras"), com Direcionamento por WAN / Destinos
-      bloqueados / Hosts bloqueados numa aba separada ("Bloqueios e
-      direcionamento").
+### Fase 1 — Firewall por zonas
+Para máquinas que querem virar gateway e firewall na nuvem.
+- [x] Habilitar `ip_forward` + NAT (MASQUERADE) escopado pela interface de uplink.
+- [x] **Firewall por zonas** (Internet, VCN, VPN, Flutuantes) via nftables nativo —
+      regras declarativas por zona, aliases de IP/porta, agendamentos e NAT.
+      Aplicação transacional atômica com janela de confirmação de 90 segundos
+      e rollback automático. Ver `docs/superpowers/plans/2026-09-25-firewall-por-zonas-plan.md`.
 
-> **Mudança de comportamento (Fase C1):** hosts e destinos bloqueados agora
-> são avaliados **antes** das regras do admin e sempre vencem — antes era o
-> contrário, e um `accept` de grupo conseguia anular um bloqueio. Quem
-> atualizar uma instalação em produção precisa revisar bloqueios e grupos:
-> algo que hoje passa por causa de uma regra de grupo pode passar a ser
-> bloqueado depois da atualização.
 
 ### Fase 2 — Host-cêntrico (a fundação que destrava o resto)
 - [x] Inventário de hosts da LAN trafegando dados (ip neigh + conntrack).

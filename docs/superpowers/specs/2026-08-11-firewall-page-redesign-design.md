@@ -1,3 +1,5 @@
+> **Aviso:** Substituído por `docs/superpowers/plans/2026-09-25-firewall-por-zonas-plan.md`.
+
 # Tela de Firewall: ver o firewall inteiro e editar como appliance
 
 ## 1. Motivação

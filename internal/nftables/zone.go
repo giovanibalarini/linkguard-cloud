@@ -318,6 +318,17 @@ func (z Zone) netSet() string {
 	return networkSet(z.localNets)
 }
 
+func networkSet(nets []string) string {
+	out := "{ "
+	for i, n := range nets {
+		if i > 0 {
+			out += ", "
+		}
+		out += n
+	}
+	return out + " }"
+}
+
 // ─── A ligação com a plataforma ──────────────────────────────────────────────
 
 // SetZoneFactsSource liga a fonte que diz em que tipo de máquina este firewall

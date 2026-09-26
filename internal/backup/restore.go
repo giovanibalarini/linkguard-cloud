@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/monitoring"
 	"github.com/giovanibalarini/linkguard-cloud/internal/netsvc"
@@ -125,13 +124,13 @@ var knownSettingsValidators = map[string]func(raw string) error{
 //     do firewall legado para zonas já rodou nesta máquina e o relatório da
 //     conversão local. Não devem viajar entre máquinas.
 var machineLocalSettingKeys = map[string]bool{
-	nftables.LiveSnapshotSettingKey:  true,
-	firewallrules.ImportedSettingKey: true,
-	firewallrules.ApplyStatusKey:     true,
-	netsvcApplyStatusKey:             true,
-	platform.SnapshotSettingKey:      true,
-	"fw_zonas_convertido":            true,
-	"fw_conversao_relatorio":         true,
+	nftables.LiveSnapshotSettingKey: true,
+	"firewall_rules_imported":       true,
+	"firewall_rules_apply":          true,
+	netsvcApplyStatusKey:            true,
+	platform.SnapshotSettingKey:     true,
+	"fw_zonas_convertido":           true,
+	"fw_conversao_relatorio":        true,
 }
 
 // As três chaves abaixo espelham constantes não exportadas de

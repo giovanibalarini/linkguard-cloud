@@ -97,29 +97,3 @@ func TestNormalizeDays(t *testing.T) {
 		t.Errorf("duplicata sobreviveu: %q", got)
 	}
 }
-
-func TestJumpDoGrupoCarregaAJanela(t *testing.T) {
-	g := StoredGroup{
-		ID: "g1", ChainName: "grp_abc", Enabled: true,
-		CondIif: "br10", CondSaddr: "192.168.3.0/24",
-		SchedDays: "mon,tue", SchedStart: "22:00", SchedEnd: "06:00",
-	}
-	tokens, err := groupJumpTokens(g)
-	if err != nil {
-		t.Fatalf("groupJumpTokens: %v", err)
-	}
-	got := strings.Join(tokens, " ")
-	want := `iifname br10 meta day { "Monday", "Tuesday" } meta hour "22:00"-"06:00" ip saddr 192.168.3.0/24 counter jump grp_abc`
-	if got != want {
-		t.Errorf("jump:\n  %q\nqueria:\n  %q", got, want)
-	}
-}
-
-func TestJanelaInvalidaDerrubaOGrupoEmVezDeIrPeloMeio(t *testing.T) {
-	// Um grupo com janela quebrada não pode virar regra sem a janela: ele
-	// valeria 24 horas por dia, que é o oposto do que o admin configurou.
-	g := StoredGroup{ID: "g1", ChainName: "grp_abc", Enabled: true, SchedStart: "22:00"}
-	if _, err := groupJumpTokens(g); err == nil {
-		t.Error("janela sem fim gerou jump em vez de erro")
-	}
-}

@@ -1,3 +1,5 @@
+> **Aviso:** Substituído por `docs/superpowers/plans/2026-09-25-firewall-por-zonas-plan.md`.
+
 # Grupo que vale só para conexões novas
 
 ## 1. De onde isto veio

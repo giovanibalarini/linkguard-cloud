@@ -28,14 +28,6 @@ type wireGuardService interface {
 	RecordIntegrationError(error)
 }
 
-type wireGuardReconciler interface {
-	Reconcile(context.Context) error
-}
-
-type wireGuardInputReconciler interface {
-	ReconcileInputProtection(context.Context) error
-}
-
 type vpnApplier interface {
 	AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error)
 }
@@ -49,7 +41,7 @@ type WireGuardHandler struct {
 	reloadDNS func(context.Context) error
 }
 
-func NewWireGuardHandler(db *storage.DB, svc wireGuardService, fr vpnApplier, _ wireGuardInputReconciler) *WireGuardHandler {
+func NewWireGuardHandler(db *storage.DB, svc wireGuardService, fr vpnApplier) *WireGuardHandler {
 	return &WireGuardHandler{db: db, svc: svc, fr: fr}
 }
 

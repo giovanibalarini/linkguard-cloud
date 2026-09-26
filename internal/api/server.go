@@ -340,94 +340,17 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		// balanceamento de duas WANs, saiu junto com ele na versão cloud.
 		r.With(require(auth.PermFirewallRead)).Get("/api/firewall/backups", iptH.ListBackups)
 
-		// nftables (native firewall management — replaces iptables)
+		// nftables (ruleset, managed, blocklist, pending change, abusers)
 		nftH := handlers.NewNftablesHandler(s.nftSvc, s.db, s.frSvc)
-		if cfg.DomainRouting != nil {
-			nftH.SetDomainRouting(cfg.DomainRouting)
-		}
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/overview", nftH.Overview)
 		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/ruleset", nftH.Ruleset)
-		// Pré-visualização: renderiza a linha nft pelo MESMO código que monta a
-		// que vai para o kernel. Leitura pura — não toca banco nem nftables.
-		r.With(require(auth.PermFirewallRead)).Post("/api/nftables/rules/preview", nftH.PreviewRule)
-		r.With(require(auth.PermFirewallRead)).Post("/api/nftables/groups/preview", nftH.PreviewGroup)
 		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/managed", nftH.Managed)
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/backups", nftH.ListBackups)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/backup", nftH.Backup)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/rollback", nftH.Rollback)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/blocklist", nftH.Blocklist)
 		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/blocklist", nftH.Blocklist)
-		// The admin's own rules (Phase B, design spec §4.1): id-based CRUD
-		// against the DB, not nft's volatile handle — every mutation
-		// reconciles user_rules immediately so nft never lags what the panel
-		// shows.
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/rules", nftH.ListRules)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/rules", nftH.CreateRule)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/nftables/rules", nftH.UpdateRule)
-		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/rules", nftH.DeleteRule)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/rules/reorder", nftH.ReorderRules)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/rules/toggle", nftH.ToggleRule)
-		// Grupos de regras (Fase C1, design spec §2): cada grupo é uma chain
-		// própria, alcançada por um jump condicional a partir da forward.
-		// Ligar/desligar o grupo é pôr/tirar esse jump; reordenar é reescrever
-		// a forward. Mesmo gating das regras — ler é PermFirewallRead,
-		// qualquer mutação é PermFirewallWrite.
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/groups", nftH.ListGroups)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/groups", nftH.CreateGroup)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/nftables/groups", nftH.UpdateGroup)
-		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/groups", nftH.DeleteGroup)
-
-		// Grupos de Hosts (reutilizáveis em regras de firewall e perfis ZTNA da VPN)
-		hostGroupH := handlers.NewHostGroupHandler(s.db, s.wgSvc)
-		r.With(require(auth.PermFirewallRead)).Get("/api/hostgroups", hostGroupH.List)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/hostgroups", hostGroupH.Create)
-		r.With(require(auth.PermFirewallRead)).Get("/api/hostgroups/{id}", hostGroupH.Get)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/hostgroups/{id}", hostGroupH.Update)
-		r.With(require(auth.PermFirewallWrite)).Delete("/api/hostgroups/{id}", hostGroupH.Delete)
-
-		// Registro do que o firewall descarta (#122). Leitura com
-		// firewall.read; ligar/desligar muda as REGRAS, então é firewall.write.
-		blockLogH := handlers.NewBlockLogHandler(s.db, blocklog.NewService(s.exec), s.nftSvc, s.frSvc)
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/block-log", blockLogH.Status)
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/block-log/entries", blockLogH.Entries)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/nftables/block-log", blockLogH.SetStatus)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/groups/toggle", nftH.ToggleGroup)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/groups/reorder", nftH.ReorderGroups)
-		// Confirmar-ou-reverte (Fase C2, spec §5): toda mutação que envolve um
-		// grupo de escopo input é aplicada com prazo de 90 segundos para o
-		// operador confirmar que ainda tem acesso; sem confirmação, o LinkGuard
-		// reverte sozinho. O GET é o que o painel lê para desenhar a faixa com
-		// a contagem regressiva, e os dois POSTs são as saídas da janela.
-		//
-		// Confirmar e reverter são PermFirewallWrite porque mudam o firewall
-		// que vai valer daqui em diante; ler o pendente é PermFirewallRead,
-		// como toda outra leitura de firewall. Ler não pode ser mais restrito
-		// que isso: um operador que enxerga o painel precisa enxergar a faixa
-		// que explica por que a edição está travada.
-		// A postura do firewall. Ler é leitura de firewall; trocar exige escrita
-		// E passa pela janela de 90 segundos, como toda mutação que alcança a
-		// chain input (issue #78).
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/policy", nftH.GetInputPolicy)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/nftables/policy", nftH.SetInputPolicy)
 		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/pending", nftH.PendingChange)
-		// Fechar a gerência nas WANs (#119, fase 3b) exige a MESMA permissão de
-		// trocar a postura: as duas podem cortar o acesso de quem as faz.
-		// Contenção de tentativa repetida (#127). Ler exige só leitura; liberar
-		// alguém é mexer no firewall.
-		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/abusers", nftH.Contidos)
-		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/abusers", nftH.LiberarContido)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/nftables/wan-management", nftH.SetWANManagement)
-		r.With(require(auth.PermFirewallWrite)).Put("/api/nftables/edge-containment", nftH.SetEdgeContainment)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/pending/confirm", nftH.ConfirmPendingChange)
 		r.With(require(auth.PermFirewallWrite)).Post("/api/nftables/pending/revert", nftH.RevertPendingChange)
-
-		// Port forwarding (DNAT)
-		// WithReconciler: sem ele, o encaminhamento escreve o DNAT e nunca
-		// reconcilia as chains construídas do banco (issue #82).
-		pfH := handlers.NewPortForwardHandler(s.db, s.nftSvc).WithReconciler(s.frSvc)
-		r.With(require(auth.PermFirewallRead)).Get("/api/portforward", pfH.List)
-		r.With(require(auth.PermFirewallWrite)).Post("/api/portforward", pfH.Upsert)
-		r.With(require(auth.PermFirewallWrite)).Delete("/api/portforward", pfH.Delete)
+		r.With(require(auth.PermFirewallRead)).Get("/api/nftables/abusers", nftH.Contidos)
+		r.With(require(auth.PermFirewallWrite)).Delete("/api/nftables/abusers", nftH.LiberarContido)
 
 		// Firewall por zonas (/api/firewall/*)
 		fwH := handlers.NewFirewallHandler(s.db, s.frSvc, s.nftSvc).WithBlockLog(blocklog.NewService(s.exec))
@@ -560,7 +483,7 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		// with no matching GET for client material: the private config and QR
 		// exist in that one protected response only.
 		if s.wgSvc != nil {
-			vpnH := handlers.NewWireGuardHandler(s.db, s.wgSvc, s.frSvc, s.nftSvc)
+			vpnH := handlers.NewWireGuardHandler(s.db, s.wgSvc, s.frSvc)
 			vpnH.SetDNSReload(netH.ReloadCurrent)
 			r.With(require(auth.PermVPNRead)).Get("/api/vpn", vpnH.Get)
 			r.With(require(auth.PermVPNWrite)).Put("/api/vpn", vpnH.UpdateConfig)

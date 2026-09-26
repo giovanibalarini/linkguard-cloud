@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
+	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
 // TestMain tira do caminho, para TODO teste deste binário (os dois pacotes de
@@ -36,3 +38,33 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(dir) //nolint:errcheck // limpeza de melhor esforço
 	os.Exit(code)
 }
+
+func newTestDB(t *testing.T) *storage.DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := storage.Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+type fakeClock struct {
+	wall time.Time
+	mono time.Time
+}
+
+func newFakeClock(t time.Time) *fakeClock { return &fakeClock{wall: t, mono: t} }
+
+func (c *fakeClock) wire(s *Service) {
+	s.now = func() time.Time { return c.wall }
+	s.monoNow = func() time.Time { return c.mono }
+}
+
+func (c *fakeClock) advance(d time.Duration) {
+	c.wall = c.wall.Add(d)
+	c.mono = c.mono.Add(d)
+}
+
+func (c *fakeClock) jumpWall(d time.Duration) { c.wall = c.wall.Add(d) }

@@ -23,14 +23,12 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
-	"github.com/giovanibalarini/linkguard-cloud/internal/nftables"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
@@ -121,108 +119,14 @@ func (h *NftablesHandler) pendingView(p *storage.PendingChange) *pendingView {
 	return v
 }
 
-// windowSnapshot é a parte do snapshot da janela que este arquivo lê: o estado
-// ANTERIOR dos grupos e das regras, como firewallrules.stateSnapshot o
-// serializa. Declarado aqui porque aquele tipo é privado do outro pacote, e o
-// que se compara são os mesmos dois campos com as mesmas tags.
-type windowSnapshot struct {
-	Groups []storage.FirewallGroup `json:"groups"`
-	Rules  []storage.FirewallRule  `json:"rules"`
+type snapshotHeader struct {
+	Formato int `json:"formato"`
 }
 
-// newConnectionsOnly diz se esta janela deixou valendo um grupo de escopo
-// input restrito a "só conexões novas" — isto é, se o teste de acesso dos 90
-// segundos MENTE para esta mudança (spec §5).
-//
-// A pergunta não é "existe algum grupo assim na máquina", e a diferença é o
-// que separa o aviso de virar ruído: um grupo restrito que já estava lá e que
-// esta mudança não tocou não muda nada para quem está testando agora, e um
-// aviso que aparece em toda janela é um aviso que ninguém lê. A pergunta é
-// "algum grupo restrito de input passou a valer, ou passou a valer DIFERENTE,
-// por causa desta mudança" — o que se responde comparando o estado de agora
-// com o snapshot que a própria janela guarda.
-//
-// Ela olha só para o lado de AGORA, e por isso SOLTAR a restrição (new → any)
-// não liga o aviso: ali o grupo volta a derrubar o que já está de pé, a sessão
-// do operador cai junto se for atingida, e o teste dos 90 segundos volta a ser
-// verdade. Avisar seria dizer "a sua sessão atual não é afetada" para uma
-// mudança que a afeta — o erro na direção perigosa.
-//
-// Erro de leitura devolve TRUE, e não false: sem saber, o mínimo honesto é
-// mandar o operador testar com uma conexão nova. O custo disso é ele abrir um
-// segundo SSH à toa; o custo do contrário é ele confirmar um bloqueio que a
-// sessão aberta escondeu.
 func (h *NftablesHandler) newConnectionsOnly(snapshot string) bool {
-	only, err := h.newConnectionsOnlyOrError(snapshot)
-	if err != nil {
-		slog.Error("não foi possível decidir se esta janela é de um grupo restrito a conexões novas; a faixa vai avisar por precaução", "err", err)
-		return true
-	}
-	return only
-}
-
-func (h *NftablesHandler) newConnectionsOnlyOrError(snapshot string) (bool, error) {
-	var before windowSnapshot
-	if err := json.Unmarshal([]byte(snapshot), &before); err != nil {
-		return false, fmt.Errorf("snapshot da janela ilegível: %w", err)
-	}
-	groups, err := h.db.ListFirewallGroups()
-	if err != nil {
-		return false, fmt.Errorf("ler os grupos: %w", err)
-	}
-	rules, err := h.db.ListFirewallRules()
-	if err != nil {
-		return false, fmt.Errorf("ler as regras: %w", err)
-	}
-	was := newOnlyInputSignatures(before.Groups, before.Rules)
-	for id, sig := range newOnlyInputSignatures(groups, rules) {
-		if was[id] != sig {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// newOnlyInputSignatures resume, por grupo, TUDO o que decide o que um grupo
-// de escopo input restrito a `ct state new` corta: a linha de jump dele
-// (posição na chain, condição de entrada, escopo, a escolha de conexões e o
-// que ele faz com o que sobrar) e as regras de dentro dele, na ordem.
-//
-// As regras entram porque elas são metade da resposta: acrescentar um
-// `drop tcp dport 9997` DENTRO de um grupo restrito que já existia é o caso
-// mais perigoso desta feature — a linha do grupo não muda uma vírgula, o
-// painel passa a ser bloqueado para conexões novas, e a sessão do operador
-// continua de pé mentindo que está tudo bem.
-//
-// Ficam de fora, de propósito: nome, descrição e carimbos de tempo. Renomear
-// um grupo não muda uma linha do firewall, e UpdatedAt muda em toda edição —
-// os dois diriam "mudou" onde nada mudou para quem está testando o acesso.
-//
-// Grupo desligado não entra: ele não põe linha nenhuma na chain, então não
-// corta nada. É também o que faz DESLIGAR um grupo restrito não ligar o aviso.
-func newOnlyInputSignatures(groups []storage.FirewallGroup, rules []storage.FirewallRule) map[string]string {
-	byGroup := make(map[string][]storage.FirewallRule, len(groups))
-	for _, r := range rules {
-		byGroup[r.GroupID] = append(byGroup[r.GroupID], r)
-	}
-	out := make(map[string]string, len(groups))
-	for _, g := range groups {
-		if !g.Enabled || !groupReachesInput(g) {
-			continue
-		}
-		if nftables.GroupConnState(firewallrules.ToStoredGroup(g)) != nftables.ConnStateNew {
-			continue
-		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "%d|%s|%s|%s|%s|%s|%s",
-			g.Position, g.Scope, g.ConnState, g.CondIif, g.CondSaddr, g.CondDaddr, g.Fallthrough)
-		for _, r := range byGroup[g.ID] {
-			fmt.Fprintf(&b, "\n%s|%t|%d|%s|%s|%s|%s|%s|%s|%s",
-				r.ID, r.Enabled, r.Position, r.Action, r.Iif, r.Oif, r.Saddr, r.Daddr, r.Proto, r.Dport)
-		}
-		out[g.ID] = b.String()
-	}
-	return out
+	var header snapshotHeader
+	_ = json.Unmarshal([]byte(snapshot), &header)
+	return header.Formato == 2
 }
 
 // pendingResponse é o corpo do GET. O campo é um ponteiro SEM omitempty: sem
@@ -430,42 +334,4 @@ func (h *NftablesHandler) RevertPendingChange(w http.ResponseWriter, r *http.Req
 	auditAction(h.db, r, "nft.pending.revert", "pending:"+id, p.Summary)
 	saveNftSnapshot(r.Context(), h.db, h.svc)
 	writeJSON(w, http.StatusOK, okResult(nil))
-}
-
-// groupReachesInput diz se este grupo é alcançado na chain input — isto é, se
-// mexer nele pode trancar o operador para fora da própria máquina.
-//
-// A pergunta é feita por GroupHostChain, e não pela coluna scope crua, porque
-// é ela que decide de verdade onde o `jump` do grupo é escrito: grupo do
-// sistema é sempre forward, qualquer que seja o valor da coluna, e escopo
-// vazio (toda linha anterior à Fase C2) conta como forward. Ler a coluna
-// direto aqui abriria janela para grupo do sistema com scope sujo e faria a
-// resposta divergir do que o renderizador realmente faz.
-func groupReachesInput(g storage.FirewallGroup) bool {
-	return nftables.GroupHostChain(firewallrules.ToStoredGroup(g)) == nftables.InputChain
-}
-
-// inputOrderChanged diz se a reordenação mexeu na posição de algum item que
-// vive na chain input.
-//
-// `current` é a ordem de hoje (já ordenada por posição, como o banco devolve)
-// e `next` é a lista pedida. O critério é largo de propósito: basta o ÍNDICE
-// de um item de input mudar. O que realmente importa para a chain input é a
-// ordem relativa entre os itens de input, mas distinguir os dois casos com
-// precisão custaria um raciocínio a mais para economizar uma janela — e a
-// regra deste componente é a oposta: na dúvida, abre.
-func inputOrderChanged(current, next []string, isInput map[string]bool) bool {
-	pos := make(map[string]int, len(current))
-	for i, id := range current {
-		pos[id] = i
-	}
-	for i, id := range next {
-		if !isInput[id] {
-			continue
-		}
-		if old, ok := pos[id]; !ok || old != i {
-			return true
-		}
-	}
-	return false
 }

@@ -108,11 +108,10 @@ func TestLegacyIptablesBackupAndRollbackRoutesStayRemoved(t *testing.T) {
 			t.Errorf("a rota legada POST %s voltou a ser registrada. Ela dá flush nas chains do Docker (`ip filter/nat/mangle`) sem trava de janela e sem reconciliar; o que faz backup e rollback do firewall é o par /api/nftables/*.", path)
 		}
 	}
-	// E o par que substitui as duas continua de pé — remover a rota errada seria
-	// tirar do operador o botão de recuperação.
-	for _, path := range []string{"/api/nftables/backup", "/api/nftables/rollback"} {
-		if !bytes.Contains(src, []byte(`Post("`+path+`"`)) {
-			t.Errorf("POST %s sumiu: é ele que faz backup/rollback do firewall desde a migração para nftables", path)
+	// E o histórico de revisões do firewall por zonas substitui o backup cru de nftables.
+	for _, path := range []string{"/api/firewall/historico"} {
+		if !bytes.Contains(src, []byte(`"`+path+`"`)) {
+			t.Errorf("rota %s sumiu: o histórico de revisões substitui o backup cru", path)
 		}
 	}
 }

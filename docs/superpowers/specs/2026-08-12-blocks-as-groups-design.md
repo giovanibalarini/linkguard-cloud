@@ -1,3 +1,5 @@
+> **Aviso:** Substituído por `docs/superpowers/plans/2026-09-25-firewall-por-zonas-plan.md`.
+
 # Bloqueios viram grupos, e o direcionamento por WAN ganha casa própria
 
 ## 1. Motivação

@@ -104,14 +104,11 @@ func TestMexerSoNoZTNADeFullTunnelNaoDesatualizaNada(t *testing.T) {
 
 func TestEditarUmHostGroupDesatualizaQuemOUsaEmSplit(t *testing.T) {
 	db := newTestDB(t)
-	grupo := &storage.HostGroup{Name: "Cluster", Hosts: []string{"10.0.1.20"}}
-	if err := db.CreateHostGroup(grupo); err != nil {
-		t.Fatalf("CreateHostGroup: %v", err)
-	}
+	aliasID := "alias-cluster"
 	split := novoPeerDeTeste(t, db, "splituser")
 	if err := db.UpdateWireGuardPeerAccess(split.UserID, storage.WireGuardPeerAccess{
 		AccessMode:        "restricted",
-		AllowedHostGroups: []string{grupo.ID},
+		AllowedHostGroups: []string{aliasID},
 		TunnelMode:        "split",
 	}); err != nil {
 		t.Fatalf("UpdateWireGuardPeerAccess: %v", err)
@@ -120,13 +117,9 @@ func TestEditarUmHostGroupDesatualizaQuemOUsaEmSplit(t *testing.T) {
 		t.Fatalf("MarkWireGuardConfigIssued: %v", err)
 	}
 
-	// Acrescentar um host ao grupo muda a regra do firewall na hora, mas não o
+	// Acrescentar um host ao grupo/alias muda a regra do firewall na hora, mas não o
 	// arquivo que o usuário baixou: sem a rota, o acesso liberado não funciona.
-	grupo.Hosts = append(grupo.Hosts, "10.0.1.21")
-	if err := db.UpdateHostGroup(grupo); err != nil {
-		t.Fatalf("UpdateHostGroup: %v", err)
-	}
-	if err := db.MarkWireGuardRoutesChangedByHostGroup(grupo.ID); err != nil {
+	if err := db.MarkWireGuardRoutesChangedByHostGroup(aliasID); err != nil {
 		t.Fatalf("MarkWireGuardRoutesChangedByHostGroup: %v", err)
 	}
 	got, err := db.GetWireGuardPeer(split.UserID)

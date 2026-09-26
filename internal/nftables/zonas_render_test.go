@@ -2,8 +2,11 @@ package nftables
 
 import (
 	"encoding/json"
+	"flag"
+	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,6 +15,8 @@ import (
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 )
+
+var atualizarGolden = flag.Bool("update", false, "regrava os arquivos golden")
 
 func jsonIndented(v any) string {
 	b, err := json.MarshalIndent(v, "", "  ")
@@ -316,6 +321,89 @@ func TestRenderZonas_Goldens(t *testing.T) {
 			}
 		})
 	}
+}
+
+func conferirArquivo(t *testing.T, caminho, corpo string) {
+	t.Helper()
+
+	anterior, err := os.ReadFile(caminho)
+	existia := err == nil
+
+	if *atualizarGolden {
+		if existia && string(anterior) == corpo {
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(caminho), 0o755); err != nil {
+			t.Fatalf("criar o diretório do golden %s: %v", caminho, err)
+		}
+		if err := os.WriteFile(caminho, []byte(corpo), 0o644); err != nil {
+			t.Fatalf("gravar o golden %s: %v", caminho, err)
+		}
+		if !existia {
+			t.Errorf("golden %s CRIADO. A corrida falha de propósito: confira o arquivo novo antes de commitá-lo.", caminho)
+			return
+		}
+		t.Errorf("golden %s REESCRITO, e a saída do produto mudou. A corrida falha de propósito.\n"+
+			"Leia o diff no git e explique por que a mudança é correta ANTES de commitar.\n%s",
+			caminho, diferenca(string(anterior), corpo))
+		return
+	}
+
+	if !existia {
+		t.Fatalf("o golden %s não existe. Rode `go test ./internal/nftables -run <este teste> -update` e confira o arquivo criado; nunca o crie à mão.", caminho)
+	}
+	if string(anterior) == corpo {
+		return
+	}
+	t.Errorf("a saída do produto não bate com o golden %s.\n"+
+		"Se a mudança for intencional, regrave com -update e justifique o diff.\n%s",
+		caminho, diferenca(string(anterior), corpo))
+}
+
+func diferenca(querido, obtido string) string {
+	a := strings.Split(strings.TrimRight(querido, "\n"), "\n")
+	b := strings.Split(strings.TrimRight(obtido, "\n"), "\n")
+
+	lcs := make([][]int, len(a)+1)
+	for i := range lcs {
+		lcs[i] = make([]int, len(b)+1)
+	}
+	for i := len(a) - 1; i >= 0; i-- {
+		for j := len(b) - 1; j >= 0; j-- {
+			if a[i] == b[j] {
+				lcs[i][j] = lcs[i+1][j+1] + 1
+				continue
+			}
+			if lcs[i+1][j] >= lcs[i][j+1] {
+				lcs[i][j] = lcs[i+1][j]
+			} else {
+				lcs[i][j] = lcs[i+1][j+1]
+			}
+		}
+	}
+
+	var out strings.Builder
+	out.WriteString("  (- = o golden guardado, + = o que o produto emite agora)\n")
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		switch {
+		case a[i] == b[j]:
+			i, j = i+1, j+1
+		case lcs[i+1][j] >= lcs[i][j+1]:
+			fmt.Fprintf(&out, "  - %s\n", a[i])
+			i++
+		default:
+			fmt.Fprintf(&out, "  + %s\n", b[j])
+			j++
+		}
+	}
+	for ; i < len(a); i++ {
+		fmt.Fprintf(&out, "  - %s\n", a[i])
+	}
+	for ; j < len(b); j++ {
+		fmt.Fprintf(&out, "  + %s\n", b[j])
+	}
+	return out.String()
 }
 
 // TestRenderZonas_Defeito6_DNATFibDaddrTypeLocal garante que toda regra em prerouting_dnat

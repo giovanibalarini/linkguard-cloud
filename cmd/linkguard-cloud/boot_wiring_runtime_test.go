@@ -163,18 +163,9 @@ func newBootPair(t *testing.T, wire bool) *bootPair {
 
 	frSvc := firewallrules.NewService(db, nftSvc)
 	if wire {
-		// A mesma fonte de NTP do main: sempre desligada na versão de nuvem.
-		ntpInputState := func() ([]string, bool, error) { return nil, false, nil }
-		nftSvc.SetInputChainSources(frSvc.StoredGroups, ntpInputState)
 		nftSvc.SetPersistGuard(frSvc.UnconfirmedChangePending)
 	}
 
-	// Como toda máquina fica no começo do boot, antes de qualquer coisa que
-	// reconcilie: sem os grupos do sistema na lista, Reconcile se recusa a
-	// reconstruir a forward (e com razão).
-	if err := frSvc.EnsureSystemGroups(context.Background()); err != nil {
-		t.Fatalf("criar os grupos do sistema: %v", err)
-	}
 	return &bootPair{db: db, exec: exec, nft: nftSvc, fr: frSvc, confPath: confPath}
 }
 
@@ -196,7 +187,7 @@ func openConfirmationWindow(t *testing.T, db *storage.DB) {
 	t.Helper()
 	err := db.SavePendingChange(storage.PendingChange{
 		ID:        "00000000-0000-4000-8000-00000000dead",
-		Snapshot:  `{"groups":[],"rules":[]}`,
+		Snapshot:  `{"formato":2,"config":{"formato":1,"regras":[]}}`,
 		ExpiresAt: time.Now().Add(90 * time.Second),
 		AppliedBy: "admin",
 		Summary:   "regra de escopo input que dropa tcp/22",
@@ -238,8 +229,8 @@ func TestWiredPersistGuardFreezesTheBootFileWhileAChangeIsUnconfirmed(t *testing
 
 	// 1. Máquina saudável, sem janela aberta: o arquivo de boot descreve o
 	//    firewall vivo.
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("reconciliação inicial: %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("persist inicial: %v", err)
 	}
 	before := readBootFile(t, p.confPath)
 	if !strings.Contains(before, "table inet linkguard") {
@@ -254,8 +245,8 @@ func TestWiredPersistGuardFreezesTheBootFileWhileAChangeIsUnconfirmed(t *testing
 	p.exec.setTable(rulesetAfter)
 	openConfirmationWindow(t, p.db)
 
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("a reconciliação com a janela aberta não pode falhar (as regras entram no kernel normalmente): %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("persist com a janela aberta não pode falhar: %v", err)
 	}
 
 	after := readBootFile(t, p.confPath)
@@ -279,8 +270,8 @@ func TestWiredPersistGuardFreezesTheBootFileWhileAChangeIsUnconfirmed(t *testing
 	if err := p.db.ClearPendingChange(); err != nil {
 		t.Fatalf("fechar a janela de confirmação: %v", err)
 	}
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("reconciliação com a janela fechada: %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("persist com a janela fechada: %v", err)
 	}
 	final := readBootFile(t, p.confPath)
 	if !strings.Contains(final, dangerousInputRule) {
@@ -292,25 +283,20 @@ func TestWiredPersistGuardFreezesTheBootFileWhileAChangeIsUnconfirmed(t *testing
 // janela aberta também não grava. É a mesma decisão do doc-comment de
 // SetPersistGuard, medida do lado do arquivo — e o caminho é real (o banco
 // pode estar travado justamente durante uma reversão).
-//
-// Este é o único ponto em que o teste substitui a expressão de produção por
-// uma função de mentira: não há como fazer o SELECT de
-// UnconfirmedChangePending falhar sem derrubar o banco inteiro, e derrubá-lo
-// mudaria o caminho medido (o Reconcile abortaria antes de chegar ao Persist).
 func TestGuardErrorAlsoFreezesTheBootFile(t *testing.T) {
 	ctx := context.Background()
 	p := newBootPair(t, true)
 
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("reconciliação inicial: %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("persist inicial: %v", err)
 	}
 	before := readBootFile(t, p.confPath)
 
 	p.exec.setTable(rulesetAfter)
 	p.nft.SetPersistGuard(func() (bool, error) { return false, fmt.Errorf("banco travado") })
 
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("a reconciliação não pode falhar por causa da guarda: %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("persist não pode falhar por causa da guarda: %v", err)
 	}
 	if after := readBootFile(t, p.confPath); after != before {
 		t.Errorf("com a guarda em ERRO o arquivo de boot não pode ser gravado por otimismo: não saber se há janela aberta é motivo para não congelar nada no arquivo.\nantes:\n%s\ndepois:\n%s", before, after)
@@ -318,90 +304,23 @@ func TestGuardErrorAlsoFreezesTheBootFile(t *testing.T) {
 }
 
 // TestUnwiredPersistGuardLetsTheUnconfirmedRuleReachTheBootFile é o CONTROLE
-// dos dois testes acima — o vermelho, escrito como teste que passa.
-//
-// Ele monta exatamente a mesma dupla SEM a linha de SetPersistGuard, isto é, o
-// binário que sairia de um refactor que perdesse a ligação, e mede o mesmo
-// arquivo. Se um dia esta afirmação começar a falhar, é porque a proteção
-// passou a vir de outro lugar que não a ligação do main — e aí os testes de
-// cima estariam medindo outra coisa, verdes por acidente. É esta a forma de
-// falha que os guardas de posição de byte não conseguem ter.
+// dos dois testes acima.
 func TestUnwiredPersistGuardLetsTheUnconfirmedRuleReachTheBootFile(t *testing.T) {
 	ctx := context.Background()
 	p := newBootPair(t, false)
-	// A metade do NTP continua ligada: sem ela o Reconcile aborta a chain
-	// input e nem chega ao Persist, e o controle mediria o motivo errado.
-	p.nft.SetInputChainSources(p.fr.StoredGroups, func() ([]string, bool, error) {
-		return nil, false, nil
-	})
 
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("reconciliação inicial: %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("persist inicial: %v", err)
 	}
 	p.exec.setTable(rulesetAfter)
 	openConfirmationWindow(t, p.db)
 
-	if err := p.fr.Reconcile(ctx); err != nil {
-		t.Fatalf("Reconcile: %v", err)
+	if err := p.nft.Persist(ctx); err != nil {
+		t.Fatalf("Persist: %v", err)
 	}
 	if !strings.Contains(readBootFile(t, p.confPath), dangerousInputRule) {
 		t.Fatal("controle quebrado: sem SetPersistGuard o arquivo de boot TINHA que receber a regra não confirmada. Se isto parou de acontecer, os testes da guarda deste arquivo podem estar passando por outro motivo — reveja os três juntos")
 	}
-}
-
-// seedInputScopeGroup cria no banco um grupo de escopo input ativado, como o
-// CRUD real cria, e devolve o nome da chain dele.
-func seedInputScopeGroup(t *testing.T, db *storage.DB) string {
-	t.Helper()
-	id := "11111111-0000-4000-8000-000000000001"
-	existing, err := db.ListFirewallGroups()
-	if err != nil {
-		t.Fatalf("ListFirewallGroups: %v", err)
-	}
-	g := storage.FirewallGroup{
-		ID:          id,
-		Name:        "Acesso ao firewall",
-		ChainName:   nftables.GroupChainName(id),
-		Position:    len(existing),
-		Enabled:     true,
-		Fallthrough: nftables.FallthroughContinue,
-		Scope:       nftables.ScopeInput,
-	}
-	if err := db.CreateFirewallGroup(&g); err != nil {
-		t.Fatalf("CreateFirewallGroup: %v", err)
-	}
-	return g.ChainName
-}
-
-// seedNTPServing liga "servir NTP para a LAN" no banco, na mesma chave e no
-// mesmo formato que ntpInputStateFrom lê em produção.
-func seedNTPServing(t *testing.T, db *storage.DB) {
-	t.Helper()
-	if err := db.SetSetting("ntp_config", `{"serve_lan":true,"allowed_networks":["192.168.3.0/24"]}`); err != nil {
-		t.Fatalf("gravar ntp_config: %v", err)
-	}
-}
-
-// inputChainCommands filtra, do que foi executado, só o que escreve regra na
-// chain input.
-func inputChainCommands(calls []string) []string {
-	prefix := fmt.Sprintf("nft add rule %s %s %s ", nftables.Family, nftables.Table, nftables.InputChain)
-	var out []string
-	for _, c := range calls {
-		if strings.HasPrefix(c, prefix) {
-			out = append(out, strings.TrimPrefix(c, prefix))
-		}
-	}
-	return out
-}
-
-func containsSubstr(lines []string, want string) bool {
-	for _, l := range lines {
-		if strings.Contains(l, want) {
-			return true
-		}
-	}
-	return false
 }
 
 // TestTheRuntimeWiringIsTheOneMainUses é a costura entre as duas redes deste
