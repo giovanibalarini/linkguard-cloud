@@ -639,3 +639,347 @@ fw.padrao.vpn_in:
 fw.padrao.vpn_fwd:
   pt: "Bloquear tráfego de clientes VPN não liberado pelos perfis"
   en: "Block VPN client forwarding traffic not allowed by profiles"
+
+# ─── Aliases ────────────────────────────────────────────────────────────────
+fwz.aliases.titulo:
+  pt: "Aliases"
+  en: "Aliases"
+fwz.aliases.novo:
+  pt: "Novo alias"
+  en: "New alias"
+fwz.aliases.editar:
+  pt: "Editar alias"
+  en: "Edit alias"
+fwz.aliases.nome:
+  pt: "Nome"
+  en: "Name"
+fwz.aliases.tipo:
+  pt: "Tipo"
+  en: "Type"
+fwz.aliases.tipo.enderecos:
+  pt: "Endereços (IPs ou Redes)"
+  en: "Addresses (IPs or Subnets)"
+fwz.aliases.tipo.portas:
+  pt: "Portas"
+  en: "Ports"
+fwz.aliases.descricao:
+  pt: "Descrição"
+  en: "Description"
+fwz.aliases.itens:
+  pt: "Itens"
+  en: "Items"
+fwz.aliases.itens.ajuda_enderecos:
+  pt: "Digite um IP ou sub-rede CIDR por linha ou separados por vírgula (ex: 192.168.1.50, 10.0.0.0/24)."
+  en: "Enter one IP or CIDR subnet per line or comma-separated (e.g. 192.168.1.50, 10.0.0.0/24)."
+fwz.aliases.itens.ajuda_portas:
+  pt: "Digite uma porta ou faixa por linha ou separadas por vírgula (ex: 80, 443, 8000-8080)."
+  en: "Enter one port or range per line or comma-separated (e.g. 80, 443, 8000-8080)."
+fwz.aliases.usado_por:
+  pt: "Usado por {n} itens"
+  en: "Used by {n} items"
+fwz.aliases.usado_por_nenhum:
+  pt: "Não utilizado"
+  en: "Not used"
+fwz.aliases.embutido:
+  pt: "Embutido (sistema)"
+  en: "Built-in (system)"
+fwz.aliases.extras_vcn:
+  pt: "Redes extras da VCN"
+  en: "Extra VCN networks"
+fwz.aliases.extras_vcn.salvar:
+  pt: "Salvar redes extras"
+  en: "Save extra networks"
+fwz.aliases.extras_vcn.ajuda:
+  pt: "Sub-redes adicionais da sua VCN na Oracle Cloud que o LinkGuard deve tratar como tráfego local da VCN."
+  en: "Additional subnets of your Oracle Cloud VCN that LinkGuard should treat as local VCN traffic."
+fwz.aliases.extras_vcn.sucesso:
+  pt: "Redes extras da VCN atualizadas."
+  en: "Extra VCN networks updated."
+fwz.aliases.salvar:
+  pt: "Salvar alias"
+  en: "Save alias"
+fwz.aliases.cancelar:
+  pt: "Cancelar"
+  en: "Cancel"
+fwz.aliases.apagar.confirm:
+  pt: "Excluir o alias \"{nome}\"?"
+  en: "Delete alias \"{nome}\"?"
+fwz.aliases.em_uso_erro:
+  pt: "Não é possível excluir o alias porque ele está em uso pelas seguintes regras ou perfis:"
+  en: "Cannot delete alias because it is in use by the following rules or profiles:"
+fwz.aliases.vazio:
+  pt: "Nenhum alias cadastrado."
+  en: "No aliases configured."
+fwz.aliases.busca:
+  pt: "Filtrar aliases..."
+  en: "Filter aliases..."
+
+# ─── Agendamentos ───────────────────────────────────────────────────────────
+fwz.agendamentos.titulo:
+  pt: "Agendamentos"
+  en: "Schedules"
+fwz.agendamentos.novo:
+  pt: "Novo agendamento"
+  en: "New schedule"
+fwz.agendamentos.editar:
+  pt: "Editar agendamento"
+  en: "Edit schedule"
+fwz.agendamentos.nome:
+  pt: "Nome"
+  en: "Name"
+fwz.agendamentos.descricao:
+  pt: "Descrição"
+  en: "Description"
+fwz.agendamentos.dias:
+  pt: "Dias da semana"
+  en: "Days of the week"
+fwz.agendamentos.horario:
+  pt: "Horário de funcionamento"
+  en: "Operating hours"
+fwz.agendamentos.inicio:
+  pt: "Início"
+  en: "Start"
+fwz.agendamentos.fim:
+  pt: "Término"
+  en: "End"
+fwz.agendamentos.dia.mon:
+  pt: "Seg"
+  en: "Mon"
+fwz.agendamentos.dia.tue:
+  pt: "Ter"
+  en: "Tue"
+fwz.agendamentos.dia.wed:
+  pt: "Qua"
+  en: "Wed"
+fwz.agendamentos.dia.thu:
+  pt: "Qui"
+  en: "Thu"
+fwz.agendamentos.dia.fri:
+  pt: "Sex"
+  en: "Fri"
+fwz.agendamentos.dia.sat:
+  pt: "Sáb"
+  en: "Sat"
+fwz.agendamentos.dia.sun:
+  pt: "Dom"
+  en: "Sun"
+fwz.agendamentos.todos_dias:
+  pt: "Todos os dias"
+  en: "All days"
+fwz.agendamentos.dias_uteis:
+  pt: "Dias úteis (Seg-Sex)"
+  en: "Weekdays (Mon-Fri)"
+fwz.agendamentos.fim_semana:
+  pt: "Fim de semana (Sáb-Dom)"
+  en: "Weekend (Sat-Sun)"
+fwz.agendamentos.salvar:
+  pt: "Salvar agendamento"
+  en: "Save schedule"
+fwz.agendamentos.cancelar:
+  pt: "Cancelar"
+  en: "Cancel"
+fwz.agendamentos.apagar.confirm:
+  pt: "Excluir o agendamento \"{nome}\"?"
+  en: "Delete schedule \"{nome}\"?"
+fwz.agendamentos.em_uso_erro:
+  pt: "Não é possível excluir o agendamento porque ele está em uso pelas seguintes regras:"
+  en: "Cannot delete schedule because it is in use by the following rules:"
+fwz.agendamentos.vazio:
+  pt: "Nenhum agendamento cadastrado."
+  en: "No schedules configured."
+fwz.agendamentos.usado_por:
+  pt: "Usado por {n} regras"
+  en: "Used by {n} rules"
+fwz.agendamentos.usado_por_nenhum:
+  pt: "Não utilizado"
+  en: "Not used"
+
+# ─── NAT ────────────────────────────────────────────────────────────────────
+fwz.nat.titulo:
+  pt: "Encaminhamento de Portas (DNAT)"
+  en: "Port Forwarding (DNAT)"
+fwz.nat.novo:
+  pt: "Novo encaminhamento"
+  en: "New port forward"
+fwz.nat.editar:
+  pt: "Editar encaminhamento"
+  en: "Edit port forward"
+fwz.nat.nome:
+  pt: "Nome"
+  en: "Name"
+fwz.nat.proto:
+  pt: "Protocolo"
+  en: "Protocol"
+fwz.nat.porta_ext:
+  pt: "Porta externa"
+  en: "External port"
+fwz.nat.ip_dest:
+  pt: "IP de destino"
+  en: "Destination IP"
+fwz.nat.porta_dest:
+  pt: "Porta de destino"
+  en: "Destination port"
+fwz.nat.ativo:
+  pt: "Ativo"
+  en: "Enabled"
+fwz.nat.salvar:
+  pt: "Salvar encaminhamento"
+  en: "Save port forward"
+fwz.nat.cancelar:
+  pt: "Cancelar"
+  en: "Cancel"
+fwz.nat.apagar.confirm:
+  pt: "Excluir o encaminhamento \"{nome}\"?"
+  en: "Delete port forward \"{nome}\"?"
+fwz.nat.vazio:
+  pt: "Nenhum encaminhamento de porta cadastrado."
+  en: "No port forwards configured."
+fwz.nat.nota:
+  pt: "Cada encaminhamento ativo gera automaticamente uma regra travada na aba Internet para liberar o tráfego externo correspondente."
+  en: "Each active port forward automatically generates a locked rule in the Internet tab allowing the corresponding external traffic."
+fwz.nat.saida:
+  pt: "NAT de saída (Masquerade): gerenciado automaticamente para permitir o tráfego da VCN e da VPN para a Internet."
+  en: "Outbound NAT (Masquerade): automatically managed to allow outbound traffic from VCN and VPN to the Internet."
+
+# ─── Destinos ───────────────────────────────────────────────────────────────
+fwz.destinos.titulo:
+  pt: "Destinos Bloqueados"
+  en: "Blocked Destinations"
+fwz.destinos.managed_titulo:
+  pt: "Destinos bloqueados por endereço IP"
+  en: "Destinations blocked by IP address"
+fwz.destinos.managed_desc:
+  pt: "Bloqueio imediato na tabela nftables para todos os pacotes com destino aos endereços listados."
+  en: "Immediate nftables block for all packets destined to listed addresses."
+fwz.destinos.ip_placeholder:
+  pt: "Digite um IP para bloquear (ex: 203.0.113.5)"
+  en: "Enter an IP to block (e.g. 203.0.113.5)"
+fwz.destinos.adicionar:
+  pt: "Bloquear IP"
+  en: "Block IP"
+fwz.destinos.remover:
+  pt: "Desbloquear"
+  en: "Unblock"
+fwz.destinos.vazio:
+  pt: "Nenhum endereço IP bloqueado."
+  en: "No IP addresses blocked."
+
+# ─── Registro ───────────────────────────────────────────────────────────────
+fwz.registro.titulo:
+  pt: "Registro do Firewall"
+  en: "Firewall Log"
+fwz.registro.busca:
+  pt: "Buscar nos registros..."
+  en: "Search logs..."
+fwz.registro.nota:
+  pt: "Mostra os eventos do firewall registrados por regras ativas com a opção \"Registrar\" marcada."
+  en: "Displays firewall events logged by active rules with the \"Log\" option checked."
+fwz.registro.hora:
+  pt: "Horário"
+  en: "Time"
+fwz.registro.regra:
+  pt: "Regra / Origem"
+  en: "Rule / Origin"
+fwz.registro.acao:
+  pt: "Ação"
+  en: "Action"
+fwz.registro.origem:
+  pt: "Origem"
+  en: "Source"
+fwz.registro.destino:
+  pt: "Destino"
+  en: "Destination"
+fwz.registro.proto:
+  pt: "Protocolo"
+  en: "Protocol"
+fwz.registro.vazio:
+  pt: "Nenhum registro encontrado."
+  en: "No log entries found."
+fwz.registro.atualizar:
+  pt: "Atualizar"
+  en: "Refresh"
+
+# ─── Histórico ──────────────────────────────────────────────────────────────
+fwz.historico.titulo:
+  pt: "Histórico de Revisões"
+  en: "Revision History"
+fwz.historico.desc:
+  pt: "Revisões das configurações que foram aplicadas no firewall."
+  en: "Revisions of configurations that were applied to the firewall."
+fwz.historico.aplicado_em:
+  pt: "Data / Hora"
+  en: "Date / Time"
+fwz.historico.aplicado_por:
+  pt: "Aplicado por"
+  en: "Applied by"
+fwz.historico.resumo:
+  pt: "Resumo das mudanças"
+  en: "Changes summary"
+fwz.historico.motivo:
+  pt: "Motivo"
+  en: "Reason"
+fwz.historico.restaurar:
+  pt: "Restaurar para edição"
+  en: "Restore to draft"
+fwz.historico.restaurar.confirm:
+  pt: "Carregar esta revisão para a configuração em edição? As mudanças ficarão pendentes para revisão e aplicação."
+  en: "Load this revision into draft configuration? The changes will become pending for review and application."
+fwz.historico.restaurado_sucesso:
+  pt: "Revisão carregada para edição. Revise as pendências no topo."
+  en: "Revision loaded into draft. Review pending changes at the top."
+fwz.historico.vazio:
+  pt: "Nenhuma revisão registrada no histórico."
+  en: "No revisions recorded in history."
+
+# ─── Avançado ───────────────────────────────────────────────────────────────
+fwz.avancado.titulo:
+  pt: "Ajustes Avançados do Firewall"
+  en: "Advanced Firewall Settings"
+fwz.avancado.ajustes_titulo:
+  pt: "Proteções e Opções Gerais"
+  en: "Protections and General Options"
+fwz.avancado.anti_bloqueio:
+  pt: "Regras anti-bloqueio"
+  en: "Anti-lockout rules"
+fwz.avancado.anti_bloqueio.vcn:
+  pt: "Garantir acesso de gerência (SSH e web) a partir da VCN"
+  en: "Guarantee management access (SSH and web) from VCN"
+fwz.avancado.anti_bloqueio.vpn:
+  pt: "Garantir acesso de gerência (SSH e web) a partir da VPN"
+  en: "Guarantee management access (SSH and web) from VPN"
+fwz.avancado.anti_bloqueio.ajuda:
+  pt: "Evita que administradores percam o acesso ao firewall caso regras restritivas sejam aplicadas."
+  en: "Prevents administrators from losing access to the firewall if restrictive rules are applied."
+fwz.avancado.contencao:
+  pt: "Contenção de borda"
+  en: "Border containment"
+fwz.avancado.contencao.ajuda:
+  pt: "Bloqueia saída de pacotes para redes privadas (RFC 1918) pela interface externa de Internet."
+  en: "Blocks outbound packets to private subnets (RFC 1918) via the external Internet interface."
+fwz.avancado.registrar_padrao:
+  pt: "Registrar tráfego barrado pelas políticas padrão das zonas"
+  en: "Log traffic dropped by default zone policies"
+fwz.avancado.registrar_bloqueados:
+  pt: "Registrar pacotes descartados de máquinas bloqueadas"
+  en: "Log packets dropped from blocked hosts"
+fwz.avancado.registrar_destinos:
+  pt: "Registrar pacotes descartados para destinos bloqueados"
+  en: "Log packets dropped to blocked destinations"
+fwz.avancado.salvar:
+  pt: "Salvar ajustes"
+  en: "Save settings"
+fwz.avancado.salvando:
+  pt: "Salvando..."
+  en: "Saving..."
+fwz.avancado.sucesso:
+  pt: "Ajustes salvos com sucesso (pendentes de aplicação)."
+  en: "Settings saved successfully (pending application)."
+fwz.avancado.contidos.titulo:
+  pt: "Máquinas em Contenção Automática"
+  en: "Hosts in Automatic Containment"
+fwz.avancado.contidos.vazio:
+  pt: "Nenhuma máquina em contenção de abuso no momento."
+  en: "No hosts currently in abuse containment."
+fwz.avancado.ruleset.titulo:
+  pt: "Regras Ativas no Kernel (nftables)"
+  en: "Active Kernel Rules (nftables)"

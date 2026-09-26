@@ -1,11 +1,11 @@
 import { AlertTriangle, Download, Globe, KeyRound, Lock, Route, Shield, Trash2 } from 'lucide-react';
 import { useI18n } from '../../i18n';
-import type { HostGroup } from '../../types';
+import type { AliasFW } from '../../types/firewall';
 import { formatBytes, lastSeen, portsText, type VPNPeer } from './vpnTypes';
 
 interface Props {
   peers: VPNPeer[];
-  hostGroups: HostGroup[];
+  aliases: AliasFW[];
   currentUserId?: string;
   canWrite: boolean;
   busy: boolean;
@@ -18,11 +18,11 @@ interface Props {
 // Quem tem VPN e até onde vai, uma pessoa por cartão. Cartão e não tabela:
 // a tabela antiga tinha nove colunas, rolava de lado no celular e repetia o
 // botão de revogar em cada linha.
-export default function PeerList({ peers, hostGroups, currentUserId, canWrite, busy, onReissue, onEdit, onRotate, onRevoke }: Props) {
+export default function PeerList({ peers, aliases, currentUserId, canWrite, busy, onReissue, onEdit, onRotate, onRevoke }: Props) {
   const { t } = useI18n();
   if (peers.length === 0) return <p className="text-sm text-gray-500">{t('vpn.list.empty')}</p>;
 
-  const groupName = (id: string) => hostGroups.find((g) => g.id === id)?.name || id.slice(0, 8);
+  const groupName = (id: string) => aliases.find((g) => g.id === id)?.nome || id.slice(0, 8);
 
   return (
     <ul className="divide-y divide-gray-800/70">

@@ -4,7 +4,7 @@ import client, { INSTALL_TIMEOUT_MS, isTimeout } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n';
 import Panel from '../components/ui/Panel';
-import type { HostGroup } from '../types';
+import type { AliasFW } from '../types/firewall';
 import ConfigDelivery from '../components/vpn/ConfigDelivery';
 import MyVpn from '../components/vpn/MyVpn';
 import PeerAccessModal from '../components/vpn/PeerAccessModal';
@@ -33,7 +33,7 @@ export default function Vpn() {
 
   const [overview, setOverview] = useState<VPNOverview | null>(null);
   const [draft, setDraft] = useState<VPNConfig>(defaultConfig);
-  const [hostGroups, setHostGroups] = useState<HostGroup[]>([]);
+  const [aliases, setAliases] = useState<AliasFW[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
@@ -47,13 +47,14 @@ export default function Vpn() {
     setLoading(true);
     try {
       if (canRead) {
-        const [vpnRes, groupsRes] = await Promise.all([
+        const [vpnRes, aliasesRes] = await Promise.all([
           client.get<VPNOverview>('/api/vpn'),
-          client.get<HostGroup[]>('/api/hostgroups').catch(() => ({ data: [] as HostGroup[] })),
+          client.get<AliasFW[]>('/api/firewall/aliases').catch(() => ({ data: [] as AliasFW[] })),
         ]);
         setOverview(vpnRes.data);
         setDraft(vpnRes.data.config);
-        setHostGroups(groupsRes.data ?? []);
+        const filteredAliases = (aliasesRes.data ?? []).filter((a) => a.tipo === 'enderecos' && !a.embutido);
+        setAliases(filteredAliases);
       }
     } catch (e) {
       setMessage({ kind: 'error', text: apiError(e, t('vpn.error.load')) });
@@ -168,7 +169,7 @@ export default function Vpn() {
         >
           <PeerList
             peers={overview.peers}
-            hostGroups={hostGroups}
+            aliases={aliases}
             currentUserId={user?.id}
             canWrite={canWrite}
             busy={busy}
@@ -230,7 +231,7 @@ export default function Vpn() {
       <PeerAccessModal
         mode={accessModal?.mode ?? null}
         peer={accessModal?.peer}
-        hostGroups={hostGroups}
+        aliases={aliases}
         onClose={() => setAccessModal(null)}
         onDelivered={(enrollment, username) => {
           setAccessModal(null);

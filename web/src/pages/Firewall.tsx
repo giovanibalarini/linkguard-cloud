@@ -1,10 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  RefreshCw, Terminal, Shield,
-} from 'lucide-react';
+import { RefreshCw, Shield } from 'lucide-react';
 import client from '../api/client';
-import Panel from '../components/ui/Panel';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n';
 import { useConfirmOrRevert } from '../lib/useConfirmOrRevert';
@@ -14,10 +11,13 @@ import ConfirmOrRevertBanner from '../components/firewall/ConfirmOrRevertBanner'
 import PendingChangesBar from '../components/firewall/zonas/PendingChangesBar';
 import ConversionNotice from '../components/firewall/zonas/ConversionNotice';
 import RulesTab from '../components/firewall/zonas/RulesTab';
-import PortForwarding from '../components/PortForwarding';
-import BlockLog from '../components/firewall/BlockLog';
-import FirewallPosture from '../components/firewall/FirewallPosture';
-import HostGroupsTab from '../components/firewall/HostGroupsTab';
+import AliasesTab from '../components/firewall/zonas/AliasesTab';
+import SchedulesTab from '../components/firewall/zonas/SchedulesTab';
+import NatTab from '../components/firewall/zonas/NatTab';
+import DestinosTab from '../components/firewall/zonas/DestinosTab';
+import FirewallLog from '../components/firewall/zonas/FirewallLog';
+import HistoryTab from '../components/firewall/zonas/HistoryTab';
+import AdvancedTab from '../components/firewall/zonas/AdvancedTab';
 import DomainTargets from '../components/DomainTargets';
 import type { MsgLevel, SystemMetrics } from '../types';
 import type { PendenciasFW, Zona } from '../types/firewall';
@@ -229,38 +229,26 @@ export default function Firewall() {
           cor={cor}
         />
       ) : activeTab === 'aliases' ? (
-        <HostGroupsTab canWrite={canWrite} onMsg={notify} />
+        <AliasesTab canWrite={canWrite} onRefreshGlobal={refreshAll} />
       ) : activeTab === 'agendamentos' ? (
-        <Panel className="p-8 text-center text-gray-500 text-sm">
-          <p>{t('fwz.tab.agendamentos')}</p>
-        </Panel>
+        <SchedulesTab canWrite={canWrite} onRefreshGlobal={refreshAll} />
       ) : activeTab === 'nat' ? (
-        <PortForwarding ifaces={ifaces} canWrite={canWrite} onMsg={notify} />
+        <NatTab canWrite={canWrite} onRefreshGlobal={refreshAll} />
       ) : activeTab === 'destinos' ? (
-        <DomainTargets canEdit={can('firewall.write')} />
+        <DestinosTab canWrite={canWrite}>
+          <DomainTargets canEdit={can('firewall.write')} />
+        </DestinosTab>
       ) : activeTab === 'registro' ? (
-        <BlockLog canWrite={canWrite} onMsg={notify} />
+        <FirewallLog canWrite={canWrite} onMsg={notify} />
       ) : activeTab === 'historico' ? (
-        <Panel className="p-8 text-center text-gray-500 text-sm">
-          <p>{t('fwz.tab.historico')}</p>
-        </Panel>
+        <HistoryTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : (
-        <div className="space-y-6">
-          <FirewallPosture canWrite={canWrite} onMsg={notify} />
-          <Panel className="p-0 overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-2 text-xs text-gray-500">
-              <Terminal className="w-3.5 h-3.5" />
-              <span className="font-mono">nft list ruleset</span>
-            </div>
-            {ruleset.trim() ? (
-              <pre className="p-4 overflow-x-auto text-xs font-mono text-gray-300 leading-relaxed whitespace-pre">
-                {ruleset}
-              </pre>
-            ) : (
-              <p className="p-8 text-center text-gray-600 text-sm">{t('fwx.ruleset.empty')}</p>
-            )}
-          </Panel>
-        </div>
+        <AdvancedTab
+          ruleset={ruleset}
+          canWrite={canWrite}
+          onRefreshGlobal={refreshAll}
+          onMsg={notify}
+        />
       )}
     </div>
   );

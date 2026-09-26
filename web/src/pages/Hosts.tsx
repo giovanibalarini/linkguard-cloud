@@ -4,8 +4,9 @@ import { RefreshCw, Pencil, Ban, ShieldCheck, Circle, TrendingUp, ArrowDown, Arr
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n';
-import { blockEnforcement, KIND_BLOCKED_HOSTS } from '../lib/blockGroups';
-import type { NetHost, HostKind, HostTraffic, FirewallGroup, FirewallGroupsData } from '../types';
+import { blockEnforcement } from '../lib/blockGroups';
+import type { NetHost, HostKind, HostTraffic } from '../types';
+import type { EstadoFW } from '../types/firewall';
 import Panel from '../components/ui/Panel';
 import HostHistory from '../components/HostHistory';
 import HostFlows from '../components/HostFlows';
@@ -35,14 +36,9 @@ export default function Hosts() {
   // Ver auth.PermTrafficFlows.
   const canReadFlows = can('traffic.flows');
   const [hosts, setHosts] = useState<NetHost[]>([]);
-  // Os grupos do firewall, só para saber se o bloqueio de host está mesmo em
-  // vigor. Desde que os bloqueios viraram grupos reordenáveis, marcar um host
-  // como bloqueado deixou de bastar: o grupo "Hosts bloqueados" pode estar
-  // desligado, ou arrastado para depois de um grupo do admin que faz accept —
-  // e nos dois casos esta tela mostraria "bloqueado" enquanto o tráfego passa.
-  // null = não consultado (sem permissão de firewall ou falha), que NÃO é o
-  // mesmo que "está tudo certo": nesse caso a tela não afirma nada.
-  const [fwGroups, setFwGroups] = useState<FirewallGroup[] | null>(null);
+  // Estado dos bloqueios no firewall por zonas: null = não consultado,
+  // true = bloqueios em vigor, false = pendentes ou não aplicados.
+  const [bloqueiosAplicados, setBloqueiosAplicados] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [filter, setFilter] = useState('');
@@ -78,14 +74,14 @@ export default function Hosts() {
     await fetchBlockGroup();
   };
 
-  // Estado do grupo de bloqueio — melhor esforço, exige firewall.read.
+  // Estado dos bloqueios no firewall — melhor esforço, exige firewall.read.
   const fetchBlockGroup = async () => {
-    if (!canReadFirewall) { setFwGroups(null); return; }
+    if (!canReadFirewall) { setBloqueiosAplicados(null); return; }
     try {
-      const g = await client.get<FirewallGroupsData>('/api/nftables/groups');
-      setFwGroups(g.data?.groups ?? []);
+      const { data } = await client.get<EstadoFW>('/api/firewall/estado');
+      setBloqueiosAplicados(data?.bloqueios_aplicados ?? null);
     } catch {
-      setFwGroups(null);
+      setBloqueiosAplicados(null);
     }
   };
 
@@ -108,20 +104,8 @@ export default function Hosts() {
   const blockedCount = useMemo(() => hosts.filter((h) => h.blocked).length, [hosts]);
 
   // enforcement é a resposta a "bloquear aqui adianta alguma coisa?".
-  //
-  // O que as duas telas compartilham de verdade é o critério de "quem decide
-  // antes deste bloqueio" (lib/blockGroups.adminGroupsAbove), usado aqui por
-  // dentro do blockEnforcement e lá direto, no aviso de ordem da lista de
-  // grupos — era isso que tinha duas implementações e já divergia. O resto
-  // não é compartilhado nem deveria ser: a lista de grupos fala de UM item
-  // que o admin está olhando, esta tela responde por um inventário inteiro e
-  // por isso precisa também dos estados que a outra não tem o que dizer
-  // (grupo ausente da lista, sem permissão para consultá-la).
-  const enforcement = useMemo(() => blockEnforcement(fwGroups, KIND_BLOCKED_HOSTS), [fwGroups]);
-  // `off_but_live` fica DE FORA daqui de propósito: nesse estado o kernel
-  // está descartando o tráfego: dizer "podem não estar sendo bloqueados de
-  // verdade" seria a mesma mentira ao contrário. Ele tem faixa própria.
-  const notEnforced = enforcement.status === 'off' || enforcement.status === 'not_applied' || enforcement.status === 'shadowed';
+  const enforcement = useMemo(() => blockEnforcement(bloqueiosAplicados), [bloqueiosAplicados]);
+  const notEnforced = enforcement.status === 'not_applied';
 
   const openAlias = (h: NetHost) => {
     setAliasFor(h);
@@ -208,25 +192,7 @@ export default function Hosts() {
               <p className="text-gray-300 text-xs mt-1">{enforcement.reason}</p>
               <p className="text-gray-400 text-xs mt-1">
                 {enforcement.fix}{' '}
-                <Link to="/firewall?tab=groups" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* O inverso do aviso acima, e igualmente uma mentira se ficar calado:
-          o grupo aparece desligado no painel e o firewall continua com as
-          linhas de bloqueio. Quem desligou acha que liberou. */}
-      {enforcement.status === 'off_but_live' && (
-        <div className="card border border-yellow-500/40 bg-yellow-500/10 text-sm">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" aria-hidden="true" />
-            <div className="min-w-0">
-              <p className="text-yellow-300">{t('svc.hosts.offButLive')}</p>
-              <p className="text-gray-300 text-xs mt-1">{enforcement.reason}</p>
-              <p className="text-gray-400 text-xs mt-1">
-                {enforcement.fix}{' '}
-                <Link to="/firewall?tab=groups" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
+                <Link to="/firewall?tab=regras&zona=flutuante" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
               </p>
             </div>
           </div>
@@ -486,7 +452,7 @@ export default function Hosts() {
                   <p className="text-gray-300 mt-1">{enforcement.reason}</p>
                   <p className="text-gray-400 mt-1">
                     {enforcement.fix}{' '}
-                    <Link to="/firewall?tab=groups" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
+                    <Link to="/firewall?tab=regras&zona=flutuante" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
                   </p>
                 </div>
               )}

@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import client, { INSTALL_TIMEOUT_MS } from '../../api/client';
 import Modal from '../ui/Modal';
 import { useI18n } from '../../i18n';
-import type { HostGroup } from '../../types';
+import type { AliasFW } from '../../types/firewall';
 import AccessForm from './AccessForm';
 import {
   apiError,
@@ -19,13 +19,13 @@ interface Props {
   // Sem peer: dar acesso a alguém que ainda não tem VPN. Com peer: editar.
   mode: 'new' | 'edit' | null;
   peer?: VPNPeer | null;
-  hostGroups: HostGroup[];
+  aliases: AliasFW[];
   onClose: () => void;
   onDelivered: (enrollment: VPNEnrollment, username: string) => void;
   onSaved: (peer: VPNPeer) => void;
 }
 
-export default function PeerAccessModal({ mode, peer, hostGroups, onClose, onDelivered, onSaved }: Props) {
+export default function PeerAccessModal({ mode, peer, aliases, onClose, onDelivered, onSaved }: Props) {
   const { t } = useI18n();
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [userId, setUserId] = useState('');
@@ -114,7 +114,7 @@ export default function PeerAccessModal({ mode, peer, hostGroups, onClose, onDel
 
         {mode === 'edit' && <p className="text-xs text-gray-400">{t('vpn.edit.note')}</p>}
 
-        <AccessForm value={profile} onChange={setProfile} hostGroups={hostGroups} />
+        <AccessForm value={profile} onChange={setProfile} aliases={aliases} />
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 

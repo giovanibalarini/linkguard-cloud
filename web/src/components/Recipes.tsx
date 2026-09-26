@@ -30,7 +30,7 @@ interface Recipe {
 const recipes: Recipe[] = [
   { id: 'block-site', icon: Ban, to: '/dns', passos: 4 },
   { id: 'top-talkers', icon: Gauge, to: '/hosts', passos: 3 },
-  { id: 'port-forward', icon: ArrowRightLeft, to: '/firewall', passos: 4 },
+  { id: 'port-forward', icon: ArrowRightLeft, to: '/firewall?tab=nat', passos: 4 },
   { id: 'block-device', icon: ShieldOff, to: '/hosts', passos: 4 },
   { id: 'secure-panel', icon: Lock, to: '/admin', passos: 4 },
 ];

@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
   KIND_BLOCKED_HOSTS, KIND_BLOCKLIST, KIND_WIREGUARD_PEER,
-  groupDisplayNameKey, isSystemGroup, isWireGuardPeerGroup,
+  blockEnforcement, groupDisplayNameKey, isSystemGroup, isWireGuardPeerGroup,
 } from './blockGroups.ts';
 
 let n = 0;
@@ -52,6 +52,13 @@ const check = (c: unknown, m: string) => { assert.ok(c, m); n++; };
   for (const key of ['nat', 'ntp', 'rule_groups', 'host_block', 'blocklist', 'port_forward']) {
     check(yaml.includes(`\nfwx.owner.${key}:`), `falta fwx.owner.${key} no YAML (o Go emite esse Key)`);
   }
+}
+
+{
+  eq(blockEnforcement(null).status, 'unknown', 'sem estado do firewall dá unknown');
+  eq(blockEnforcement(undefined).status, 'unknown', 'undefined dá unknown');
+  eq(blockEnforcement(false).status, 'not_applied', 'bloqueios não aplicados dá not_applied');
+  eq(blockEnforcement(true).status, 'ok', 'bloqueios aplicados dá ok');
 }
 
 console.log(`blockGroups.check.ts: ${n} asserções OK`);

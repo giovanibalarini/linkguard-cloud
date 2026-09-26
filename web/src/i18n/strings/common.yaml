@@ -736,8 +736,8 @@ fw.stage.forward.label:
   pt: "Encaminhamento"
   en: "Forwarding"
 fw.stage.forward.hint:
-  pt: "tráfego atravessando: bloqueios e grupos de regras, na ordem da aba \"Grupos de regras\""
-  en: "traffic crossing through: blocks and rule groups, in the order of the \"Rule groups\" tab"
+  pt: "tráfego atravessando: bloqueios e regras de firewall"
+  en: "traffic crossing through: blocks and firewall rules"
 fw.stage.postrouting.label:
   pt: "NAT de saída"
   en: "Outbound NAT"
@@ -763,8 +763,8 @@ fw.overview.yourRule:
   pt: "Sua regra"
   en: "Your rule"
 fw.overview.editInGroups:
-  pt: "Editar na aba Grupos de regras"
-  en: "Edit in the Rule groups tab"
+  pt: "Editar na aba Regras"
+  en: "Edit in the Rules tab"
 fw.overview.bytesUnit:
   pt: "bytes (KB/MB/GB)"
   en: "bytes (KB/MB/GB)"
@@ -990,3 +990,16 @@ fw.containment.off.warn:
 fw.containment.on.warn:
   pt: "Ligada. Origens da internet que abrirem mais de 10 conexões por minuto às portas de gerência ficam contidas por 1 hora. Se você usa a API deste firewall a partir da internet, ela pode ser contida também — quem entra pela rede interna nunca é."
   en: "Enabled. Sources from the internet opening more than 10 connections per minute to the management ports are contained for 1 hour. If you use this firewall's API from the internet, it may be contained too — anyone coming from the internal network never is."
+
+common.filter:
+  pt: "Filtrar"
+  en: "Filter"
+common.refresh:
+  pt: "Atualizar"
+  en: "Refresh"
+common.edit:
+  pt: "Editar"
+  en: "Edit"
+common.delete:
+  pt: "Excluir"
+  en: "Delete"

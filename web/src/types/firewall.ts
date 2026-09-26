@@ -41,6 +41,7 @@ export interface AliasFW {
   tipo: AliasTipo;
   descricao: string;
   itens: string[];
+  embutido?: boolean;
   usos?: number;
   usos_lista?: string[];
 }

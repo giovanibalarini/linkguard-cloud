@@ -116,9 +116,11 @@ func (h *FirewallHandler) EntendiConversao(w http.ResponseWriter, r *http.Reques
 
 // AjustesView expõe os ajustes de postura do firewall (sem RedesVCNExtras, que possui rota própria).
 type AjustesView struct {
-	RegistrarBloqueados bool `json:"registrar_bloqueados"`
-	RegistrarDestinos   bool `json:"registrar_destinos"`
-	ContencaoBorda      bool `json:"contencao_borda"`
+	AntiBloqueio        map[string]bool `json:"anti_bloqueio,omitempty"`
+	RegistrarBloqueados bool            `json:"registrar_bloqueados"`
+	RegistrarDestinos   bool            `json:"registrar_destinos"`
+	RegistrarPadrao     bool            `json:"registrar_padrao"`
+	ContencaoBorda      bool            `json:"contencao_borda"`
 }
 
 // GetAjustes retorna as opções gerais de postura da configuração em edição.
@@ -128,9 +130,15 @@ func (h *FirewallHandler) GetAjustes(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
+	ab := make(map[string]bool)
+	for z, v := range cfg.Ajustes.AntiBloqueio {
+		ab[string(z)] = v
+	}
 	writeJSON(w, http.StatusOK, AjustesView{
+		AntiBloqueio:        ab,
 		RegistrarBloqueados: cfg.Ajustes.RegistrarBloqueados,
 		RegistrarDestinos:   cfg.Ajustes.RegistrarDestinos,
+		RegistrarPadrao:     cfg.Ajustes.RegistrarPadrao,
 		ContencaoBorda:      cfg.Ajustes.ContencaoBorda,
 	})
 }
@@ -148,9 +156,15 @@ func (h *FirewallHandler) PutAjustes(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		ab := make(map[fwmodel.Zona]bool)
+		for z, v := range body.AntiBloqueio {
+			ab[fwmodel.Zona(z)] = v
+		}
 		novosAjustes := fwmodel.Ajustes{
+			AntiBloqueio:        ab,
 			RegistrarBloqueados: body.RegistrarBloqueados,
 			RegistrarDestinos:   body.RegistrarDestinos,
+			RegistrarPadrao:     body.RegistrarPadrao,
 			ContencaoBorda:      body.ContencaoBorda,
 			RedesVCNExtras:      cfg.Ajustes.RedesVCNExtras, // preserva extras
 		}

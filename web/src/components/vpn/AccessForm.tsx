@@ -1,21 +1,16 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Globe, Shield } from 'lucide-react';
 import { useI18n } from '../../i18n';
-import type { HostGroup } from '../../types';
+import type { AliasFW } from '../../types/firewall';
 import type { AccessProfile } from './vpnTypes';
 
 interface Props {
   value: AccessProfile;
   onChange: (profile: AccessProfile) => void;
-  hostGroups: HostGroup[];
+  aliases: AliasFW[];
 }
 
-// O perfil de acesso de um peer, na ordem em que o admin pensa: primeiro "até
-// onde essa pessoa vai", depois os detalhes. Até 24/09/2026 a tela pedia modo
-// de acesso e modo de túnel como duas decisões soltas, e a combinação mais
-// comum — só alguns destinos, sem mandar a internet inteira pela nuvem — exigia
-// acertar as duas.
-export default function AccessForm({ value, onChange, hostGroups }: Props) {
+export default function AccessForm({ value, onChange, aliases }: Props) {
   const { t } = useI18n();
   const [advanced, setAdvanced] = useState(
     // Abre sozinho quando o perfil salvo foge das duas combinações comuns.
@@ -77,11 +72,11 @@ export default function AccessForm({ value, onChange, hostGroups }: Props) {
         <div className="space-y-3 border-t border-gray-800 pt-3">
           <div>
             <div className="text-xs font-medium text-gray-300 mb-1.5">{t('vpn.access.groups')}</div>
-            {hostGroups.length === 0 ? (
+            {aliases.length === 0 ? (
               <p className="p-3 bg-gray-900 border border-gray-800 rounded-lg text-xs text-amber-300">{t('vpn.access.noGroups')}</p>
             ) : (
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                {hostGroups.map((g) => (
+                {aliases.map((g) => (
                   <label key={g.id} className="flex items-start gap-2.5 p-2.5 rounded-lg border border-gray-800 bg-gray-900/40 hover:border-gray-700 cursor-pointer">
                     <input
                       type="checkbox"
@@ -90,16 +85,16 @@ export default function AccessForm({ value, onChange, hostGroups }: Props) {
                       className="mt-0.5"
                     />
                     <span className="min-w-0">
-                      <span className="block text-sm text-white">{g.name}</span>
+                      <span className="block text-sm text-white">{g.nome}</span>
                       <span className="block text-[11px] font-mono text-gray-500 truncate">
-                        {(g.hosts || []).map((h) => h.replace(/\/32$/, '')).join(', ')}
+                        {(g.itens || []).map((h) => h.replace(/\/32$/, '')).join(', ')}
                       </span>
                     </span>
                   </label>
                 ))}
               </div>
             )}
-            {hostGroups.length > 0 && value.allowed_host_groups.length === 0 && (
+            {aliases.length > 0 && value.allowed_host_groups.length === 0 && (
               <p className="text-[11px] text-amber-300 mt-1.5">{t('vpn.access.noGroupChosen')}</p>
             )}
           </div>
