@@ -444,6 +444,9 @@ func TestJanelaAbertaRecusaMutacoes409(t *testing.T) {
 	if stage, ok := StageOf(err); !ok || stage != StageLocked {
 		t.Errorf("Aplicar deveria recusar com StageLocked (409), obteve: %v", err)
 	}
+	if svc.UltimoErro() != "" {
+		t.Errorf("recusa por janela aberta não é falha de aplicação e não vai para UltimoErro: %q", svc.UltimoErro())
+	}
 
 	// 2. Descartar recusa com 409 (StageLocked)
 	err = svc.Descartar(ctx, "outro")
@@ -746,5 +749,19 @@ func TestRestaurarRevisao(t *testing.T) {
 	aplicada, _, _ := svc.Aplicada()
 	if len(aplicada.Regras) != 0 {
 		t.Fatalf("aplicada não deve mudar ao restaurar revisão para edição")
+	}
+}
+
+func TestResumoMudancasConcordaGenero(t *testing.T) {
+	got := resumoMudancas([]fwmodel.Mudanca{
+		{Objeto: "regra", Tipo: fwmodel.MudancaCriada, Nome: "a"},
+		{Objeto: "alias", Tipo: fwmodel.MudancaCriada, Nome: "b"},
+		{Objeto: "agendamento", Tipo: fwmodel.MudancaRemovida, Nome: "c"},
+		{Objeto: "encaminhamento", Tipo: fwmodel.MudancaAlterada, ID: "d"},
+		{Objeto: "ajustes", Tipo: fwmodel.MudancaAlterada, ID: "e"},
+	})
+	want := `regra criada "a"; alias criado "b"; agendamento removido "c"; encaminhamento alterado d; ajustes alterados e`
+	if got != want {
+		t.Errorf("resumo = %q, quero %q", got, want)
 	}
 }

@@ -240,7 +240,11 @@ func (s *Service) EditarConfigValidando(ctx context.Context, por string, escreve
 func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied, errOut error) {
 	s.mu.Lock()
 	defer func() {
-		s.ultimoErro = mensagemDoErro(errOut)
+		// Recusar por janela aberta não é falha de aplicação: nada foi tentado.
+		var g *GuardError
+		if !errors.As(errOut, &g) || g.Stage != StageLocked {
+			s.ultimoErro = mensagemDoErro(errOut)
+		}
 		s.mu.Unlock()
 	}()
 
@@ -726,13 +730,26 @@ func resumoMudancas(mudancas []fwmodel.Mudanca) string {
 	for _, m := range mudancas {
 		var desc string
 		if m.Nome != "" {
-			desc = fmt.Sprintf("%s %s %q", m.Objeto, m.Tipo, m.Nome)
+			desc = fmt.Sprintf("%s %s %q", m.Objeto, participioConcordado(m), m.Nome)
 		} else {
-			desc = fmt.Sprintf("%s %s %s", m.Objeto, m.Tipo, m.ID)
+			desc = fmt.Sprintf("%s %s %s", m.Objeto, participioConcordado(m), m.ID)
 		}
 		partes = append(partes, desc)
 	}
 	return strings.Join(partes, "; ")
+}
+
+// participioConcordado concorda o tipo da mudança com o gênero do objeto:
+// "regra criada", mas "alias criado" e "ajustes alterados".
+func participioConcordado(m fwmodel.Mudanca) string {
+	if m.Objeto == "regra" {
+		return string(m.Tipo)
+	}
+	base := strings.TrimSuffix(string(m.Tipo), "a") + "o"
+	if m.Objeto == "ajustes" {
+		return base + "s"
+	}
+	return base
 }
 
 func equalStringSlices(a, b []string) bool {
