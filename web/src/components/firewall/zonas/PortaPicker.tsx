@@ -1,6 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import Combo, { type ComboItem } from '../../ui/Combo';
 import { useI18n } from '../../../i18n';
+import {
+  chaveDoValor,
+  modoDaPorta,
+  opcoesDeAlias,
+  type EscolhaDeModo,
+  type ModoPorta,
+} from '../../../lib/fwZonas';
 import { SERVICES } from '../../../lib/services';
 import type { AliasFW, Porta } from '../../../types/firewall';
 
@@ -14,7 +21,7 @@ interface PortaPickerProps {
   disabled?: boolean;
 }
 
-type Mode = 'any' | 'port' | 'alias' | 'service';
+const PORTAS_DE_SERVICOS = SERVICES.map((s) => s.port);
 
 export default function PortaPicker({
   label,
@@ -28,42 +35,21 @@ export default function PortaPicker({
   const { t } = useI18n();
   const isTcpUdp = proto === 'tcp' || proto === 'udp' || proto === 'tcp/udp';
 
-  const initialMode = useMemo<Mode>(() => {
-    if (value.kind === 'any') return 'any';
-    if (value.kind === 'alias') return 'alias';
-    if (value.kind === 'port') {
-      const isKnownService = SERVICES.some((s) => s.port === value.value);
-      if (isKnownService) return 'service';
-      return 'port';
-    }
-    return 'any';
-  }, [value]);
-
-  const [mode, setMode] = useState<Mode>(initialMode);
+  // O modo sai do valor (o editor pode trocar de regra com o seletor montado);
+  // `escolha` só desempata serviço x porta digitada. Ver modoDaPorta.
+  const [escolha, setEscolha] = useState<EscolhaDeModo<ModoPorta> | null>(null);
+  const mode: ModoPorta = isTcpUdp ? modoDaPorta(value, PORTAS_DE_SERVICOS, escolha) : 'any';
 
   useEffect(() => {
     if (!isTcpUdp && value.kind !== 'any') {
       onChange({ kind: 'any' });
-      setMode('any');
     }
   }, [isTcpUdp, value.kind]);
 
-  const aliasItems = useMemo<ComboItem[]>(() => {
-    const items: ComboItem[] = [
-      { id: 'sys:gerencia', label: 'Gerência (SSH + Web)', hint: 'sys:gerencia', group: 'Sistema' },
-    ];
-    for (const a of aliases) {
-      if (a.tipo === 'portas') {
-        items.push({
-          id: a.id,
-          label: a.nome,
-          hint: a.itens.join(', '),
-          group: 'Aliases personalizados',
-        });
-      }
-    }
-    return items;
-  }, [aliases]);
+  const aliasItems = useMemo<ComboItem[]>(
+    () => opcoesDeAlias(aliases, 'portas', t),
+    [aliases, t],
+  );
 
   const serviceItems = useMemo<ComboItem[]>(() => {
     return SERVICES.map((s) => ({
@@ -73,18 +59,22 @@ export default function PortaPicker({
     }));
   }, []);
 
-  const handleModeChange = (newMode: Mode) => {
-    setMode(newMode);
+  const emitir = (modo: ModoPorta, porta: Porta) => {
+    setEscolha({ modo, chave: chaveDoValor(porta) });
+    onChange(porta);
+  };
+
+  const handleModeChange = (newMode: ModoPorta) => {
     if (newMode === 'any') {
-      onChange({ kind: 'any' });
+      emitir(newMode, { kind: 'any' });
     } else if (newMode === 'port') {
-      onChange({ kind: 'port', value: '' });
+      emitir(newMode, { kind: 'port', value: '' });
     } else if (newMode === 'alias') {
       const defaultAlias = aliasItems[0]?.id || '';
-      onChange({ kind: 'alias', value: defaultAlias });
+      emitir(newMode, { kind: 'alias', value: defaultAlias });
     } else if (newMode === 'service') {
       const defaultService = serviceItems[0]?.id || '80';
-      onChange({ kind: 'port', value: defaultService });
+      emitir(newMode, { kind: 'port', value: defaultService });
     }
   };
 
@@ -150,7 +140,7 @@ export default function PortaPicker({
           type="text"
           disabled={disabled}
           value={value.kind === 'port' ? value.value || '' : ''}
-          onChange={(e) => onChange({ kind: 'port', value: e.target.value.trim() })}
+          onChange={(e) => emitir('port', { kind: 'port', value: e.target.value.trim() })}
           placeholder={t('fwz.porta.picker.digitar')}
           className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono"
         />
@@ -160,7 +150,7 @@ export default function PortaPicker({
         <Combo
           items={aliasItems}
           value={value.kind === 'alias' ? value.value || '' : ''}
-          onPick={(item) => onChange({ kind: 'alias', value: item?.id || '' })}
+          onPick={(item) => emitir('alias', { kind: 'alias', value: item?.id || '' })}
           placeholder={t('fwz.porta.picker.select')}
           disabled={disabled}
         />
@@ -170,7 +160,7 @@ export default function PortaPicker({
         <Combo
           items={serviceItems}
           value={value.kind === 'port' ? value.value || '' : ''}
-          onPick={(item) => onChange({ kind: 'port', value: item?.id || '' })}
+          onPick={(item) => emitir('service', { kind: 'port', value: item?.id || '' })}
           placeholder={t('fwz.porta.picker.select')}
           disabled={disabled}
         />

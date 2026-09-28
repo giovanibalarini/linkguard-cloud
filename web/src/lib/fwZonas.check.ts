@@ -3,17 +3,21 @@ import {
   ACAO_I18N_KEYS,
   ZONA_I18N_KEYS,
   ZONAS,
+  chaveDoValor,
   contarMudancas,
   idsAposMover,
   isIPv4,
   isIPv4CIDR,
   isValidPortOrRange,
+  modoDaPonta,
+  modoDaPorta,
   nomePonta,
   nomePorta,
+  opcoesDeAlias,
   podeArrastar,
   validarFormulario,
 } from './fwZonas.ts';
-import type { LinhaFW, MudancaFW, RegraFW } from '../types/firewall.ts';
+import type { AliasFW, LinhaFW, MudancaFW, RegraFW } from '../types/firewall.ts';
 
 let n = 0;
 const check = (condition: unknown, message: string) => {
@@ -129,5 +133,72 @@ const regraPortaSemProto: Partial<RegraFW> = {
   porta_destino: { kind: 'port', value: '80' },
 };
 check(validarFormulario(regraPortaSemProto).porta_destino === 'fwz.problema.portaSemProtocoloValido', 'porta exige tcp/udp');
+
+// 8. Modo do seletor de ponta: sai do valor; a escolha só desempata
+const maquinas = ['192.168.1.10', '10.0.0.5'];
+
+check(modoDaPonta({ kind: 'any' }, maquinas) === 'any', 'modo da ponta any');
+check(modoDaPonta({ kind: 'self' }, maquinas) === 'self', 'modo da ponta self');
+check(modoDaPonta({ kind: 'alias', value: 'sys:vcn' }, maquinas) === 'alias', 'modo da ponta alias');
+check(modoDaPonta({ kind: 'addr', value: '10.0.0.5' }, maquinas) === 'machine', 'endereço de máquina conhecida é Máquina');
+check(modoDaPonta({ kind: 'addr', value: '172.16.0.0/12' }, maquinas) === 'addr', 'endereço fora da lista é Endereço');
+check(modoDaPonta({ kind: 'addr', value: '' }, maquinas) === 'addr', 'endereço vazio sem escolha é Endereço');
+check(modoDaPonta({ kind: 'addr', value: '10.0.0.5' }, []) === 'addr', 'sem lista de máquinas o endereço é Endereço');
+
+// o editor abre outra regra com o seletor montado: o modo acompanha o valor novo
+const escolhaAntiga = { modo: 'any' as const, chave: chaveDoValor({ kind: 'any' }) };
+check(modoDaPonta({ kind: 'addr', value: '172.16.0.1' }, maquinas, escolhaAntiga) === 'addr', 'escolha antiga não segura valor novo (addr)');
+check(modoDaPonta({ kind: 'alias', value: 'sys:vpn' }, maquinas, escolhaAntiga) === 'alias', 'escolha antiga não segura valor novo (alias)');
+
+// digitar um endereço que coincide com o de uma máquina não troca o campo por uma lista
+const digitando = { modo: 'addr' as const, chave: chaveDoValor({ kind: 'addr', value: '10.0.0.5' }) };
+check(modoDaPonta({ kind: 'addr', value: '10.0.0.5' }, maquinas, digitando) === 'addr', 'escolha Endereço vale para o valor em que foi feita');
+// Máquina escolhida antes de a lista carregar continua em Máquina
+const maquinaVazia = { modo: 'machine' as const, chave: chaveDoValor({ kind: 'addr', value: '' }) };
+check(modoDaPonta({ kind: 'addr', value: '' }, [], maquinaVazia) === 'machine', 'Máquina sem máquinas carregadas continua em Máquina');
+
+// 9. Modo do seletor de porta
+const servicos = ['22', '80', '443'];
+
+check(modoDaPorta({ kind: 'any' }, servicos) === 'any', 'modo da porta any');
+check(modoDaPorta({ kind: 'alias', value: 'sys:gerencia' }, servicos) === 'alias', 'modo da porta alias');
+check(modoDaPorta({ kind: 'port', value: '443' }, servicos) === 'service', 'porta de serviço conhecido é Serviço');
+check(modoDaPorta({ kind: 'port', value: '8080' }, servicos) === 'port', 'porta fora da lista é Porta');
+check(modoDaPorta({ kind: 'port', value: '8000-8080' }, servicos) === 'port', 'faixa é Porta');
+check(modoDaPorta({ kind: 'port', value: '' }, servicos) === 'port', 'porta vazia sem escolha é Porta');
+
+// digitar 8080 passa por "80", que é um serviço: o campo não vira lista no meio da digitação
+const digitandoPorta = { modo: 'port' as const, chave: chaveDoValor({ kind: 'port', value: '80' }) };
+check(modoDaPorta({ kind: 'port', value: '80' }, servicos, digitandoPorta) === 'port', 'escolha Porta vale para o valor em que foi feita');
+check(modoDaPorta({ kind: 'port', value: '80' }, servicos, { modo: 'port', chave: 'port|8' }) === 'service', 'escolha de outro valor não segura');
+
+// 10. Opções do seletor de alias: da API, embutidos primeiro, cada grupo no seu rótulo
+const aliasApi = (id: string, tipo: AliasFW['tipo'], nome: string, itens: string[], embutido?: boolean): AliasFW => ({
+  id,
+  nome,
+  tipo,
+  descricao: '',
+  itens,
+  embutido,
+});
+const aliasesApi: AliasFW[] = [
+  aliasApi('sys:vcn', 'enderecos', 'VCN', ['10.0.0.0/16', '10.1.0.0/24'], true),
+  aliasApi('sys:vpn', 'enderecos', 'VPN', ['10.8.0.0/24'], true),
+  aliasApi('sys:gerencia', 'portas', 'Gerência', ['22', '8080'], true),
+  aliasApi('u1', 'enderecos', 'Servidores', ['10.0.1.5']),
+  aliasApi('u2', 'portas', 'Web', ['80', '443']),
+];
+const rotulo = (k: string) => `<${k}>`;
+
+const opEnd = opcoesDeAlias(aliasesApi, 'enderecos', rotulo);
+check(opEnd.map((o) => o.id).join() === 'sys:vcn,sys:vpn,u1', 'endereços: embutidos e depois os do usuário');
+check(opEnd[0].label === 'VCN' && opEnd[0].hint === '10.0.0.0/16, 10.1.0.0/24', 'embutido usa nome e itens da API');
+check(opEnd[0].group === '<fwz.picker.alias.embutidos>' && opEnd[2].group === '<fwz.picker.alias.seus>', 'grupos dos aliases');
+const opPorta = opcoesDeAlias(aliasesApi, 'portas', rotulo);
+check(opPorta.map((o) => o.id).join() === 'sys:gerencia,u2', 'portas: só aliases de portas');
+// mesmo que a API mude a ordem, o grupo dos embutidos vem primeiro (um cabeçalho por grupo)
+const opInvertido = opcoesDeAlias([...aliasesApi].reverse(), 'enderecos', rotulo);
+check(opInvertido[0].group === '<fwz.picker.alias.embutidos>' && opInvertido[2].group === '<fwz.picker.alias.seus>', 'embutidos primeiro em qualquer ordem');
+check(opcoesDeAlias([], 'enderecos', rotulo).length === 0, 'sem aliases, sem opções');
 
 console.log(`[fwZonas.check.ts] OK (${n} asserções passaram)`);

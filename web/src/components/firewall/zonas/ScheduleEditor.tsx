@@ -59,7 +59,8 @@ export default function ScheduleEditor({ schedule, onSave, onClose, canWrite }: 
         id: schedule?.id,
         nome: nome.trim(),
         descricao: descricao.trim(),
-        dias: diasSelecionados.join(','),
+        // Sempre na ordem da semana (seg..dom), não na ordem dos cliques.
+        dias: DIAS.filter((d) => diasSelecionados.includes(d)).join(','),
         inicio,
         fim,
       });

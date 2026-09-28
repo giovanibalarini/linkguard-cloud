@@ -121,6 +121,14 @@ fwz.porta.picker.digitar:
   pt: "Ex: 80 ou 8000-8080"
   en: "Ex: 80 or 8000-8080"
 
+# Grupos do seletor de alias (ponta e porta): os sys:* vêm da API com embutido=true.
+fwz.picker.alias.embutidos:
+  pt: "Embutidos"
+  en: "Built-in"
+fwz.picker.alias.seus:
+  pt: "Seus aliases"
+  en: "Your aliases"
+
 # ─── Barra de Pendências ────────────────────────────────────────────────────
 fwz.pendencias.aviso:
   pt: "A configuração do firewall mudou: {n} mudanças. Aplique para as mudanças valerem."

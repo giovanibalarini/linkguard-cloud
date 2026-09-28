@@ -1,8 +1,15 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import Combo, { type ComboItem } from '../../ui/Combo';
 import { useI18n } from '../../../i18n';
+import {
+  chaveDoValor,
+  modoDaPonta,
+  opcoesDeAlias,
+  type EscolhaDeModo,
+  type ModoPonta,
+} from '../../../lib/fwZonas';
 import { useNetTargets } from '../../../lib/useNetTargets';
-import type { AliasFW, Ponta, PontaTipo } from '../../../types/firewall';
+import type { AliasFW, Ponta } from '../../../types/firewall';
 
 interface PontaPickerProps {
   label: string;
@@ -13,8 +20,6 @@ interface PontaPickerProps {
   error?: string;
   disabled?: boolean;
 }
-
-type Mode = 'any' | 'self' | 'alias' | 'machine' | 'addr';
 
 export default function PontaPicker({
   label,
@@ -28,43 +33,10 @@ export default function PontaPicker({
   const { t } = useI18n();
   const { targets } = useNetTargets();
 
-  const initialMode = useMemo<Mode>(() => {
-    if (value.kind === 'any') return 'any';
-    if (value.kind === 'self') return 'self';
-    if (value.kind === 'alias') return 'alias';
-    if (value.kind === 'addr') {
-      const isTarget = targets.some((tg) => tg.value === value.value);
-      if (isTarget) return 'machine';
-      return 'addr';
-    }
-    return 'any';
-  }, [value, targets]);
-
-  const [mode, setMode] = useState<Mode>(initialMode);
-
-  useEffect(() => {
-    if (value.kind === 'any' && mode !== 'any') setMode('any');
-    else if (value.kind === 'self' && mode !== 'self') setMode('self');
-    else if (value.kind === 'alias' && mode !== 'alias') setMode('alias');
-  }, [value.kind]);
-
-  const aliasItems = useMemo<ComboItem[]>(() => {
-    const items: ComboItem[] = [
-      { id: 'sys:vcn', label: 'VCN (Redes locais)', hint: 'sys:vcn', group: 'Sistema' },
-      { id: 'sys:vpn', label: 'VPN (Rede WireGuard)', hint: 'sys:vpn', group: 'Sistema' },
-    ];
-    for (const a of aliases) {
-      if (a.tipo === 'enderecos') {
-        items.push({
-          id: a.id,
-          label: a.nome,
-          hint: a.itens.join(', '),
-          group: 'Aliases personalizados',
-        });
-      }
-    }
-    return items;
-  }, [aliases]);
+  const aliasItems = useMemo<ComboItem[]>(
+    () => opcoesDeAlias(aliases, 'enderecos', t),
+    [aliases, t],
+  );
 
   const machineItems = useMemo<ComboItem[]>(() => {
     return targets.map((tg) => ({
@@ -75,20 +47,29 @@ export default function PontaPicker({
     }));
   }, [targets]);
 
-  const handleModeChange = (newMode: Mode) => {
-    setMode(newMode);
+  // O modo sai do valor (o editor pode trocar de regra com o seletor montado);
+  // `escolha` só desempata máquina x endereço digitado. Ver modoDaPonta.
+  const [escolha, setEscolha] = useState<EscolhaDeModo<ModoPonta> | null>(null);
+  const mode = modoDaPonta(value, machineItems.map((m) => m.id), escolha);
+
+  const emitir = (modo: ModoPonta, ponta: Ponta) => {
+    setEscolha({ modo, chave: chaveDoValor(ponta) });
+    onChange(ponta);
+  };
+
+  const handleModeChange = (newMode: ModoPonta) => {
     if (newMode === 'any') {
-      onChange({ kind: 'any' });
+      emitir(newMode, { kind: 'any' });
     } else if (newMode === 'self') {
-      onChange({ kind: 'self' });
+      emitir(newMode, { kind: 'self' });
     } else if (newMode === 'alias') {
       const defaultAlias = aliasItems[0]?.id || '';
-      onChange({ kind: 'alias', value: defaultAlias });
+      emitir(newMode, { kind: 'alias', value: defaultAlias });
     } else if (newMode === 'machine') {
       const defaultMachine = machineItems[0]?.id || '';
-      onChange({ kind: 'addr', value: defaultMachine });
+      emitir(newMode, { kind: 'addr', value: defaultMachine });
     } else if (newMode === 'addr') {
-      onChange({ kind: 'addr', value: '' });
+      emitir(newMode, { kind: 'addr', value: '' });
     }
   };
 
@@ -158,7 +139,7 @@ export default function PontaPicker({
         <Combo
           items={aliasItems}
           value={value.kind === 'alias' ? value.value || '' : ''}
-          onPick={(item) => onChange({ kind: 'alias', value: item?.id || '' })}
+          onPick={(item) => emitir('alias', { kind: 'alias', value: item?.id || '' })}
           placeholder={t('fwz.ponta.picker.select')}
           disabled={disabled}
         />
@@ -168,7 +149,7 @@ export default function PontaPicker({
         <Combo
           items={machineItems}
           value={value.kind === 'addr' ? value.value || '' : ''}
-          onPick={(item) => onChange({ kind: 'addr', value: item?.id || '' })}
+          onPick={(item) => emitir('machine', { kind: 'addr', value: item?.id || '' })}
           placeholder={t('fwz.ponta.picker.select')}
           disabled={disabled}
         />
@@ -179,7 +160,7 @@ export default function PontaPicker({
           type="text"
           disabled={disabled}
           value={value.kind === 'addr' ? value.value || '' : ''}
-          onChange={(e) => onChange({ kind: 'addr', value: e.target.value.trim() })}
+          onChange={(e) => emitir('addr', { kind: 'addr', value: e.target.value.trim() })}
           placeholder="Ex: 192.168.1.100 ou 10.0.0.0/24"
           className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
         />

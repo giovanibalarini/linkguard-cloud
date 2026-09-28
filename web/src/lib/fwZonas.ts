@@ -1,4 +1,4 @@
-import type { Acao, LinhaFW, MudancaFW, Ponta, Porta, RegraFW, Zona } from '../types/firewall';
+import type { Acao, AliasFW, LinhaFW, MudancaFW, Ponta, Porta, RegraFW, Zona } from '../types/firewall';
 
 export const ZONAS: readonly Zona[] = ['flutuante', 'internet', 'vcn', 'vpn'] as const;
 
@@ -44,6 +44,71 @@ export function nomePorta(
     return nomeResolvido;
   }
   return p.value || '';
+}
+
+// ---------------------------------------------------------------------------
+// Seletores de ponta e de porta
+// ---------------------------------------------------------------------------
+
+export type ModoPonta = 'any' | 'self' | 'alias' | 'machine' | 'addr';
+export type ModoPorta = 'any' | 'port' | 'alias' | 'service';
+
+/** O modo que quem usa o seletor escolheu, e o valor que a escolha produziu. */
+export interface EscolhaDeModo<M> {
+  modo: M;
+  chave: string;
+}
+
+export function chaveDoValor(v: Ponta | Porta): string {
+  return `${v.kind}|${v.value ?? ''}`;
+}
+
+// O modo (Qualquer, Alias, Máquina...) sai do valor que o editor entrega, para o
+// seletor nunca discordar da regra aberta. O valor sozinho não diz duas coisas:
+// se um endereço veio da lista de máquinas ou foi digitado, e se uma porta veio
+// da lista de serviços ou foi digitada ("8080" passa por "80" enquanto se
+// digita). Nesses casos vale a escolha explícita, mas só enquanto o valor for o
+// que ela produziu: qualquer outro valor (outra regra aberta) volta a mandar.
+export function modoDaPonta(
+  v: Ponta,
+  enderecosDeMaquinas: readonly string[],
+  escolha?: EscolhaDeModo<ModoPonta> | null,
+): ModoPonta {
+  if (escolha && escolha.chave === chaveDoValor(v)) return escolha.modo;
+  if (v.kind === 'addr') {
+    return v.value && enderecosDeMaquinas.includes(v.value) ? 'machine' : 'addr';
+  }
+  return v.kind;
+}
+
+export function modoDaPorta(
+  v: Porta,
+  portasDeServicos: readonly string[],
+  escolha?: EscolhaDeModo<ModoPorta> | null,
+): ModoPorta {
+  if (escolha && escolha.chave === chaveDoValor(v)) return escolha.modo;
+  if (v.kind === 'port') {
+    return v.value && portasDeServicos.includes(v.value) ? 'service' : 'port';
+  }
+  return v.kind;
+}
+
+/**
+ * Opções do seletor de alias, vindas da lista da API: os embutidos (sys:*)
+ * primeiro, cada um no seu grupo, e o nome e os itens como o servidor os dá.
+ */
+export function opcoesDeAlias(
+  aliases: readonly AliasFW[],
+  tipo: AliasFW['tipo'],
+  t: (key: string) => string,
+) {
+  const doTipo = aliases.filter((a) => a.tipo === tipo);
+  return [...doTipo.filter((a) => a.embutido), ...doTipo.filter((a) => !a.embutido)].map((a) => ({
+    id: a.id,
+    label: a.nome,
+    hint: a.itens.join(', '),
+    group: t(a.embutido ? 'fwz.picker.alias.embutidos' : 'fwz.picker.alias.seus'),
+  }));
 }
 
 export function podeArrastar(linha: LinhaFW): boolean {
