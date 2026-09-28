@@ -13,7 +13,7 @@
  * tem o id da janela e os dois botões.
  */
 
-import { Timer, AlertTriangle, Check, RotateCcw, HelpCircle, RefreshCw } from 'lucide-react';
+import { Timer, Check, RotateCcw, HelpCircle, RefreshCw } from 'lucide-react';
 import { formatCountdown } from '../../lib/pendingWindow';
 import { useI18n } from '../../i18n';
 import type { ConfirmOrRevert } from '../../lib/useConfirmOrRevert';
@@ -54,29 +54,6 @@ export default function ConfirmOrRevertBanner({ cor, canWrite }: { cor: ConfirmO
                 {t('fw.confirm.testAccess')}{' '}
                 {t(pendingSeconds === 0 ? 'fw.confirm.deadlinePassed' : 'fw.confirm.deadlineRunning')}
               </p>
-              {/* O aviso da spec §5, e a razão de esta feature poder existir.
-                  Um grupo restrito a `ct state new` NÃO derruba a sessão do
-                  operador: ele testaria na aba que já estava aberta, veria
-                  tudo funcionando, confirmaria — e descobriria o bloqueio na
-                  próxima reconexão, quando já não há rede de proteção
-                  nenhuma. Aqui ele ganha caixa própria, e não mais uma linha
-                  na mesma parede de texto âmbar, porque é a única frase desta
-                  faixa que contradiz o que o operador acabou de testar.
-
-                  E ele NÃO aparece numa janela comum (o servidor decide, em
-                  new_connections_only): ali a sessão cai de verdade e o teste
-                  vale sozinho — um aviso em toda janela vira ruído e ninguém
-                  lê. */}
-              {pending.new_connections_only && (
-                <div className="mt-2 rounded-lg border border-amber-400/60 bg-amber-400/10 px-3 py-2 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-xs text-amber-50">
-                    {t('fw.confirm.newConnectionsOnly')}{' '}
-                    <strong className="font-semibold">{t('fw.confirm.newConnectionsOnly.strong')}</strong>{' '}
-                    {t('fw.confirm.newConnectionsOnly.tail')}
-                  </p>
-                </div>
-              )}
               {/* O que a reversão desfaz, dito antes de alguém apertar
                   qualquer botão: o snapshot cobre `groups` e `rules` e mais
                   nada. Acreditar numa volta completa que não aconteceu é o

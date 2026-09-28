@@ -114,9 +114,11 @@ func (h *FirewallHandler) EntendiConversao(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// AjustesView expõe os ajustes de postura do firewall (sem RedesVCNExtras, que possui rota própria).
+// AjustesView expõe os ajustes de postura do firewall. RedesVCNExtras só sai
+// na leitura: a escrita delas tem rota própria (PUT /api/firewall/aliases/sys:vcn/extras).
 type AjustesView struct {
 	AntiBloqueio        map[string]bool `json:"anti_bloqueio,omitempty"`
+	RedesVCNExtras      []string        `json:"redes_vcn_extras,omitempty"`
 	RegistrarBloqueados bool            `json:"registrar_bloqueados"`
 	RegistrarDestinos   bool            `json:"registrar_destinos"`
 	RegistrarPadrao     bool            `json:"registrar_padrao"`
@@ -136,6 +138,7 @@ func (h *FirewallHandler) GetAjustes(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, AjustesView{
 		AntiBloqueio:        ab,
+		RedesVCNExtras:      cfg.Ajustes.RedesVCNExtras,
 		RegistrarBloqueados: cfg.Ajustes.RegistrarBloqueados,
 		RegistrarDestinos:   cfg.Ajustes.RegistrarDestinos,
 		RegistrarPadrao:     cfg.Ajustes.RegistrarPadrao,

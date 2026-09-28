@@ -419,3 +419,24 @@ func TestFirewallPreviaDeRegraInvalidaDevolveProblemasSem500(t *testing.T) {
 		t.Errorf("sem regra válida, nft deveria ser [] (veio %v)", corpo.NFT)
 	}
 }
+
+func TestGetAjustesDevolveAsRedesExtrasDaVCN(t *testing.T) {
+	_, _, _, userR, userW, router := setupFirewallTestRouter(t)
+
+	if res := doReq(router, http.MethodPut, "/api/firewall/aliases/sys:vcn/extras", userW.ID, `{"redes":["172.16.0.0/12"]}`); res.Code != http.StatusOK {
+		t.Fatalf("gravar extras: %d %s", res.Code, res.Body.String())
+	}
+	res := doReq(router, http.MethodGet, "/api/firewall/ajustes", userR.ID, "")
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"redes_vcn_extras":["172.16.0.0/12"]`) {
+		t.Fatalf("a tela precisa reler o que gravou: %d %s", res.Code, res.Body.String())
+	}
+
+	// Gravar os ajustes não pode apagar as extras nem aceitar as do corpo.
+	if res := doReq(router, http.MethodPut, "/api/firewall/ajustes", userW.ID, `{"registrar_bloqueados":true,"redes_vcn_extras":["192.168.0.0/16"]}`); res.Code != http.StatusOK {
+		t.Fatalf("PUT ajustes: %d %s", res.Code, res.Body.String())
+	}
+	res = doReq(router, http.MethodGet, "/api/firewall/ajustes", userR.ID, "")
+	if !strings.Contains(res.Body.String(), `"redes_vcn_extras":["172.16.0.0/12"]`) {
+		t.Fatalf("as extras mudaram pelo PUT de ajustes: %s", res.Body.String())
+	}
+}

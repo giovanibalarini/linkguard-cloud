@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Timer, Check, RotateCcw, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Timer, Check, RotateCcw, HelpCircle } from 'lucide-react';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n';
@@ -163,22 +163,6 @@ export default function PendingWindowBanner() {
           {t('shell.pending.waiting.text')}{' '}
           <span className="text-amber-200/80 break-words">{pending.summary}</span>{t('shell.pending.waiting.tail')}
         </p>
-        {/* O aviso que torna esta janela honesta (spec §5). Um grupo restrito a
-            `ct state new` não derruba a conexão que já está de pé: testar o
-            acesso na aba aberta, ou no SSH já conectado, passa mesmo com o
-            bloqueio valendo — e ele morde na próxima reconexão, quando não há
-            mais reversão automática nenhuma. Ele só aparece quando o servidor
-            diz que é esse o caso: numa janela comum a sessão cai de verdade, o
-            teste vale sozinho, e um aviso em toda faixa é um aviso que o
-            operador aprende a pular. */}
-        {pending.new_connections_only && (
-          <p className="mt-1 flex items-start gap-1.5 text-amber-50">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-300" aria-hidden="true" />
-            <span>
-              {t('shell.pending.newConnOnly.lead')} <strong className="font-semibold">{t('shell.pending.newConnOnly.strong')}</strong>{t('shell.pending.newConnOnly.tail')}
-            </span>
-          </p>
-        )}
         {err && <p className="text-xs text-red-300 mt-1">{t('shell.pending.error', { msg: err })}</p>}
         {unknown && (
           <p className="text-xs text-amber-200/70 mt-1">

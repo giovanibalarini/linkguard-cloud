@@ -267,17 +267,6 @@ export interface FirewallPendingChange {
   created_at: string;
   reverting: boolean;
   reverting_at?: string;
-  // new_connections_only é o aviso que torna esta janela honesta: a mudança
-  // que está sendo testada deixou valendo um grupo de escopo input restrito a
-  // `ct state new`, e um grupo desses NÃO derruba a sessão do operador. O
-  // teste de 90 segundos feito na aba que já estava aberta, ou no SSH que já
-  // estava conectado, passa mesmo quando o bloqueio existe — ele só morde na
-  // próxima conexão, quando já não há reversão automática nenhuma.
-  //
-  // Quando é `false`, a faixa NÃO mostra o aviso: ali a sessão cai de verdade
-  // se o operador se trancar para fora, o teste vale sozinho, e um aviso em
-  // toda janela é um aviso que ninguém lê.
-  new_connections_only: boolean;
 }
 
 // FirewallPendingResponse é o corpo do GET. `pending` é null explícito quando

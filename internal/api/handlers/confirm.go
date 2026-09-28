@@ -22,7 +22,6 @@ package handlers
 // aqui, porque o operador acredita que o estado anterior voltou inteiro.
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -66,29 +65,15 @@ import (
 // seconds_left persistido seria a contagem de quando a linha foi escrita. E
 // ExpiresAt continua no corpo — é a verdade persistida, e é dela que este campo
 // sai.
-//
-// NewConnectionsOnly é o que torna esta janela honesta para a escolha "só
-// conexões novas" (spec §5), e é o único campo daqui que não descreve o
-// pendente e sim o ESTADO que ele está protegendo. Ver newConnectionsOnly
-// logo abaixo: a faixa que ele liga é a única coisa que separa o teste de 90
-// segundos de um teatro, porque um grupo de escopo input restrito a
-// `ct state new` não derruba a sessão do operador — ele testa na conexão que
-// já estava de pé, vê tudo funcionando, confirma, e descobre o bloqueio na
-// próxima reconexão, quando já não há rede de proteção nenhuma.
-//
-// SEM omitempty, de propósito: `false` é uma afirmação ("esta janela derruba
-// a sua sessão se ela for atingida — o teste vale"), não a ausência de
-// informação, e um cliente que não vê o campo não pode distinguir as duas.
 type pendingView struct {
-	ID                 string     `json:"id"`
-	Summary            string     `json:"summary"`
-	AppliedBy          string     `json:"applied_by"`
-	ExpiresAt          time.Time  `json:"expires_at"`
-	SecondsLeft        int        `json:"seconds_left"`
-	CreatedAt          time.Time  `json:"created_at"`
-	Reverting          bool       `json:"reverting"`
-	RevertingAt        *time.Time `json:"reverting_at,omitempty"`
-	NewConnectionsOnly bool       `json:"new_connections_only"`
+	ID          string     `json:"id"`
+	Summary     string     `json:"summary"`
+	AppliedBy   string     `json:"applied_by"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	SecondsLeft int        `json:"seconds_left"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Reverting   bool       `json:"reverting"`
+	RevertingAt *time.Time `json:"reverting_at,omitempty"`
 }
 
 // pendingView desenha a janela para o painel. É método do handler, e não uma
@@ -106,27 +91,12 @@ func (h *NftablesHandler) pendingView(p *storage.PendingChange) *pendingView {
 		SecondsLeft: h.fr.SecondsLeft(p),
 		CreatedAt:   p.CreatedAt,
 		Reverting:   p.Reverting(),
-		// Calculado a cada resposta, como SecondsLeft, e pela mesma razão: ele
-		// descreve o estado de AGORA, e o estado de agora muda (a reversão o
-		// desfaz). Um valor gravado com a janela seria a resposta de quando a
-		// linha foi escrita.
-		NewConnectionsOnly: h.newConnectionsOnly(p.Snapshot),
 	}
 	if p.Reverting() {
 		at := p.RevertingAt
 		v.RevertingAt = &at
 	}
 	return v
-}
-
-type snapshotHeader struct {
-	Formato int `json:"formato"`
-}
-
-func (h *NftablesHandler) newConnectionsOnly(snapshot string) bool {
-	var header snapshotHeader
-	_ = json.Unmarshal([]byte(snapshot), &header)
-	return header.Formato == 2
 }
 
 // pendingResponse é o corpo do GET. O campo é um ponteiro SEM omitempty: sem

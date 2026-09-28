@@ -192,15 +192,6 @@ shell.pending.waiting.text:
 shell.pending.waiting.tail:
   pt: ". Teste o acesso que importa (SSH, este painel) antes de confirmar."
   en: ". Test the access that matters (SSH, this panel) before you confirm."
-shell.pending.newConnOnly.lead:
-  pt: "Este grupo vale só para conexões novas."
-  en: "This group applies to new connections only."
-shell.pending.newConnOnly.strong:
-  pt: "A sua sessão atual não é afetada"
-  en: "Your current session is not affected"
-shell.pending.newConnOnly.tail:
-  pt: " — abra uma conexão nova (outro terminal SSH, uma aba anônima) para testar de verdade antes de confirmar."
-  en: " — open a fresh connection (another SSH terminal, a private browser tab) to really test it before you confirm."
 shell.pending.error:
   pt: "Erro: {msg}"
   en: "Error: {msg}"

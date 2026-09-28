@@ -157,15 +157,6 @@ fw.confirm.deadlinePassed:
 fw.confirm.deadlineRunning:
   pt: "o LinkGuard reverte sozinho quando o prazo acabar."
   en: "LinkGuard reverts by itself when the deadline runs out."
-fw.confirm.newConnectionsOnly:
-  pt: "Este grupo vale só para conexões novas."
-  en: "This group only applies to new connections."
-fw.confirm.newConnectionsOnly.strong:
-  pt: "A sua sessão atual não é afetada"
-  en: "Your current session is not affected"
-fw.confirm.newConnectionsOnly.tail:
-  pt: "— abra uma conexão nova (outro terminal SSH, uma aba anônima) para testar de verdade antes de confirmar."
-  en: "— open a fresh connection (another SSH terminal, a private tab) to really test before confirming."
 fw.confirm.needWrite:
   pt: "Confirmar e reverter exigem permissão de escrita no firewall. Chame quem tem — ou espere o prazo, que reverte sozinho."
   en: "Confirming and reverting require firewall write permission. Call someone who has it — or wait for the deadline, which reverts on its own."

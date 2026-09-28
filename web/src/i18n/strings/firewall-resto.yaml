@@ -27,14 +27,14 @@ fwx.btn.refresh:
 
 # ─── Faixa do confirmar-ou-reverte ──────────────────────────────────────────
 fwx.revert.scope.head:
-  pt: "A reversão desfaz apenas "
-  en: "The revert only undoes "
+  pt: "A reversão devolve "
+  en: "The revert restores "
 fwx.revert.scope.strong:
-  pt: "grupos e regras"
-  en: "groups and rules"
+  pt: "toda a configuração do firewall e os perfis de acesso da VPN"
+  en: "the whole firewall configuration and the VPN access profiles"
 fwx.revert.scope.tail:
-  pt: ". Bloqueios por host, encaminhamentos de porta e o NTP não voltam atrás — o que você mudou neles durante a janela continua valendo."
-  en: ". Host blocks, port forwards and NTP are not rolled back — whatever you changed in them during the window stays in effect."
+  pt: " ao estado de antes da janela: regras, aliases, agendamentos, NAT e ajustes."
+  en: " to how they were before the window: rules, aliases, schedules, NAT and settings."
 fwx.confirm.btn.confirm:
   pt: "Confirmar acesso"
   en: "Confirm access"
