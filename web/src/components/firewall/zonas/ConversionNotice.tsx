@@ -91,7 +91,7 @@ export default function ConversionNotice({ items, onDismiss, canWrite }: Convers
                     {TIPOS.includes(it.tipo) ? t(`fwz.conversao.tipo.${it.tipo}`) : it.tipo}
                   </td>
                   <td className="py-2 pr-3 font-mono">{it.origem}</td>
-                  <td className="py-2 pr-3">{it.mensagem}</td>
+                  <td className="py-2 pr-3">{it.chave ? t(it.chave, it.vars) : it.mensagem}</td>
                   <td className="py-2 text-indigo-200/80">{it.detalhes}</td>
                 </tr>
               ))}

@@ -82,7 +82,8 @@ func (h *FirewallHandler) GetRegistro(w http.ResponseWriter, r *http.Request) {
 				v.Acao = string(reg.Acao)
 				v.Descricao = reg.Descricao
 			} else {
-				v.Descricao = "Regra " + e.Chave
+				v.DescChave = "fwz.registro.regraDesconhecida"
+				v.DescVars = map[string]string{"chave": e.Chave}
 			}
 		case "travada":
 			switch e.Chave {

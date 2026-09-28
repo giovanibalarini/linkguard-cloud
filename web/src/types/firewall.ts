@@ -40,6 +40,9 @@ export interface AliasFW {
   nome: string;
   tipo: AliasTipo;
   descricao: string;
+  /** Só nos embutidos: chaves i18n do nome e da descrição. */
+  nome_chave?: string;
+  desc_chave?: string;
   itens: string[];
   embutido?: boolean;
   usos?: number;
@@ -140,6 +143,9 @@ export interface ItemRelatorioConversao {
   tipo: 'flutuante' | 'politica' | 'aviso';
   origem: string;
   mensagem: string;
+  /** Chave i18n da frase; relatórios gravados antes dela existir só têm `mensagem`. */
+  chave?: string;
+  vars?: Record<string, string>;
   detalhes?: string;
 }
 

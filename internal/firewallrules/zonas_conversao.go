@@ -26,10 +26,12 @@ type FatosConversao struct {
 // ItemRelatorioConversao descreve uma decisão tomada durante a conversão do legado
 // que requer atenção do administrador.
 type ItemRelatorioConversao struct {
-	Tipo     string `json:"tipo"`               // "flutuante" | "politica" | "aviso"
-	Origem   string `json:"origem"`             // ex: "regra:<id>", "grupo:<id>", "politica:input"
-	Mensagem string `json:"mensagem"`           // texto legível
-	Detalhes string `json:"detalhes,omitempty"` // detalhes adicionais
+	Tipo     string            `json:"tipo"`            // "flutuante" | "politica" | "aviso"
+	Origem   string            `json:"origem"`          // ex: "regra:<id>", "grupo:<id>", "politica:input"
+	Mensagem string            `json:"mensagem"`        // texto em português, para relatórios já gravados e logs
+	Chave    string            `json:"chave,omitempty"` // chave i18n do painel; vence Mensagem quando presente
+	Vars     map[string]string `json:"vars,omitempty"`
+	Detalhes string            `json:"detalhes,omitempty"` // detalhes adicionais
 }
 
 // ConverterLegadoUmaVez converte grupos e regras do modelo legado para a configuração
@@ -162,6 +164,8 @@ func (s *Service) ConverterLegadoUmaVez(ctx context.Context, f FatosConversao) e
 					Tipo:     "flutuante",
 					Origem:   "regra:" + r.ID,
 					Mensagem: fmt.Sprintf("Regra %q movida para Flutuantes (desativada) para revisão manual", desc),
+					Chave:    "fwz.conversao.msg.regraFlutuante",
+					Vars:     map[string]string{"regra": desc},
 				})
 			}
 
@@ -239,6 +243,8 @@ func (s *Service) ConverterLegadoUmaVez(ctx context.Context, f FatosConversao) e
 					Tipo:     "flutuante",
 					Origem:   "grupo:" + g.ID,
 					Mensagem: fmt.Sprintf("Sobra do grupo %q movida para Flutuantes (desativada) para revisão manual", g.Name),
+					Chave:    "fwz.conversao.msg.sobraFlutuante",
+					Vars:     map[string]string{"grupo": g.Name},
 				})
 			}
 
@@ -314,6 +320,7 @@ func (s *Service) ConverterLegadoUmaVez(ctx context.Context, f FatosConversao) e
 			Tipo:     "politica",
 			Origem:   "politica:input",
 			Mensagem: "Política de entrada anterior era drop; substituída pelos padrões das zonas",
+			Chave:    "fwz.conversao.msg.politicaEntrada",
 		})
 	}
 	if pFwd, _ := s.db.GetSetting("firewall_forward_policy"); pFwd == "drop" {
@@ -321,6 +328,7 @@ func (s *Service) ConverterLegadoUmaVez(ctx context.Context, f FatosConversao) e
 			Tipo:     "politica",
 			Origem:   "politica:forward",
 			Mensagem: "Política de passagem anterior era drop; substituída pelos padrões das zonas",
+			Chave:    "fwz.conversao.msg.politicaPassagem",
 		})
 	}
 
@@ -337,6 +345,7 @@ func (s *Service) ConverterLegadoUmaVez(ctx context.Context, f FatosConversao) e
 				Tipo:     "aviso",
 				Origem:   "vpn",
 				Mensagem: "Pessoas da VPN sem acesso total não têm mais acesso ao SSH e painel da caixa (portas de gerência)",
+				Chave:    "fwz.conversao.msg.vpnRestrita",
 			})
 		}
 	}

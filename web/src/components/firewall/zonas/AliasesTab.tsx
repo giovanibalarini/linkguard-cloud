@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Shield, Lock, Search, AlertCircle, Save } from 'l
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
 import { errMsg } from '../../../lib/apiError';
+import { descricaoDoAlias, nomeDoAlias } from '../../../lib/fwZonas';
 import Panel from '../../ui/Panel';
 import AliasEditor from './AliasEditor';
 import InlineConfirm from './InlineConfirm';
@@ -104,8 +105,8 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
     const q = busca.toLowerCase().trim();
     if (!q) return true;
     return (
-      a.nome.toLowerCase().includes(q) ||
-      a.descricao.toLowerCase().includes(q) ||
+      nomeDoAlias(a, t).toLowerCase().includes(q) ||
+      descricaoDoAlias(a, t).toLowerCase().includes(q) ||
       a.itens.some((it) => it.toLowerCase().includes(q))
     );
   });
@@ -192,7 +193,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
                               <Lock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                             </span>
                           )}
-                          <span>{alias.nome}</span>
+                          <span>{nomeDoAlias(alias, t)}</span>
                           {isBuiltin && (
                             <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-sans">
                               {t('fwz.aliases.embutido')}
@@ -215,7 +216,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
                           </div>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-400">
-                          <div>{alias.descricao}</div>
+                          <div>{descricaoDoAlias(alias, t)}</div>
                           <div className="text-[11px] text-gray-500 mt-0.5">
                             {alias.usos && alias.usos > 0
                               ? t('fwz.aliases.usado_por', { n: alias.usos })

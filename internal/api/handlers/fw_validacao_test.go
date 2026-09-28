@@ -440,3 +440,37 @@ func TestGetAjustesDevolveAsRedesExtrasDaVCN(t *testing.T) {
 		t.Fatalf("as extras mudaram pelo PUT de ajustes: %s", res.Body.String())
 	}
 }
+
+func TestAliasesEmbutidosVemComChaveDeTexto(t *testing.T) {
+	_, _, _, userR, _, router := setupFirewallTestRouter(t)
+
+	res := doReq(router, http.MethodGet, "/api/firewall/aliases", userR.ID, "")
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET aliases: %d %s", res.Code, res.Body.String())
+	}
+	var lista []struct {
+		ID        string `json:"id"`
+		NomeChave string `json:"nome_chave"`
+		DescChave string `json:"desc_chave"`
+		Embutido  bool   `json:"embutido"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &lista); err != nil {
+		t.Fatal(err)
+	}
+	embutidos := 0
+	for _, a := range lista {
+		if !a.Embutido {
+			if a.NomeChave != "" || a.DescChave != "" {
+				t.Errorf("alias do usuário %s não deveria ter chave de texto", a.ID)
+			}
+			continue
+		}
+		embutidos++
+		if a.NomeChave == "" || a.DescChave == "" {
+			t.Errorf("embutido %s sem chave de texto: %+v", a.ID, a)
+		}
+	}
+	if embutidos != 3 {
+		t.Errorf("esperava 3 embutidos, obteve %d", embutidos)
+	}
+}

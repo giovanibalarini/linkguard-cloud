@@ -2,6 +2,7 @@ package firewallrules
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"strconv"
 	"strings"
@@ -161,6 +162,15 @@ func TestConversaoTabela(t *testing.T) {
 	relStr, _ := db.GetSetting("fw_conversao_relatorio")
 	if !strings.Contains(relStr, "r-sem-origem") {
 		t.Errorf("relatório deveria mencionar r-sem-origem: %s", relStr)
+	}
+	var itens []ItemRelatorioConversao
+	if err := json.Unmarshal([]byte(relStr), &itens); err != nil {
+		t.Fatalf("relatório ilegível: %v", err)
+	}
+	for _, it := range itens {
+		if it.Chave == "" {
+			t.Errorf("item do relatório sem chave de texto para o painel: %+v", it)
+		}
 	}
 }
 

@@ -268,7 +268,7 @@ func RenderZonas(c fwmodel.Config, in Insumos) (Ruleset, error) {
 					avisos = append(avisos, fwmodel.Problema{
 						Severidade: "aviso",
 						Onde:       "vpn:pessoa:" + p.UserID,
-						Chave:      "fw.aviso.alias_inexistente",
+						Chave:      "fwz.aviso.aliasInexistente",
 						Vars: map[string]string{
 							"alias":   aID,
 							"usuario": p.Usuario,

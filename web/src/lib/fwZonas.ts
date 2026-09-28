@@ -93,6 +93,15 @@ export function modoDaPorta(
   return v.kind;
 }
 
+/** Nome de exibição: os embutidos vêm com chave i18n, os do usuário com o nome digitado. */
+export function nomeDoAlias(a: AliasFW, t: (key: string) => string): string {
+  return a.nome_chave ? t(a.nome_chave) : a.nome;
+}
+
+export function descricaoDoAlias(a: AliasFW, t: (key: string) => string): string {
+  return a.desc_chave ? t(a.desc_chave) : a.descricao;
+}
+
 /**
  * Opções do seletor de alias, vindas da lista da API: os embutidos (sys:*)
  * primeiro, cada um no seu grupo, e o nome e os itens como o servidor os dá.
@@ -105,7 +114,7 @@ export function opcoesDeAlias(
   const doTipo = aliases.filter((a) => a.tipo === tipo);
   return [...doTipo.filter((a) => a.embutido), ...doTipo.filter((a) => !a.embutido)].map((a) => ({
     id: a.id,
-    label: a.nome,
+    label: nomeDoAlias(a, t),
     hint: a.itens.join(', '),
     group: t(a.embutido ? 'fwz.picker.alias.embutidos' : 'fwz.picker.alias.seus'),
   }));

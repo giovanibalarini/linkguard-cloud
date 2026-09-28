@@ -18,6 +18,8 @@ type AliasView struct {
 	Nome      string            `json:"nome"`
 	Tipo      fwmodel.AliasTipo `json:"tipo"`
 	Descricao string            `json:"descricao"`
+	NomeChave string            `json:"nome_chave,omitempty"`
+	DescChave string            `json:"desc_chave,omitempty"`
 	Itens     []string          `json:"itens"`
 	Embutido  bool              `json:"embutido"`
 	Usos      int               `json:"usos"`
@@ -57,6 +59,8 @@ func (h *FirewallHandler) GetAliases(w http.ResponseWriter, r *http.Request) {
 	embutidos := []AliasView{
 		{
 			ID:        fwmodel.AliasVCN,
+			NomeChave: "fwz.aliases.sys.vcn.nome",
+			DescChave: "fwz.aliases.sys.vcn.desc",
 			Nome:      "VCN",
 			Tipo:      fwmodel.AliasTipoEnderecos,
 			Descricao: "Rede da nuvem (VCN) e sub-redes adicionais configuradas",
@@ -65,6 +69,8 @@ func (h *FirewallHandler) GetAliases(w http.ResponseWriter, r *http.Request) {
 		},
 		{
 			ID:        fwmodel.AliasVPN,
+			NomeChave: "fwz.aliases.sys.vpn.nome",
+			DescChave: "fwz.aliases.sys.vpn.desc",
 			Nome:      "VPN",
 			Tipo:      fwmodel.AliasTipoEnderecos,
 			Descricao: "Rede da VPN de acesso remoto WireGuard",
@@ -73,6 +79,8 @@ func (h *FirewallHandler) GetAliases(w http.ResponseWriter, r *http.Request) {
 		},
 		{
 			ID:        fwmodel.AliasGerencia,
+			NomeChave: "fwz.aliases.sys.gerencia.nome",
+			DescChave: "fwz.aliases.sys.gerencia.desc",
 			Nome:      "Gerência",
 			Tipo:      fwmodel.AliasTipoPortas,
 			Descricao: "Portas de gerência do firewall (SSH e painel web)",
