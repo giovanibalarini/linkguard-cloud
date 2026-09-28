@@ -119,19 +119,6 @@ func okResult(p *pendingView) mutationResult {
 	return mutationResult{Status: "ok", Pending: p}
 }
 
-// createdGroupResult e createdRuleResult acrescentam o pendente à linha criada
-// SEM mudar o formato que o painel já lê: o embutido é achatado pelo
-// encoding/json, então todo campo do grupo/da regra continua no mesmo lugar.
-type createdGroupResult struct {
-	*storage.FirewallGroup
-	Pending *pendingView `json:"pending,omitempty"`
-}
-
-type createdRuleResult struct {
-	*storage.FirewallRule
-	Pending *pendingView `json:"pending,omitempty"`
-}
-
 // PendingChange (GET /api/nftables/pending) devolve a janela em aberto, ou
 // null quando não há nenhuma.
 //

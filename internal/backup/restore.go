@@ -100,13 +100,9 @@ var knownSettingsValidators = map[string]func(raw string) error{
 //     anyway: redefining this box's firewall from someone else's snapshot is
 //     damage on its own.
 //
-//   - firewall_rules_imported: the one-time-import latch. BackupData has no
-//     field for the firewall rules themselves, so restoring the latch writes
-//     "already imported" onto a machine that received no rules: the next
-//     boot skips ImportOnce and ReconcileUserRules empties the live
-//     user_rules chain against an empty table (C-3).
-//     TODO: firewall_rules ainda não é exportado no backup; incluí-las é
-//     feature à parte (ver Crítico 3 da revisão final).
+//   - firewall_rules_imported: the one-time-import latch of the legacy
+//     firewall. BackupData has no field for the firewall rules themselves, so
+//     restoring the latch would claim an import that never happened here.
 //
 //   - firewall_rules_apply / netsvc_last_apply: results of an apply that
 //     happened on the source machine. Restored, the panel would report a

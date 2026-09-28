@@ -74,22 +74,17 @@ type Service struct {
 	// internal/storage (ciclo; ver o doc-comment de StoredRule).
 	unconfirmedChange func() (bool, error)
 
-	// reconcileMu serializa as reconciliações das chains compartilhadas —
-	// ReconcileGroups/ReconcileGroupsFrom (forward + input) e ReconcileNTPInput
-	// (input). Não protege campo nenhum deste struct: protege a SEQUÊNCIA "ler o
-	// estado → flush chain → readicionar regra por regra", que não é atômica no
-	// kernel. Ver ReconcileGroupsFrom para a corrida que ele fecha (I-3 da
-	// revisão final).
+	// reconcileMu serializa as reconciliações do ruleset (AplicarZonas e as
+	// demais que reescrevem chains). Não protege campo nenhum deste struct:
+	// protege a SEQUÊNCIA "ler o estado → aplicar", que não é atômica no kernel.
 	//
 	// ORDEM DOS LOCKS, para quem for mexer: firewallrules.Service.mu é tomado
-	// ANTES deste (revert → Reconcile → aqui) e nunca depois. Nada que este lock
-	// alcança pode tomar aquele — em particular as fontes de
-	// SetInputChainSources e a guarda de SetPersistGuard, que por isso são
-	// SELECTs soltos, sem mutex nenhum do serviço de firewallrules.
+	// ANTES deste e nunca depois. Nada que este lock alcança pode tomar aquele —
+	// em particular a guarda de SetPersistGuard, que por isso é um SELECT solto,
+	// sem mutex nenhum do serviço de firewallrules.
 	//
 	// Não é reentrante: nenhuma função que o segura pode chamar outra que o
-	// tome. É por isso que ReconcileGroups/ReconcileGroupsFrom compartilham um
-	// corpo interno (reconcileGroups) em vez de uma chamar a outra.
+	// tome.
 	reconcileMu sync.Mutex
 
 	// persistMu protege persistState, lido de fora (o vigia, o apply status)

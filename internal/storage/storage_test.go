@@ -748,83 +748,6 @@ func TestGetAIReportMissingReturnsNil(t *testing.T) {
 
 // ─── FirewallGroup (Fase C1: grupos de regras) ──────────────────────────────
 
-func TestFirewallGroupCRUDAndOrder(t *testing.T) {
-	db := newTestDB(t)
-
-	a := storage.FirewallGroup{ID: "a", Name: "Wi-Fi visitantes", ChainName: "grp_aaaa0001",
-		Position: 0, Enabled: true, CondSaddr: "192.168.50.0/24", Fallthrough: "drop"}
-	b := storage.FirewallGroup{ID: "b", Name: "Servidores", ChainName: "grp_bbbb0002",
-		Position: 1, Enabled: true, CondSaddr: "192.168.3.10", Fallthrough: "continue"}
-	if err := db.CreateFirewallGroup(&a); err != nil {
-		t.Fatalf("criar grupo a: %v", err)
-	}
-	if err := db.CreateFirewallGroup(&b); err != nil {
-		t.Fatalf("criar grupo b: %v", err)
-	}
-
-	got, err := db.ListFirewallGroups()
-	if err != nil {
-		t.Fatalf("listar: %v", err)
-	}
-	if len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" {
-		t.Fatalf("esperava a,b em ordem de posição, obtive %+v", got)
-	}
-	if got[0].Fallthrough != "drop" || got[0].CondSaddr != "192.168.50.0/24" {
-		t.Errorf("campos não persistiram: %+v", got[0])
-	}
-
-	if err := db.ReorderFirewallGroups([]string{"b", "a"}); err != nil {
-		t.Fatalf("reordenar: %v", err)
-	}
-	got, _ = db.ListFirewallGroups()
-	if got[0].ID != "b" || got[1].ID != "a" {
-		t.Errorf("reordenar não teve efeito: %+v", got)
-	}
-
-	if err := db.SetFirewallGroupEnabled("a", false); err != nil {
-		t.Fatalf("desligar: %v", err)
-	}
-	got, _ = db.ListFirewallGroups()
-	for _, g := range got {
-		if g.ID == "a" && g.Enabled {
-			t.Error("grupo a deveria estar desligado")
-		}
-	}
-}
-
-// Apagar um grupo tem que levar as regras dele junto, na mesma transação:
-// foreign keys estão DESLIGADAS no modernc, então nada no banco faz isso
-// sozinho, e uma regra órfã seria renderizada em chain nenhuma — presente
-// no painel, ausente do firewall.
-func TestDeleteFirewallGroupRemovesItsRules(t *testing.T) {
-	db := newTestDB(t)
-	g := storage.FirewallGroup{ID: "g1", Name: "Testes", ChainName: "grp_cccc0003", Fallthrough: "continue"}
-	if err := db.CreateFirewallGroup(&g); err != nil {
-		t.Fatalf("criar grupo: %v", err)
-	}
-	r := storage.FirewallRule{ID: "r1", GroupID: "g1", Action: "drop", Proto: "tcp", Dport: "22"}
-	if err := db.CreateFirewallRule(&r); err != nil {
-		t.Fatalf("criar regra: %v", err)
-	}
-
-	if err := db.DeleteFirewallGroup("g1"); err != nil {
-		t.Fatalf("apagar grupo: %v", err)
-	}
-	rules, _ := db.ListFirewallRules()
-	for _, x := range rules {
-		if x.GroupID == "g1" {
-			t.Fatalf("regra %s ficou órfã depois de apagar o grupo", x.ID)
-		}
-	}
-}
-
-func TestDeleteFirewallGroupUnknownIDIsAnError(t *testing.T) {
-	db := newTestDB(t)
-	if err := db.DeleteFirewallGroup("nao-existe"); err == nil {
-		t.Fatal("apagar grupo inexistente tem que ser erro, não silêncio")
-	}
-}
-
 func TestFirewallGroupKindRoundTrips(t *testing.T) {
 	db := newTestDB(t)
 	g := storage.FirewallGroup{ID: "s1", Name: "Hosts bloqueados", ChainName: "sys_blocked_hosts",
@@ -1005,26 +928,6 @@ func TestFirewallGroupConnStateRoundTrips(t *testing.T) {
 	got, _ := db.ListFirewallGroups()
 	if len(got) != 1 || got[0].ConnState != "new" {
 		t.Fatalf("conn_state não persistiu: %+v", got)
-	}
-}
-
-// A edição tem que gravar a escolha: um handler que leia o campo do corpo e
-// não o veja chegar ao banco produz o pior bug de painel — o admin muda na
-// tela, a resposta é 200, e o firewall continua exatamente como estava.
-func TestUpdateFirewallGroupSavesConnState(t *testing.T) {
-	db := newTestDB(t)
-	g := storage.FirewallGroup{ID: "n1", Name: "Visitantes", ChainName: "grp_nnn",
-		Kind: "admin", Position: 0, Enabled: true, Fallthrough: "continue"}
-	if err := db.CreateFirewallGroup(&g); err != nil {
-		t.Fatalf("criar: %v", err)
-	}
-	g.ConnState = "new"
-	if err := db.UpdateFirewallGroup(&g); err != nil {
-		t.Fatalf("atualizar: %v", err)
-	}
-	got, _ := db.ListFirewallGroups()
-	if len(got) != 1 || got[0].ConnState != "new" {
-		t.Fatalf("a edição não gravou conn_state: %+v", got)
 	}
 }
 

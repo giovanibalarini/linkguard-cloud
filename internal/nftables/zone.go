@@ -336,10 +336,8 @@ func networkSet(nets []string) string {
 // e de erro.
 //
 // Fonte, e não parâmetro: nenhum método público deste pacote muda de
-// assinatura por causa das zonas. É o mesmo seam de SetWANInterfacesSource e
-// SetInputPolicySource, e existe pelo mesmo motivo — a leitura tem de
-// acontecer DENTRO da reconciliação, sob o mesmo lock da sequência
-// "ler → flush → readicionar" (#81).
+// assinatura por causa das zonas. A leitura tem de acontecer DENTRO da
+// reconciliação, sob o mesmo lock da sequência "ler → aplicar" (#81).
 func (s *Service) SetZoneFactsSource(src func() (ZoneFacts, error)) {
 	s.zoneFactsSource = src
 }
