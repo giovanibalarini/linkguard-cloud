@@ -3,12 +3,33 @@ package fwmodel
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 // MaxDescricaoRegra é o maior tamanho, em caracteres, da descrição de uma regra.
 const MaxDescricaoRegra = 200
+
+// MaxIDObjeto é o maior tamanho do identificador de uma regra, alias, agendamento ou encaminhamento.
+const MaxIDObjeto = 64
+
+// Os identificadores entram no script do nft (comentário da regra e nome do set do alias);
+// só letras, dígitos, "_" e "-" garantem que nenhum deles escapa das aspas ou vira outro comando.
+var reIDObjeto = regexp.MustCompile(`^[A-Za-z0-9_-]{1,` + strconv.Itoa(MaxIDObjeto) + `}$`)
+
+// IDValido diz se o identificador pode entrar no script do nft.
+func IDValido(id string) bool {
+	return reIDObjeto.MatchString(id)
+}
+
+func idParaMensagem(id string) string {
+	r := []rune(id)
+	if len(r) > MaxIDObjeto {
+		return string(r[:MaxIDObjeto]) + "…"
+	}
+	return id
+}
 
 // Problema descreve um erro ou aviso encontrado durante a validação da configuração.
 type Problema struct {
@@ -122,6 +143,8 @@ func Validar(c Config, pessoas []string) []Problema {
 		onde := "alias:" + a.ID
 		if a.ID == "" {
 			addErro(onde, "fwz.problema.aliasIdVazio", nil)
+		} else if !IDValido(a.ID) {
+			addErro(onde, "fwz.problema.aliasIdInvalido", map[string]string{"id": idParaMensagem(a.ID)})
 		}
 
 		nomeTrim := strings.TrimSpace(a.Nome)
@@ -170,6 +193,8 @@ func Validar(c Config, pessoas []string) []Problema {
 		onde := "agendamento:" + ag.ID
 		if ag.ID == "" {
 			addErro(onde, "fwz.problema.agendamentoIdVazio", nil)
+		} else if !IDValido(ag.ID) {
+			addErro(onde, "fwz.problema.agendamentoIdInvalido", map[string]string{"id": idParaMensagem(ag.ID)})
 		}
 
 		nomeTrim := strings.TrimSpace(ag.Nome)
@@ -218,6 +243,8 @@ func Validar(c Config, pessoas []string) []Problema {
 		onde := "regra:" + r.ID
 		if r.ID == "" {
 			addErro(onde, "fwz.problema.regraIdVazio", nil)
+		} else if !IDValido(r.ID) {
+			addErro(onde, "fwz.problema.regraIdInvalido", map[string]string{"id": idParaMensagem(r.ID)})
 		}
 
 		// Zona
@@ -386,6 +413,8 @@ func Validar(c Config, pessoas []string) []Problema {
 		onde := "encaminhamento:" + enc.ID
 		if enc.ID == "" {
 			addErro(onde, "fwz.problema.encaminhamentoIdVazio", nil)
+		} else if !IDValido(enc.ID) {
+			addErro(onde, "fwz.problema.encaminhamentoIdInvalido", map[string]string{"id": idParaMensagem(enc.ID)})
 		}
 		proto := strings.ToLower(enc.Proto)
 		if proto != "tcp" && proto != "udp" {
