@@ -280,6 +280,10 @@ cfg.admin.users.delete.body:
 cfg.admin.users.delete.body.tail:
   pt: "? Esta ação não pode ser desfeita."
   en: "? This cannot be undone."
+cfg.admin.users.deleteVpnPending:
+  pt: "Usuário excluído, mas a VPN e o firewall ainda não foram atualizados. Confira a tela de VPN e aplique de novo se preciso."
+  en: "User deleted, but the VPN and firewall have not been updated yet. Check the VPN page and apply again if needed."
+
 cfg.admin.users.deleteError:
   pt: "Erro ao excluir usuário"
   en: "Failed to delete the user"

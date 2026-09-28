@@ -82,6 +82,7 @@ function UsersTab() {
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteWarning, setDeleteWarning] = useState('');
 
   const fetchAll = async () => {
     setLoading(true);
@@ -162,11 +163,13 @@ function UsersTab() {
     setDeleting(true);
     setDeleteError('');
     try {
-      await client.delete(`/api/users/${deleteTarget.id}`);
+      const res = await client.delete<{ warning?: string }>(`/api/users/${deleteTarget.id}`);
+      setDeleteWarning(res.data?.warning === 'vpn_reconcile_pending' ? t('cfg.admin.users.deleteVpnPending') : '');
       setDeleteTarget(null);
       await fetchAll();
     } catch (err: any) {
       setDeleteError(err.response?.data?.error || t('cfg.admin.users.deleteError'));
+      await fetchAll();
     } finally {
       setDeleting(false);
     }
@@ -184,6 +187,7 @@ function UsersTab() {
       </div>
 
       {fetchError && <div className="card border border-red-500/30 bg-red-500/10 text-red-400 text-sm">{fetchError}</div>}
+      {deleteWarning && <div className="card border border-amber-500/40 bg-amber-500/10 text-amber-300 text-sm" role="status">{deleteWarning}</div>}
 
       <Panel>
         {loading ? (
