@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { errMsg } from './apiError';
 import type { EstadoFW } from '../types/firewall';
 
 export function useFirewallEstado() {
@@ -21,8 +22,8 @@ export function useFirewallEstado() {
       const { data } = await client.get<EstadoFW>('/api/firewall/estado');
       setEstado(data);
       setError(null);
-    } catch (e: any) {
-      setError(e.response?.data?.error || e.message || 'Erro ao carregar estado do firewall');
+    } catch (e) {
+      setError(errMsg(e));
     } finally {
       setLoading(false);
     }

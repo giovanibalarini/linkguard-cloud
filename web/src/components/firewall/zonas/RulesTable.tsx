@@ -113,7 +113,7 @@ export default function RulesTable({
     if (!c.medido) return '—';
     const pkts = c.pacotes.toLocaleString(lang);
     const kbytes = (c.bytes / 1024).toLocaleString(lang, { maximumFractionDigits: 1 });
-    return `${pkts} pkts (${kbytes} KB)`;
+    return t('fwz.tabela.contador', { pkts, kbytes });
   };
 
   return (
@@ -291,7 +291,7 @@ export default function RulesTable({
                   </div>
                   <div>
                     <span className="text-gray-500 block text-[11px]">{t('fwz.tabela.proto')}:</span>
-                    <span className="uppercase">{linha.regra.proto || 'Qualquer'}</span>
+                    <span className="uppercase">{linha.regra.proto || t('fwz.tabela.proto_qualquer')}</span>
                   </div>
                   <div>
                     <span className="text-gray-500 block text-[11px]">{t('fwz.tabela.porta')}:</span>
@@ -413,7 +413,7 @@ export default function RulesTable({
                   </td>
 
                   <td className="py-2.5 px-3 font-mono uppercase text-gray-400">
-                    {isPadrao ? '—' : linha.regra.proto || 'Qualquer'}
+                    {isPadrao ? '—' : linha.regra.proto || t('fwz.tabela.proto_qualquer')}
                   </td>
 
                   <td className="py-2.5 px-3">

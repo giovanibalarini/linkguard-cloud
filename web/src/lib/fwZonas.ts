@@ -17,14 +17,14 @@ export const ACAO_I18N_KEYS: Record<Acao, string> = {
 
 export function nomePonta(
   p: Ponta | undefined,
-  nomeResolvido?: string,
-  t?: (key: string) => string,
+  nomeResolvido: string | undefined,
+  t: (key: string) => string,
 ): string {
   if (!p || p.kind === 'any') {
-    return t ? t('fwz.ponta.any') : 'Qualquer';
+    return t('fwz.ponta.any');
   }
   if (p.kind === 'self') {
-    return t ? t('fwz.ponta.self') : 'Este firewall';
+    return t('fwz.ponta.self');
   }
   if (nomeResolvido && nomeResolvido.trim()) {
     return nomeResolvido;
@@ -34,11 +34,11 @@ export function nomePonta(
 
 export function nomePorta(
   p: Porta | undefined,
-  nomeResolvido?: string,
-  t?: (key: string) => string,
+  nomeResolvido: string | undefined,
+  t: (key: string) => string,
 ): string {
   if (!p || p.kind === 'any') {
-    return t ? t('fwz.porta.any') : 'Qualquer';
+    return t('fwz.porta.any');
   }
   if (nomeResolvido && nomeResolvido.trim()) {
     return nomeResolvido;

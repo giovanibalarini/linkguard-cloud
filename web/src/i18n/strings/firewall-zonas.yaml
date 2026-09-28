@@ -92,6 +92,9 @@ fwz.ponta.machine:
 fwz.ponta.addr:
   pt: "Endereço ou rede"
   en: "Address or subnet"
+fwz.ponta.addr_placeholder:
+  pt: "Ex: 192.168.1.100 ou 10.0.0.0/24"
+  en: "E.g. 192.168.1.100 or 10.0.0.0/24"
 fwz.ponta.picker.select:
   pt: "Selecione o tipo"
   en: "Select type"
@@ -239,6 +242,9 @@ fwz.tabela.num:
 fwz.tabela.acao:
   pt: "Ação"
   en: "Action"
+fwz.tabela.proto_qualquer:
+  pt: "Qualquer"
+  en: "Any"
 fwz.tabela.proto:
   pt: "Protocolo"
   en: "Protocol"
@@ -263,6 +269,10 @@ fwz.tabela.descricao:
 fwz.tabela.pacotes:
   pt: "Pacotes / Bytes"
   en: "Packets / Bytes"
+# Contador de uma linha medida: pacotes e kilobytes já formatados no idioma.
+fwz.tabela.contador:
+  pt: "{pkts} pkts ({kbytes} KB)"
+  en: "{pkts} pkts ({kbytes} KB)"
 fwz.tabela.acoes:
   pt: "Ações"
   en: "Actions"
@@ -675,6 +685,9 @@ fwz.aliases.editar:
 fwz.aliases.nome:
   pt: "Nome"
   en: "Name"
+fwz.aliases.nome_placeholder:
+  pt: "ex: servidores_web, redes_filiais"
+  en: "e.g. web_servers, branch_networks"
 fwz.aliases.tipo:
   pt: "Tipo"
   en: "Type"
@@ -684,6 +697,9 @@ fwz.aliases.tipo.enderecos:
 fwz.aliases.tipo.portas:
   pt: "Portas"
   en: "Ports"
+fwz.aliases.descricao_placeholder:
+  pt: "ex: Servidores Web na DMZ"
+  en: "e.g. Web servers in the DMZ"
 fwz.aliases.descricao:
   pt: "Descrição"
   en: "Description"
@@ -749,9 +765,15 @@ fwz.agendamentos.editar:
 fwz.agendamentos.nome:
   pt: "Nome"
   en: "Name"
+fwz.agendamentos.nome_placeholder:
+  pt: "ex: horario_comercial, noites_e_fins_de_semana"
+  en: "e.g. business_hours, nights_and_weekends"
 fwz.agendamentos.descricao:
   pt: "Descrição"
   en: "Description"
+fwz.agendamentos.descricao_placeholder:
+  pt: "ex: Das 08h às 18h em dias úteis"
+  en: "e.g. 8 am to 6 pm on weekdays"
 fwz.agendamentos.dias:
   pt: "Dias da semana"
   en: "Days of the week"
@@ -826,6 +848,9 @@ fwz.nat.novo:
 fwz.nat.editar:
   pt: "Editar encaminhamento"
   en: "Edit port forward"
+fwz.nat.nome_placeholder:
+  pt: "ex: Servidor Web Nginx, SSH de Teste"
+  en: "e.g. Nginx web server, test SSH"
 fwz.nat.nome:
   pt: "Nome"
   en: "Name"
@@ -859,6 +884,9 @@ fwz.nat.vazio:
 fwz.nat.nota:
   pt: "Cada encaminhamento ativo gera automaticamente uma regra travada na aba Internet para liberar o tráfego externo correspondente."
   en: "Each active port forward automatically generates a locked rule in the Internet tab allowing the corresponding external traffic."
+fwz.nat.saida_titulo:
+  pt: "NAT de Saída (Masquerade)"
+  en: "Outbound NAT (Masquerade)"
 fwz.nat.saida:
   pt: "NAT de saída (Masquerade): gerenciado automaticamente para permitir o tráfego da VCN e da VPN para a Internet."
   en: "Outbound NAT (Masquerade): automatically managed to allow outbound traffic from VCN and VPN to the Internet."
@@ -1002,6 +1030,15 @@ fwz.avancado.contidos.titulo:
 fwz.avancado.contidos.vazio:
   pt: "Nenhuma máquina em contenção de abuso no momento."
   en: "No hosts currently in abuse containment."
+fwz.avancado.contidos.liberado:
+  pt: "IP {ip} liberado da contenção."
+  en: "IP {ip} released from containment."
+fwz.avancado.contidos.expira:
+  pt: "Expira em {min} min"
+  en: "Expires in {min} min"
 fwz.avancado.ruleset.titulo:
   pt: "Regras Ativas no Kernel (nftables)"
   en: "Active Kernel Rules (nftables)"
+fwz.avancado.ruleset.vazio:
+  pt: "Ruleset vazio ou inacessível."
+  en: "Ruleset empty or unavailable."

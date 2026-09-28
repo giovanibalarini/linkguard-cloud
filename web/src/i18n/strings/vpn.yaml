@@ -148,8 +148,8 @@ vpn.access.restricted:
   pt: "Só destinos escolhidos"
   en: "Chosen destinations only"
 vpn.access.restrictedDesc:
-  pt: "Alcança apenas os grupos de hosts e portas abaixo. O resto da internet dela não passa pela nuvem."
-  en: "Reaches only the host groups and ports below. The rest of their internet does not go through the cloud."
+  pt: "Alcança apenas os aliases de endereços e as portas abaixo. O resto da internet dela não passa pela nuvem."
+  en: "Reaches only the address aliases and ports below. The rest of their internet does not go through the cloud."
 vpn.access.full:
   pt: "Acesso completo"
   en: "Full access"
@@ -157,14 +157,14 @@ vpn.access.fullDesc:
   pt: "Alcança toda a rede da nuvem, e a internet inteira dela passa pelo gateway."
   en: "Reaches the whole cloud network, and all of their internet goes through the gateway."
 vpn.access.groups:
-  pt: "Grupos de hosts liberados"
-  en: "Allowed host groups"
+  pt: "Aliases de endereços liberados"
+  en: "Allowed address aliases"
 vpn.access.noGroups:
-  pt: "Nenhum grupo de hosts cadastrado. Crie um em Firewall, na aba Grupos de hosts."
-  en: "No host groups yet. Create one under Firewall, in the Host groups tab."
+  pt: "Nenhum alias de endereços cadastrado. Crie um em Firewall › Aliases."
+  en: "No address aliases yet. Create one under Firewall › Aliases."
 vpn.access.noGroupChosen:
-  pt: "Sem nenhum grupo marcado a pessoa conecta, mas não alcança nada."
-  en: "With no group checked the person connects but reaches nothing."
+  pt: "Sem nenhum alias marcado a pessoa conecta, mas não alcança nada."
+  en: "With no alias checked the person connects but reaches nothing."
 vpn.access.ports:
   pt: "Portas (opcional)"
   en: "Ports (optional)"
@@ -187,8 +187,8 @@ vpn.access.routes:
   pt: "Rotas a mais no túnel"
   en: "Extra routes in the tunnel"
 vpn.access.routesHelp:
-  pt: "Redes que também devem passar pela VPN, como 192.168.50.0/24. Os grupos liberados já entram sozinhos."
-  en: "Networks that should also go through the VPN, like 192.168.50.0/24. Allowed groups are added automatically."
+  pt: "Redes que também devem passar pela VPN, como 192.168.50.0/24. Os aliases liberados já entram sozinhos."
+  en: "Networks that should also go through the VPN, like 192.168.50.0/24. Allowed aliases are added automatically."
 vpn.access.mtu:
   pt: "MTU do túnel (opcional)"
   en: "Tunnel MTU (optional)"
@@ -330,8 +330,3 @@ vpn.config.endpointHint:
 vpn.config.save:
   pt: "Salvar e aplicar"
   en: "Save and apply"
-
-# Usado pela tela de Firewall nos grupos que a VPN gerencia.
-vpn.firewall.managed:
-  pt: "Grupo gerenciado pela tela de VPN: o acesso de cada pessoa se edita lá."
-  en: "Group managed by the VPN screen: each person's access is edited there."

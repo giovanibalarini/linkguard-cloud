@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from '../../ui/Modal';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import type { EncaminhamentoFW } from '../../../types/firewall';
 
 interface Props {
@@ -53,9 +54,8 @@ export default function NatEditor({ enc, onSave, onClose, canWrite }: Props) {
         porta_destino: pDest,
       });
       onClose();
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.erro || err.message || t('common.error');
-      setErro(msg);
+    } catch (err) {
+      setErro(errMsg(err, t));
     } finally {
       setSalvando(false);
     }
@@ -85,7 +85,7 @@ export default function NatEditor({ enc, onSave, onClose, canWrite }: Props) {
             onChange={(e) => setNome(e.target.value)}
             required
             disabled={!canWrite || salvando}
-            placeholder="ex: Servidor Web Nginx, SSH de Teste"
+            placeholder={t('fwz.nat.nome_placeholder')}
           />
         </div>
 

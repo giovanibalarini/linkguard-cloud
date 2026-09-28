@@ -13,10 +13,10 @@ export type BlockEnforcementStatus = 'unknown' | 'ok' | 'not_applied';
 
 export interface BlockEnforcement {
   status: BlockEnforcementStatus;
-  /** Frase curta com o motivo; vazia quando status é `ok`. */
-  reason: string;
-  /** O que fazer para resolver; vazia quando status é `ok`. */
-  fix: string;
+  /** Chave i18n da frase curta com o motivo; vazia quando status é `ok`. */
+  reasonKey: string;
+  /** Chave i18n do que fazer para resolver; vazia quando status é `ok`. */
+  fixKey: string;
   above?: string[];
 }
 
@@ -32,18 +32,18 @@ export function blockEnforcement(
   if (bloqueiosAplicados === null || bloqueiosAplicados === undefined) {
     return {
       status: 'unknown',
-      reason: 'Não foi possível verificar o estado dos bloqueios no firewall.',
-      fix: 'Confira as regras em Firewall › Flutuantes.',
+      reasonKey: 'svc.hosts.enforcement.unknown.reason',
+      fixKey: 'svc.hosts.enforcement.unknown.fix',
       above: [],
     };
   }
   if (!bloqueiosAplicados) {
     return {
       status: 'not_applied',
-      reason: 'As regras de bloqueio do firewall ainda não foram aplicadas ou a última aplicação falhou.',
-      fix: 'Aplique as pendências em Firewall › Flutuantes.',
+      reasonKey: 'svc.hosts.enforcement.notApplied.reason',
+      fixKey: 'svc.hosts.enforcement.notApplied.fix',
       above: [],
     };
   }
-  return { status: 'ok', reason: '', fix: '', above: [] };
+  return { status: 'ok', reasonKey: '', fixKey: '', above: [] };
 }

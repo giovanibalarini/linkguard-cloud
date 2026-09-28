@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from '../../ui/Modal';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import type { AliasFW, AliasTipo } from '../../../types/firewall';
 
 interface Props {
@@ -42,9 +43,8 @@ export default function AliasEditor({ alias, onSave, onClose, canWrite }: Props)
         itens,
       });
       onClose();
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.erro || err.message || t('common.error');
-      setErro(msg);
+    } catch (err) {
+      setErro(errMsg(err, t));
     } finally {
       setSalvando(false);
     }
@@ -74,7 +74,7 @@ export default function AliasEditor({ alias, onSave, onClose, canWrite }: Props)
             onChange={(e) => setNome(e.target.value)}
             required
             disabled={!canWrite || salvando}
-            placeholder="ex: servidores_web, redes_filiais"
+            placeholder={t('fwz.aliases.nome_placeholder')}
           />
         </div>
 
@@ -103,7 +103,7 @@ export default function AliasEditor({ alias, onSave, onClose, canWrite }: Props)
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
             disabled={!canWrite || salvando}
-            placeholder="ex: Servidores Web na DMZ"
+            placeholder={t('fwz.aliases.descricao_placeholder')}
           />
         </div>
 

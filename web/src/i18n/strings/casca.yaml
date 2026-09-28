@@ -21,6 +21,9 @@ shell.nav.modeGroup:
 shell.nav.langGroup:
   pt: "Idioma"
   en: "Language"
+shell.nav.accessDenied:
+  pt: "Você não tem permissão para acessar esta tela."
+  en: "You do not have permission to access this screen."
 
 # ─── Aviso da conta padrão ───────────────────────────────────────────────────
 shell.defaultAccount.prefix:

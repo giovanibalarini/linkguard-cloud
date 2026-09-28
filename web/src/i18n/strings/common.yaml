@@ -222,3 +222,6 @@ common.edit:
 common.delete:
   pt: "Excluir"
   en: "Delete"
+common.actions:
+  pt: "Ações"
+  en: "Actions"

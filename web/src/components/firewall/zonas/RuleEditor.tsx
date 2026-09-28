@@ -4,6 +4,7 @@ import client from '../../../api/client';
 import Modal from '../../ui/Modal';
 import { useI18n } from '../../../i18n';
 import { useUIMode } from '../../../context/UIModeContext';
+import { errMsg } from '../../../lib/apiError';
 import { validarFormulario } from '../../../lib/fwZonas';
 import PontaPicker from './PontaPicker';
 import PortaPicker from './PortaPicker';
@@ -141,8 +142,8 @@ export default function RuleEditor({
       }
       await onSave();
       onClose();
-    } catch (e: any) {
-      setApiError(e.response?.data?.error || e.message || 'Falha ao salvar regra');
+    } catch (e) {
+      setApiError(errMsg(e, t));
     } finally {
       setBusy(false);
     }

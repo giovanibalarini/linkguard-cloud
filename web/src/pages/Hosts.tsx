@@ -106,6 +106,8 @@ export default function Hosts() {
   // enforcement é a resposta a "bloquear aqui adianta alguma coisa?".
   const enforcement = useMemo(() => blockEnforcement(bloqueiosAplicados), [bloqueiosAplicados]);
   const notEnforced = enforcement.status === 'not_applied';
+  const enforcementReason = enforcement.reasonKey ? t(enforcement.reasonKey) : '';
+  const enforcementFix = enforcement.fixKey ? t(enforcement.fixKey) : '';
 
   const openAlias = (h: NetHost) => {
     setAliasFor(h);
@@ -189,19 +191,19 @@ export default function Hosts() {
               <p className="text-orange-300">
                 {blockedCount === 1 ? t('svc.hosts.notEnforced.one') : t('svc.hosts.notEnforced.many', { n: blockedCount })}
               </p>
-              <p className="text-gray-300 text-xs mt-1">{enforcement.reason}</p>
+              <p className="text-gray-300 text-xs mt-1">{enforcementReason}</p>
               <p className="text-gray-400 text-xs mt-1">
-                {enforcement.fix}{' '}
+                {enforcementFix}{' '}
                 <Link to="/firewall?tab=regras&zona=flutuante" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
               </p>
             </div>
           </div>
         </div>
       )}
-      {blockedCount > 0 && enforcement.status === 'unknown' && enforcement.reason && (
+      {blockedCount > 0 && enforcement.status === 'unknown' && enforcementReason && (
         <div className="card border border-gray-700 text-sm text-gray-400">
-          <span className="text-gray-300">{enforcement.reason}</span>{' '}
-          {t('svc.hosts.unknownEnforcement')} {enforcement.fix}
+          <span className="text-gray-300">{enforcementReason}</span>{' '}
+          {t('svc.hosts.unknownEnforcement')} {enforcementFix}
         </div>
       )}
 
@@ -295,7 +297,7 @@ export default function Hosts() {
                   {h.blocked && (
                     <span
                       className={`mt-2 inline-flex items-center gap-1 text-xs ${notEnforced ? 'text-orange-400' : 'text-red-400'}`}
-                      title={notEnforced ? enforcement.reason : undefined}
+                      title={notEnforced ? enforcementReason : undefined}
                     >
                       <Ban className="w-3 h-3" /> {notEnforced ? t('svc.hosts.badge.notEnforced') : t('svc.hosts.badge.blocked')}
                     </span>
@@ -336,7 +338,7 @@ export default function Hosts() {
                         {h.blocked && (
                           <span
                             className={`inline-flex items-center gap-1 text-xs ${notEnforced ? 'text-orange-400' : 'text-red-400'}`}
-                            title={notEnforced ? enforcement.reason : undefined}
+                            title={notEnforced ? enforcementReason : undefined}
                           >
                             <Ban className="w-3 h-3" /> {notEnforced ? t('svc.hosts.badge.notEnforced') : t('svc.hosts.badge.blocked')}
                           </span>
@@ -449,9 +451,9 @@ export default function Hosts() {
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
                     <span>{t('svc.hosts.confirm.wontApply')}</span>
                   </p>
-                  <p className="text-gray-300 mt-1">{enforcement.reason}</p>
+                  <p className="text-gray-300 mt-1">{enforcementReason}</p>
                   <p className="text-gray-400 mt-1">
-                    {enforcement.fix}{' '}
+                    {enforcementFix}{' '}
                     <Link to="/firewall?tab=regras&zona=flutuante" className="text-blue-400 hover:text-blue-300 underline">{t('svc.hosts.openGroups')}</Link>
                   </p>
                 </div>

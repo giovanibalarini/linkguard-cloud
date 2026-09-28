@@ -169,9 +169,22 @@ svc.hosts.offButLive:
 svc.hosts.unknownEnforcement:
   pt: "Não dá para confirmar aqui se os bloqueios abaixo estão em vigor."
   en: "There is no way to confirm here whether the blocks below are in effect."
+# Motivo e saída de lib/blockGroups.ts (que devolve a chave, não a frase).
+svc.hosts.enforcement.unknown.reason:
+  pt: "Não foi possível verificar o estado dos bloqueios no firewall."
+  en: "Could not check the state of the blocks on the firewall."
+svc.hosts.enforcement.unknown.fix:
+  pt: "Confira as regras em Firewall › Regras › Flutuantes."
+  en: "Check the rules under Firewall › Rules › Floating."
+svc.hosts.enforcement.notApplied.reason:
+  pt: "As regras de bloqueio do firewall ainda não foram aplicadas ou a última aplicação falhou."
+  en: "The firewall's blocking rules have not been applied yet, or the last apply failed."
+svc.hosts.enforcement.notApplied.fix:
+  pt: "Aplique as pendências em Firewall › Regras › Flutuantes."
+  en: "Apply the pending changes under Firewall › Rules › Floating."
 svc.hosts.openGroups:
-  pt: "Abrir os grupos de regras"
-  en: "Open the rule groups"
+  pt: "Abrir as regras flutuantes"
+  en: "Open the floating rules"
 svc.hosts.talkers.title:
   pt: "Top consumidores"
   en: "Top talkers"

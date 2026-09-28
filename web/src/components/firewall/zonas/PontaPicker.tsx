@@ -161,7 +161,7 @@ export default function PontaPicker({
           disabled={disabled}
           value={value.kind === 'addr' ? value.value || '' : ''}
           onChange={(e) => emitir('addr', { kind: 'addr', value: e.target.value.trim() })}
-          placeholder="Ex: 192.168.1.100 ou 10.0.0.0/24"
+          placeholder={t('fwz.ponta.addr_placeholder')}
           className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
         />
       )}

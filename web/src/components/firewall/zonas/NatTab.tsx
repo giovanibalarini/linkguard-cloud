@@ -178,7 +178,7 @@ export default function NatTab({ canWrite, onRefreshGlobal }: Props) {
         title={
           <div className="flex items-center gap-2 text-white font-semibold">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>NAT de Saída (Masquerade)</span>
+            <span>{t('fwz.nat.saida_titulo')}</span>
           </div>
         }
       >

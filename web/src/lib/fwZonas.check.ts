@@ -25,6 +25,10 @@ const check = (condition: unknown, message: string) => {
   n++;
 };
 
+// Tradutor de mentira: devolve a própria chave entre <>. Assim o teste enxerga
+// QUAL chave o código pediu, e nenhuma frase em português entra na lib.
+const rotulo = (k: string) => `<${k}>`;
+
 // 1. ZONAS e chaves
 check(ZONAS.length === 4, 'existem 4 zonas');
 check(ZONAS.includes('flutuante') && ZONAS.includes('internet') && ZONAS.includes('vcn') && ZONAS.includes('vpn'), 'zonas corretas');
@@ -32,16 +36,17 @@ check(ZONA_I18N_KEYS.internet === 'fwz.zona.internet', 'chave i18n internet');
 check(ACAO_I18N_KEYS.accept === 'fwz.acao.accept', 'chave i18n acao accept');
 
 // 2. nomePonta e nomePorta
-check(nomePonta(undefined) === 'Qualquer', 'ponta indefinida é Qualquer');
-check(nomePonta({ kind: 'any' }) === 'Qualquer', 'ponta any é Qualquer');
-check(nomePonta({ kind: 'self' }) === 'Este firewall', 'ponta self é Este firewall');
-check(nomePonta({ kind: 'alias', value: 'a1' }, 'Servidores') === 'Servidores', 'ponta com nome resolvido');
-check(nomePonta({ kind: 'addr', value: '192.168.1.1' }) === '192.168.1.1', 'ponta addr');
+check(nomePonta(undefined, undefined, rotulo) === '<fwz.ponta.any>', 'ponta indefinida pede a chave de qualquer');
+check(nomePonta({ kind: 'any' }, undefined, rotulo) === '<fwz.ponta.any>', 'ponta any pede a chave de qualquer');
+check(nomePonta({ kind: 'self' }, undefined, rotulo) === '<fwz.ponta.self>', 'ponta self pede a chave de este firewall');
+check(nomePonta({ kind: 'alias', value: 'a1' }, 'Servidores', rotulo) === 'Servidores', 'ponta com nome resolvido');
+check(nomePonta({ kind: 'alias', value: 'a1' }, '   ', rotulo) === 'a1', 'nome resolvido em branco cai no valor');
+check(nomePonta({ kind: 'addr', value: '192.168.1.1' }, undefined, rotulo) === '192.168.1.1', 'ponta addr');
 
-check(nomePorta(undefined) === 'Qualquer', 'porta indefinida é Qualquer');
-check(nomePorta({ kind: 'any' }) === 'Qualquer', 'porta any é Qualquer');
-check(nomePorta({ kind: 'port', value: '443' }) === '443', 'porta número');
-check(nomePorta({ kind: 'alias', value: 'p1' }, 'Web') === 'Web', 'porta com nome resolvido');
+check(nomePorta(undefined, undefined, rotulo) === '<fwz.porta.any>', 'porta indefinida pede a chave de qualquer');
+check(nomePorta({ kind: 'any' }, undefined, rotulo) === '<fwz.porta.any>', 'porta any pede a chave de qualquer');
+check(nomePorta({ kind: 'port', value: '443' }, undefined, rotulo) === '443', 'porta número');
+check(nomePorta({ kind: 'alias', value: 'p1' }, 'Web', rotulo) === 'Web', 'porta com nome resolvido');
 
 // 3. podeArrastar
 const fakeLinha = (tipo: LinhaFW['tipo'], id: string): LinhaFW => ({
@@ -188,7 +193,6 @@ const aliasesApi: AliasFW[] = [
   aliasApi('u1', 'enderecos', 'Servidores', ['10.0.1.5']),
   aliasApi('u2', 'portas', 'Web', ['80', '443']),
 ];
-const rotulo = (k: string) => `<${k}>`;
 
 const opEnd = opcoesDeAlias(aliasesApi, 'enderecos', rotulo);
 check(opEnd.map((o) => o.id).join() === 'sys:vcn,sys:vpn,u1', 'endereços: embutidos e depois os do usuário');

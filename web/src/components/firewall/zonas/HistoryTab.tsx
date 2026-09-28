@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RotateCcw, History, User, Clock, FileText } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
 import type { MsgLevel } from '../../../types';
 
@@ -49,8 +50,8 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
       await client.post(`/api/firewall/historico/${rev.id}/restaurar`);
       onMsg?.(t('fwz.historico.restaurado_sucesso'), 'ok');
       onRefreshGlobal?.();
-    } catch (err: any) {
-      onMsg?.(err.response?.data?.error || t('common.error'), 'error');
+    } catch (err) {
+      onMsg?.(errMsg(err, t), 'error');
     } finally {
       setRestaurandoId(null);
     }

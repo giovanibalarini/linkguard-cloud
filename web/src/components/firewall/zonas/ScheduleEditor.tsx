@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from '../../ui/Modal';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import type { AgendamentoFW } from '../../../types/firewall';
 
 const DIAS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
@@ -65,9 +66,8 @@ export default function ScheduleEditor({ schedule, onSave, onClose, canWrite }: 
         fim,
       });
       onClose();
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.erro || err.message || t('common.error');
-      setErro(msg);
+    } catch (err) {
+      setErro(errMsg(err, t));
     } finally {
       setSalvando(false);
     }
@@ -97,7 +97,7 @@ export default function ScheduleEditor({ schedule, onSave, onClose, canWrite }: 
             onChange={(e) => setNome(e.target.value)}
             required
             disabled={!canWrite || salvando}
-            placeholder="ex: horario_comercial, noites_e_fins_de_semana"
+            placeholder={t('fwz.agendamentos.nome_placeholder')}
           />
         </div>
 
@@ -111,7 +111,7 @@ export default function ScheduleEditor({ schedule, onSave, onClose, canWrite }: 
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
             disabled={!canWrite || salvando}
-            placeholder="ex: Das 08h às 18h em dias úteis"
+            placeholder={t('fwz.agendamentos.descricao_placeholder')}
           />
         </div>
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Settings, Shield, Terminal, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
 import type { MsgLevel } from '../../../types';
 
@@ -83,8 +84,8 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
       await client.put('/api/firewall/ajustes', ajustes);
       onMsg?.(t('fwz.avancado.sucesso'), 'ok');
       onRefreshGlobal?.();
-    } catch (err: any) {
-      onMsg?.(err.response?.data?.error || t('common.error'), 'error');
+    } catch (err) {
+      onMsg?.(errMsg(err, t), 'error');
     } finally {
       setSalvandoAjustes(false);
     }
@@ -95,9 +96,9 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
     try {
       await client.delete('/api/nftables/abusers', { data: { ip } });
       carregarContidos();
-      onMsg?.(`IP ${ip} liberado da contenção.`, 'ok');
-    } catch (err: any) {
-      onMsg?.(err.response?.data?.error || t('common.error'), 'error');
+      onMsg?.(t('fwz.avancado.contidos.liberado', { ip }), 'ok');
+    } catch (err) {
+      onMsg?.(errMsg(err, t), 'error');
     }
   };
 
@@ -243,7 +244,7 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
                 <span className="font-mono text-gray-200">{c.ip}</span>
                 <span className="flex items-center gap-3">
                   <span className="text-gray-500">
-                    Expira em {Math.max(1, Math.round(c.expira_em_seg / 60))} min
+                    {t('fwz.avancado.contidos.expira', { min: Math.max(1, Math.round(c.expira_em_seg / 60)) })}
                   </span>
                   {canWrite && (
                     <button
@@ -279,7 +280,7 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
               {ruleset}
             </pre>
           ) : (
-            <p className="p-8 text-center text-gray-600 text-xs">Ruleset vazio ou inacessível.</p>
+            <p className="p-8 text-center text-gray-600 text-xs">{t('fwz.avancado.ruleset.vazio')}</p>
           )}
         </div>
       </Panel>

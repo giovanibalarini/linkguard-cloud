@@ -82,8 +82,8 @@ recipes.port-forward.step1:
   pt: "Anote o *IP privado* da máquina na Oracle (ele é fixo enquanto a placa de rede existir)."
   en: "Note the machine's *private IP* in Oracle (it stays fixed as long as its network card exists)."
 recipes.port-forward.step2:
-  pt: "Abra *Firewall → Encaminhamento*."
-  en: "Open *Firewall → Port forwarding*."
+  pt: "Abra *Firewall › NAT*."
+  en: "Open *Firewall › NAT*."
 recipes.port-forward.step3:
   pt: "Informe a *porta externa*, o *protocolo* (TCP/UDP) e o *IP:porta interna* do aparelho, e salve."
   en: "Enter the *external port*, the *protocol* (TCP/UDP) and the device's *internal IP:port*, then save."
