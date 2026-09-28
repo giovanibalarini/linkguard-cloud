@@ -82,23 +82,21 @@ func (s *Service) revertV2(ctx context.Context, p *storage.PendingChange, reason
 			perfisMap[pv.UserID] = pv
 		}
 		for _, peer := range peers {
+			// pessoa cadastrada durante a janela: reverter nunca concede a mais (§2.8)
+			acesso := storage.WireGuardPeerAccess{
+				AccessMode:        "restricted",
+				AllowedHostGroups: []string{},
+				TunnelMode:        peer.TunnelMode,
+				ExtraRoutes:       peer.ExtraRoutes,
+				MTU:               peer.MTU,
+			}
 			if pv, ok := perfisMap[peer.UserID]; ok {
-				_ = s.db.UpdateWireGuardPeerAccess(peer.UserID, storage.WireGuardPeerAccess{
-					AccessMode:        pv.AccessMode,
-					AllowedHostGroups: pv.AllowedHostGroups,
-					AllowedPorts:      pv.AllowedPorts,
-					TunnelMode:        peer.TunnelMode,
-					ExtraRoutes:       peer.ExtraRoutes,
-				})
-			} else {
-				// Usuário cadastrado durante a janela: reverter nunca concede privilégios a mais (§2.8)
-				_ = s.db.UpdateWireGuardPeerAccess(peer.UserID, storage.WireGuardPeerAccess{
-					AccessMode:        "restricted",
-					AllowedHostGroups: []string{},
-					AllowedPorts:      "",
-					TunnelMode:        peer.TunnelMode,
-					ExtraRoutes:       peer.ExtraRoutes,
-				})
+				acesso.AccessMode = pv.AccessMode
+				acesso.AllowedHostGroups = pv.AllowedHostGroups
+				acesso.AllowedPorts = pv.AllowedPorts
+			}
+			if err := s.db.UpdateWireGuardPeerAccess(peer.UserID, acesso); err != nil {
+				slog.Warn("reversão: não foi possível restaurar o perfil da pessoa na VPN", "user_id", peer.UserID, "err", err)
 			}
 		}
 

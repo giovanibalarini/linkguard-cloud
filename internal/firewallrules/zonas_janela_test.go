@@ -41,6 +41,25 @@ func createTestPeer(t *testing.T, db *storage.DB, userID, username, ip, accessMo
 	}
 }
 
+func definirMTU(t *testing.T, db *storage.DB, userID string, mtu int) {
+	t.Helper()
+	peer, err := db.GetWireGuardPeer(userID)
+	if err != nil || peer == nil {
+		t.Fatalf("GetWireGuardPeer(%s): peer=%v err=%v", userID, peer, err)
+	}
+	err = db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
+		AccessMode:        peer.AccessMode,
+		AllowedHostGroups: peer.AllowedHostGroups,
+		AllowedPorts:      peer.AllowedPorts,
+		TunnelMode:        peer.TunnelMode,
+		ExtraRoutes:       peer.ExtraRoutes,
+		MTU:               mtu,
+	})
+	if err != nil {
+		t.Fatalf("UpdateWireGuardPeerAccess(%s): %v", userID, err)
+	}
+}
+
 func TestJanelaVenceReverte(t *testing.T) {
 	svc, db, exec := newZonasTestService(t)
 	ctx := context.Background()
@@ -148,6 +167,7 @@ func TestReversaoComPessoaNovaFicaRestrita(t *testing.T) {
 
 	// Pessoa A já cadastrada antes da mudança com acesso total
 	createTestPeer(t, db, "user-a", "ana", "10.7.0.2", "full", []string{"alias-1"}, "22,443")
+	definirMTU(t, db, "user-a", 1380)
 
 	cfg := fwmodel.Config{
 		Formato: 1,
@@ -177,6 +197,7 @@ func TestReversaoComPessoaNovaFicaRestrita(t *testing.T) {
 
 	// Durante a janela, Pessoa B é cadastrada com acesso full e aliases
 	createTestPeer(t, db, "user-b", "beto", "10.7.0.3", "full", []string{"alias-1", "alias-2"}, "80,443")
+	definirMTU(t, db, "user-b", 1280)
 
 	// Prazo da janela vence e reverte
 	clock.advance(ConfirmWindow + time.Second)
@@ -203,6 +224,9 @@ func TestReversaoComPessoaNovaFicaRestrita(t *testing.T) {
 	if pA == nil || pA.AccessMode != "full" {
 		t.Errorf("Pessoa A deveria manter access_mode=full, obtido: %+v", pA)
 	}
+	if pA != nil && pA.MTU != 1380 {
+		t.Errorf("a reversão não pode mexer no MTU da Pessoa A: esperava 1380, obtido %d", pA.MTU)
+	}
 
 	// Confere Pessoa B: entrou durante a janela, deve ficar restrita e sem aliases (§2.8)
 	if pB == nil {
@@ -216,6 +240,9 @@ func TestReversaoComPessoaNovaFicaRestrita(t *testing.T) {
 	}
 	if pB.AllowedPorts != "" {
 		t.Errorf("Pessoa B DEVE ficar com portas vazias após reversão, obtido: %q", pB.AllowedPorts)
+	}
+	if pB.MTU != 1280 {
+		t.Errorf("a reversão não pode zerar o MTU da Pessoa B: esperava 1280, obtido %d", pB.MTU)
 	}
 }
 
