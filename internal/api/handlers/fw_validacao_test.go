@@ -11,7 +11,7 @@ import (
 )
 
 type respostaComProblemas struct {
-	Erro      string             `json:"erro"`
+	Erro      string             `json:"error"`
 	Problemas []fwmodel.Problema `json:"problemas"`
 }
 

@@ -170,7 +170,7 @@ func TestFirewallApagarEmUsoTrazQuemUsa(t *testing.T) {
 			t.Fatalf("DELETE %s esperava 409, obteve %d: %s", c.caminho, res.Code, res.Body.String())
 		}
 		var corpo struct {
-			Erro string   `json:"erro"`
+			Erro string   `json:"error"`
 			Usos []string `json:"usos"`
 		}
 		if err := json.Unmarshal(res.Body.Bytes(), &corpo); err != nil {

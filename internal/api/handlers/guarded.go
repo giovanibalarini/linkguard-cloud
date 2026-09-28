@@ -54,7 +54,7 @@ func writeGuardError(w http.ResponseWriter, err error) {
 		if len(g.Problemas) > 0 {
 			// Os problemas vão junto para o painel traduzi-los; o texto fica
 			// como resumo para quem lê a resposta crua.
-			writeJSON(w, http.StatusBadRequest, map[string]any{"erro": g.Message, "problemas": g.Problemas})
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": g.Message, "problemas": g.Problemas})
 			return
 		}
 		writeError(w, http.StatusBadRequest, g.Message)
@@ -66,7 +66,7 @@ func writeGuardError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, g.Message)
 
 	case firewallrules.StageInUse:
-		writeJSON(w, http.StatusConflict, map[string]any{"erro": g.Message, "usos": g.Usos})
+		writeJSON(w, http.StatusConflict, map[string]any{"error": g.Message, "usos": g.Usos})
 
 	case firewallrules.StageWrite:
 		// A causa técnica (erro de banco) não vai para a tela — writeInternalError
