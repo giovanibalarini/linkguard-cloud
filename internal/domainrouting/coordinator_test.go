@@ -53,15 +53,6 @@ func newDB(t *testing.T) *storage.DB {
 	return db
 }
 
-func addBlockGroup(t *testing.T, db *storage.DB, enabled bool) {
-	t.Helper()
-	if err := db.CreateFirewallGroup(&storage.FirewallGroup{
-		ID: "system-blocklist", Name: "Destinos bloqueados", Kind: "blocklist", Enabled: enabled,
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func addActiveBlock(t *testing.T, db *storage.DB) *storage.DomainTarget {
 	t.Helper()
 	target := &storage.DomainTarget{Domain: "video.example.com", Capability: storage.DomainCapBarrar}
@@ -87,7 +78,6 @@ func targetView(t *testing.T, state domainrouting.State, domain string) domainro
 
 func TestBootGateKeepsActiveIntentSuspendedUntilPrepare(t *testing.T) {
 	db := newDB(t)
-	addBlockGroup(t, db, true)
 	addActiveBlock(t, db)
 	runtime := &fakeRuntime{}
 	coordinator := domainrouting.New(db, runtime)
@@ -119,7 +109,6 @@ func TestBootGateKeepsActiveIntentSuspendedUntilPrepare(t *testing.T) {
 
 func TestHoldClosesAnAlreadyOpenBootGate(t *testing.T) {
 	db := newDB(t)
-	addBlockGroup(t, db, true)
 	addActiveBlock(t, db)
 	runtime := &fakeRuntime{}
 	coordinator := domainrouting.New(db, runtime)
@@ -150,7 +139,6 @@ func TestOldSteeringRowIsShownSuspendedAndNeverPublished(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	addBlockGroup(t, db, true)
 	raw, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
@@ -178,41 +166,8 @@ func TestOldSteeringRowIsShownSuspendedAndNeverPublished(t *testing.T) {
 	}
 }
 
-func TestDisabledBlockGroupSuspendsBlockTargetsAndReenableRestoresIntent(t *testing.T) {
-	db := newDB(t)
-	addBlockGroup(t, db, false)
-	target := &storage.DomainTarget{Domain: "ads.example.com", Capability: storage.DomainCapBarrar}
-	if err := db.CreateDomainTarget(target); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SetDomainTargetStage(target.ID, storage.DomainStageAtivo); err != nil {
-		t.Fatal(err)
-	}
-	runtime := &fakeRuntime{}
-	coordinator := domainrouting.New(db, runtime)
-	if err := coordinator.Prepare(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	disabled := targetView(t, coordinator.State(context.Background()), target.Domain)
-	if !disabled.Suspended || disabled.SuspensionReason != domainrouting.ReasonBlockingGroupDisabled {
-		t.Fatalf("grupo desligado não suspendeu bloqueio: %+v", disabled)
-	}
-
-	if err := db.SetFirewallGroupEnabled("system-blocklist", true); err != nil {
-		t.Fatal(err)
-	}
-	if err := coordinator.Reconcile(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	enabled := targetView(t, coordinator.State(context.Background()), target.Domain)
-	if enabled.Suspended || enabled.EffectiveStage != storage.DomainStageAtivo {
-		t.Fatalf("grupo reativado não reabilitou intenção: %+v", enabled)
-	}
-}
-
 func TestCRUDRequiresExplicitStageAndReturnsKernelObservability(t *testing.T) {
 	db := newDB(t)
-	addBlockGroup(t, db, true)
 	runtime := &fakeRuntime{state: domtargets.Estado{
 		Vivo: true, KernelLido: true,
 		Dominios: []domtargets.EstadoDominio{{
@@ -274,3 +229,42 @@ func TestCRUDRequiresExplicitStageAndReturnsKernelObservability(t *testing.T) {
 }
 
 func intPtr(v int) *int { return &v }
+
+// O bloqueio por domínio vale por si: a linha travada @dom_blocked é sempre
+// renderizada, então nenhum grupo do firewall antigo pode suspendê-lo. Um banco
+// convertido do legado pode não ter mais o grupo (ou tê-lo desligado), e o
+// alvo ativo tem de continuar publicado do mesmo jeito.
+func TestActiveBlockDoesNotDependOnLegacyFirewallGroups(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		legacy *storage.FirewallGroup
+	}{
+		{name: "banco sem grupo nenhum"},
+		{name: "grupo blocklist legado desligado", legacy: &storage.FirewallGroup{
+			ID: "system-blocklist", Name: "Destinos bloqueados", Kind: "blocklist", Enabled: false,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newDB(t)
+			if tc.legacy != nil {
+				if err := db.CreateFirewallGroup(tc.legacy); err != nil {
+					t.Fatal(err)
+				}
+			}
+			addActiveBlock(t, db)
+			runtime := &fakeRuntime{}
+			coordinator := domainrouting.New(db, runtime)
+			if err := coordinator.Prepare(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			row := targetView(t, coordinator.State(context.Background()), "video.example.com")
+			if row.Suspended || row.EffectiveStage != storage.DomainStageAtivo {
+				t.Fatalf("o bloqueio ativo foi suspenso sem motivo: %+v", row)
+			}
+			if got, _ := runtime.alvo(row.Domain); got.Estagio != domtargets.Ativo {
+				t.Fatalf("o runtime não recebeu o bloqueio ativo: %+v", got)
+			}
+		})
+	}
+}

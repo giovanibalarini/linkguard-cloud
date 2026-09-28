@@ -1,6 +1,6 @@
 // Package domainrouting liga a intenção persistida de bloqueio por domínio ao
 // runtime alimentado por dnstap, e é o lugar que suspende uma intenção ativa
-// quando o grupo de bloqueio deixa de ser seguro.
+// enquanto o boot não provou que estruturas, chains e rotas estão prontas.
 //
 // Havia uma segunda capacidade, "direcionar" (escolher a WAN por domínio), que
 // saiu da versão cloud com o multi-WAN. Linhas antigas com ela continuam
@@ -34,10 +34,8 @@ var (
 )
 
 const (
-	ReasonBootPending           = "boot_pending"
-	ReasonBlockingGroupMissing  = "blocking_group_missing"
-	ReasonBlockingGroupDisabled = "blocking_group_disabled"
-	ReasonInvalidIntent         = "invalid_intent"
+	ReasonBootPending   = "boot_pending"
+	ReasonInvalidIntent = "invalid_intent"
 )
 
 // Runtime é a parte do alimentador que o coordenador precisa. A troca da lista
@@ -85,19 +83,17 @@ type TargetView struct {
 // State é a resposta observável da capacidade. Runtime contém os totais do
 // alimentador/kernel; Targets torna cada intenção atribuível.
 type State struct {
-	Ready                bool              `json:"ready"`
-	Generation           uint64            `json:"generation"`
-	LastReconciledAt     time.Time         `json:"last_reconciled_at"`
-	LastError            string            `json:"last_error,omitempty"`
-	BlockingGroupPresent bool              `json:"blocking_group_present"`
-	BlockingGroupEnabled bool              `json:"blocking_group_enabled"`
-	Runtime              domtargets.Estado `json:"runtime"`
-	Targets              []TargetView      `json:"targets"`
+	Ready            bool              `json:"ready"`
+	Generation       uint64            `json:"generation"`
+	LastReconciledAt time.Time         `json:"last_reconciled_at"`
+	LastError        string            `json:"last_error,omitempty"`
+	Runtime          domtargets.Estado `json:"runtime"`
+	Targets          []TargetView      `json:"targets"`
 }
 
-// Coordinator serializa CRUD, snapshots e publicação no runtime. Isso evita
-// que uma promoção concorra com uma mudança do grupo de bloqueio e publique
-// uma combinação que nunca existiu no banco.
+// Coordinator serializa CRUD, leituras e publicação no runtime. Isso evita
+// que uma promoção concorra com outra mudança e publique uma combinação que
+// nunca existiu no banco.
 type Coordinator struct {
 	mu      sync.Mutex
 	db      *storage.DB
@@ -107,8 +103,6 @@ type Coordinator struct {
 	generation       uint64
 	lastReconciledAt time.Time
 	lastError        string
-	blockPresent     bool
-	blockEnabled     bool
 	targets          []TargetView
 }
 
@@ -140,25 +134,24 @@ func (c *Coordinator) Hold(ctx context.Context) error {
 	return c.reconcileLocked(ctx)
 }
 
-// Reconcile lê alvos e grupo numa única transação read-only e publica
-// a lista completa no runtime de uma vez.
+// Reconcile lê os alvos e publica a lista completa no runtime de uma vez.
 func (c *Coordinator) Reconcile(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.reconcileLocked(ctx)
 }
 
-func (c *Coordinator) reconcileLocked(ctx context.Context) error {
-	snapshot, err := c.db.DomainRoutingSnapshot(ctx)
+func (c *Coordinator) reconcileLocked(context.Context) error {
+	targets, err := c.db.ListDomainTargets()
 	if err != nil {
 		c.lastError = err.Error()
 		return err
 	}
 
-	views := make([]TargetView, 0, len(snapshot.Targets))
-	alvos := make([]domtargets.Alvo, 0, len(snapshot.Targets))
-	for _, stored := range snapshot.Targets {
-		view, alvo, valid := c.resolve(stored, snapshot)
+	views := make([]TargetView, 0, len(targets))
+	alvos := make([]domtargets.Alvo, 0, len(targets))
+	for _, stored := range targets {
+		view, alvo, valid := c.resolve(stored)
 		views = append(views, view)
 		if valid {
 			alvos = append(alvos, alvo)
@@ -169,15 +162,13 @@ func (c *Coordinator) reconcileLocked(ctx context.Context) error {
 		c.runtime.DefinirAlvos(alvos)
 	}
 	c.targets = views
-	c.blockPresent = snapshot.BlocklistPresent
-	c.blockEnabled = snapshot.BlocklistEnabled
 	c.lastReconciledAt = time.Now()
 	c.lastError = ""
 	c.generation++
 	return nil
 }
 
-func (c *Coordinator) resolve(stored storage.DomainTarget, snapshot storage.DomainRoutingDBSnapshot) (TargetView, domtargets.Alvo, bool) {
+func (c *Coordinator) resolve(stored storage.DomainTarget) (TargetView, domtargets.Alvo, bool) {
 	view := TargetView{
 		ID: stored.ID, Domain: stored.Domain, Capability: stored.Capability,
 		Stage: stored.Stage, EffectiveStage: stored.Stage,
@@ -198,15 +189,8 @@ func (c *Coordinator) resolve(stored storage.DomainTarget, snapshot storage.Doma
 		Dominio: domain, Capacidade: domtargets.Capacidade(stored.Capability),
 		Estagio: domtargets.Estagio(stored.Stage),
 	}
-	if stored.Stage == storage.DomainStageAtivo {
-		switch {
-		case !c.ready:
-			suspend(&view, ReasonBootPending)
-		case !snapshot.BlocklistPresent:
-			suspend(&view, ReasonBlockingGroupMissing)
-		case !snapshot.BlocklistEnabled:
-			suspend(&view, ReasonBlockingGroupDisabled)
-		}
+	if stored.Stage == storage.DomainStageAtivo && !c.ready {
+		suspend(&view, ReasonBootPending)
 	}
 
 	alvo.Estagio = domtargets.Estagio(view.EffectiveStage)
@@ -226,7 +210,6 @@ func (c *Coordinator) State(ctx context.Context) State {
 	state := State{
 		Ready: c.ready, Generation: c.generation,
 		LastReconciledAt: c.lastReconciledAt, LastError: c.lastError,
-		BlockingGroupPresent: c.blockPresent, BlockingGroupEnabled: c.blockEnabled,
 		Targets: append([]TargetView(nil), c.targets...),
 	}
 	runtime := c.runtime

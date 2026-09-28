@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -234,64 +233,6 @@ func (db *DB) PromoteDomainTarget(domain, stage string) error {
 		return fmt.Errorf("domínio não listado: %s", dom)
 	}
 	return nil
-}
-
-type DomainRoutingDBSnapshot struct {
-	Targets          []DomainTarget
-	BlocklistPresent bool
-	BlocklistEnabled bool
-}
-
-// DomainRoutingSnapshot lê toda a entrada da reconciliação numa transação
-// read-only: os alvos e o estado do grupo de bloqueio têm de ser da mesma
-// rodada.
-func (db *DB) DomainRoutingSnapshot(ctx context.Context) (DomainRoutingDBSnapshot, error) {
-	var snap DomainRoutingDBSnapshot
-	tx, err := db.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return snap, fmt.Errorf("abrir snapshot de domínio: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck // no-op depois do commit
-
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id, domain, capability, stage, note, created_at, updated_at
-		  FROM domain_targets ORDER BY domain`)
-	if err != nil {
-		return snap, fmt.Errorf("listar alvos no snapshot: %w", err)
-	}
-	for rows.Next() {
-		var t DomainTarget
-		if err := rows.Scan(&t.ID, &t.Domain, &t.Capability, &t.Stage, &t.Note, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			rows.Close()
-			return snap, fmt.Errorf("ler alvo no snapshot: %w", err)
-		}
-		snap.Targets = append(snap.Targets, t)
-	}
-	if err := rows.Close(); err != nil {
-		return snap, err
-	}
-	if err := rows.Err(); err != nil {
-		return snap, err
-	}
-
-	var enabled int
-	err = tx.QueryRowContext(ctx,
-		`SELECT enabled FROM firewall_groups WHERE kind = 'blocklist' LIMIT 1`).Scan(&enabled)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-	case err != nil:
-		return snap, fmt.Errorf("ler grupo de bloqueio no snapshot: %w", err)
-	default:
-		snap.BlocklistPresent = true
-		snap.BlocklistEnabled = enabled != 0
-	}
-	if err := tx.Commit(); err != nil {
-		return snap, fmt.Errorf("fechar snapshot de domínio: %w", err)
-	}
-	if snap.Targets == nil {
-		snap.Targets = []DomainTarget{}
-	}
-	return snap, nil
 }
 
 // DeleteDomainTarget tira o domínio da lista.

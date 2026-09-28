@@ -30,11 +30,6 @@ func (*domainRuntimeStub) Estado(context.Context) domtargets.Estado {
 func newDomainTargetsHandler(t *testing.T) (*DomainTargetsHandler, *domainrouting.Coordinator, *storage.DB) {
 	t.Helper()
 	db := newTestDB(t)
-	if err := db.CreateFirewallGroup(&storage.FirewallGroup{
-		ID: "system-blocklist", Name: "Bloqueios", Kind: "blocklist", Enabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	coordinator := domainrouting.New(db, &domainRuntimeStub{})
 	if err := coordinator.Prepare(context.Background()); err != nil {
 		t.Fatal(err)

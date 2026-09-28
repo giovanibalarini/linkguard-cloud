@@ -30,11 +30,6 @@ func TestDomainTargetRoutesUseLinksReadAndWriteRBAC(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := db.CreateFirewallGroup(&storage.FirewallGroup{
-		ID: "block", Name: "Bloqueios", Kind: "blocklist", Enabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	readerRole := &storage.Role{Name: "Leitor do firewall", Permissions: []string{string(auth.PermFirewallRead)}}
 	writerRole := &storage.Role{Name: "Editor do firewall", Permissions: []string{string(auth.PermFirewallWrite)}}

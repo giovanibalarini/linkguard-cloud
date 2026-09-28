@@ -1,7 +1,6 @@
 package storage_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -177,26 +176,5 @@ func TestDomainTargetStorageRejectsInvalidIntent(t *testing.T) {
 	}
 	if err := db.SetDomainTargetStage("ausente", "talvez"); err == nil {
 		t.Fatal("estágio fora da enum foi aceito")
-	}
-}
-
-func TestDomainRoutingSnapshotReadsTargetsAndBlockGroupTogether(t *testing.T) {
-	db := newTestDB(t)
-	target := &storage.DomainTarget{Domain: "example.com", Capability: storage.DomainCapBarrar}
-	if err := db.CreateDomainTarget(target); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.CreateFirewallGroup(&storage.FirewallGroup{
-		ID: "system-blocklist", Name: "Destinos bloqueados", Kind: "blocklist", Enabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	snap, err := db.DomainRoutingSnapshot(context.Background())
-	if err != nil {
-		t.Fatalf("DomainRoutingSnapshot: %v", err)
-	}
-	if len(snap.Targets) != 1 || !snap.BlocklistPresent || !snap.BlocklistEnabled {
-		t.Fatalf("snapshot incompleto: %+v", snap)
 	}
 }
