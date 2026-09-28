@@ -12,7 +12,8 @@ func TestNormalizeDays(t *testing.T) {
 		{"", ""},
 		{"sun,mon,tue", "mon,tue,sun"},
 		{"MON, tue, mon", "mon,tue"},
-		{"seg,ter,qua", ""},
+		{"seg,ter,qua", "qua,seg,ter"},
+		{"tue,funday,MONDAY,funday", "tue,funday,monday"},
 		{"sun,sat,fri,thu,wed,tue,mon", "mon,tue,wed,thu,fri,sat,sun"},
 	}
 	for _, tc := range casos {
@@ -20,6 +21,21 @@ func TestNormalizeDays(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("NormalizeDays(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestNormalizarNaoEscondeDiaInvalido(t *testing.T) {
+	c := Config{Agendamentos: []Agendamento{
+		{ID: "ag-1", Nome: "Noite", Dias: "monday,tue", Inicio: "20:00", Fim: "23:00"},
+	}}
+	achou := false
+	for _, p := range Validar(Normalizar(c), nil) {
+		if p.Chave == "fwz.problema.agendamentoDiasInvalidos" && p.Onde == "agendamento:ag-1" {
+			achou = true
+		}
+	}
+	if !achou {
+		t.Error("um dia desconhecido não pode sumir na normalização: viraria 'todos os dias' sem ninguém saber")
 	}
 }
 

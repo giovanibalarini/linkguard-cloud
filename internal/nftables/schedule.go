@@ -108,8 +108,3 @@ func (s Schedule) diasNFTOrdenados() []string {
 	}
 	return out
 }
-
-// NormalizeDays devolve as chaves de dia em ordem estável, delegando para fwmodel.
-func NormalizeDays(raw string) string {
-	return fwmodel.NormalizeDays(raw)
-}

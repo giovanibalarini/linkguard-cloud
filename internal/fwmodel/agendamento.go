@@ -3,6 +3,8 @@ package fwmodel
 import (
 	"fmt"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -19,22 +21,30 @@ var (
 )
 
 // NormalizeDays devolve as chaves de dia em ordem canônica ("mon,tue,..."),
-// descartando duplicatas e chaves inválidas.
+// sem duplicatas. Uma chave desconhecida não é descartada: vai para o fim, em
+// minúsculas e ordem alfabética, para a validação ainda enxergá-la. Descartá-la
+// em silêncio faria "monday" virar "todos os dias".
 func NormalizeDays(raw string) string {
 	presentes := map[string]bool{}
+	var desconhecidas []string
 	for _, d := range strings.Split(raw, ",") {
 		d = strings.ToLower(strings.TrimSpace(d))
-		if diasValidos[d] {
+		switch {
+		case d == "":
+		case diasValidos[d]:
 			presentes[d] = true
+		case !slices.Contains(desconhecidas, d):
+			desconhecidas = append(desconhecidas, d)
 		}
 	}
+	sort.Strings(desconhecidas)
 	var out []string
 	for _, d := range OrdemDias {
 		if presentes[d] {
 			out = append(out, d)
 		}
 	}
-	return strings.Join(out, ",")
+	return strings.Join(append(out, desconhecidas...), ",")
 }
 
 // ValidarDias confere se todas as entradas de dias na string CSV pertencem ao conjunto conhecido.

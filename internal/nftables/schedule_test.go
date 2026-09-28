@@ -85,15 +85,3 @@ func TestScheduleValidate(t *testing.T) {
 		}
 	}
 }
-
-func TestNormalizeDays(t *testing.T) {
-	if got := NormalizeDays("sun, MON ,  wed"); got != "mon,wed,sun" {
-		t.Errorf("NormalizeDays = %q", got)
-	}
-	if got := NormalizeDays("seg,ter,lixo"); got != "" {
-		t.Errorf("dias inválidos sobreviveram: %q", got)
-	}
-	if got := NormalizeDays("mon,mon,mon"); got != "mon" {
-		t.Errorf("duplicata sobreviveu: %q", got)
-	}
-}
