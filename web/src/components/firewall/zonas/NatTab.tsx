@@ -1,22 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, ArrowRightLeft, ShieldCheck } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
+import InlineConfirm from './InlineConfirm';
 import NatEditor from './NatEditor';
+import type { MsgLevel } from '../../../types';
 import type { EncaminhamentoFW } from '../../../types/firewall';
 
 interface Props {
   canWrite: boolean;
   onRefreshGlobal?: () => void;
+  onMsg?: (text: string, level?: MsgLevel) => void;
 }
 
-export default function NatTab({ canWrite, onRefreshGlobal }: Props) {
+export default function NatTab({ canWrite, onRefreshGlobal, onMsg }: Props) {
   const { t } = useI18n();
 
   const [entries, setEntries] = useState<EncaminhamentoFW[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorTarget, setEditorTarget] = useState<EncaminhamentoFW | null | 'new'>(null);
+  const [apagando, setApagando] = useState<EncaminhamentoFW | null>(null);
 
   const fetchNat = useCallback(async () => {
     try {
@@ -46,26 +51,23 @@ export default function NatTab({ canWrite, onRefreshGlobal }: Props) {
   const handleToggleAtivo = async (enc: EncaminhamentoFW) => {
     if (!canWrite) return;
     try {
-      await client.put(`/api/firewall/nat/${enc.id}`, {
-        ...enc,
-        ativo: !enc.ativo,
-      });
+      await client.post(`/api/firewall/nat/${enc.id}/ativar`, { ativo: !enc.ativo });
       await fetchNat();
       onRefreshGlobal?.();
-    } catch (e: any) {
-      alert(e.response?.data?.error || t('common.error'));
+    } catch (e) {
+      onMsg?.(errMsg(e, t), 'error');
     }
   };
 
   const handleApagar = async (enc: EncaminhamentoFW) => {
-    if (!confirm(t('fwz.nat.apagar.confirm', { nome: enc.nome }))) return;
+    setApagando(null);
 
     try {
       await client.delete(`/api/firewall/nat/${enc.id}`);
       await fetchNat();
       onRefreshGlobal?.();
-    } catch (e: any) {
-      alert(e.response?.data?.error || t('common.error'));
+    } catch (e) {
+      onMsg?.(errMsg(e, t), 'error');
     }
   };
 
@@ -116,56 +118,71 @@ export default function NatTab({ canWrite, onRefreshGlobal }: Props) {
                 </tr>
               ) : (
                 entries.map((enc) => (
-                  <tr
-                    key={enc.id}
-                    className={`hover:bg-gray-800/40 transition-colors ${
-                      !enc.ativo ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={enc.ativo}
-                        onChange={() => handleToggleAtivo(enc)}
-                        disabled={!canWrite}
-                        className="rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-0 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium text-white">
-                      <span>{enc.nome}</span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs uppercase text-gray-300">
-                      {enc.proto}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-blue-300">
-                      {enc.porta_externa}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-300">
-                      {enc.ip_destino}:{enc.porta_destino}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {canWrite ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => setEditorTarget(enc)}
-                            className="text-gray-400 hover:text-white p-1"
-                            title={t('fwz.nat.editar')}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleApagar(enc)}
-                            className="text-gray-400 hover:text-red-400 p-1"
-                            title={t('common.delete')}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-600">—</span>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={enc.id}>
+                    <tr
+                      className={`hover:bg-gray-800/40 transition-colors ${
+                        !enc.ativo ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={enc.ativo}
+                          onChange={() => handleToggleAtivo(enc)}
+                          disabled={!canWrite}
+                          aria-label={t('fwz.nat.ativo')}
+                          className="rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-medium text-white">
+                        <span>{enc.nome}</span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs uppercase text-gray-300">
+                        {enc.proto}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-blue-300">
+                        {enc.porta_externa}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-300">
+                        {enc.ip_destino}:{enc.porta_destino}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {canWrite ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => setEditorTarget(enc)}
+                              className="text-gray-400 hover:text-white p-1"
+                              title={t('fwz.nat.editar')}
+                              aria-label={t('fwz.nat.editar')}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setApagando(enc)}
+                              className="text-gray-400 hover:text-red-400 p-1"
+                              title={t('common.delete')}
+                              aria-label={t('common.delete')}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {apagando?.id === enc.id && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-3">
+                          <InlineConfirm
+                            mensagem={t('fwz.nat.apagar.confirm', { nome: enc.nome })}
+                            onConfirm={() => handleApagar(enc)}
+                            onCancel={() => setApagando(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))
               )}
             </tbody>

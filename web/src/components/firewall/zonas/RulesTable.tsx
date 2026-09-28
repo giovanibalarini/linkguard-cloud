@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowDown,
@@ -17,6 +17,7 @@ import {
 import { useI18n } from '../../../i18n';
 import { idsAposMover, nomePonta, nomePorta } from '../../../lib/fwZonas';
 import type { LinhaFW, RegraFW, Zona } from '../../../types/firewall';
+import InlineConfirm from './InlineConfirm';
 
 interface RulesTableProps {
   zona: Zona;
@@ -26,7 +27,7 @@ interface RulesTableProps {
   onEdit: (regra: RegraFW) => void;
   onToggle: (id: string, ativa: boolean) => Promise<void>;
   onDuplicate: (id: string) => Promise<void>;
-  onDelete: (id: string, desc: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   onReorder: (ids: string[]) => Promise<void>;
 }
 
@@ -44,6 +45,7 @@ export default function RulesTable({
   const { t, lang } = useI18n();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [implicitasOpen, setImplicitasOpen] = useState(false);
+  const [apagando, setApagando] = useState<{ id: string; desc: string } | null>(null);
 
   const implicitas = linhas.filter((l) => l.tipo === 'implicita');
   const principais = linhas.filter((l) => l.tipo !== 'implicita');
@@ -74,6 +76,22 @@ export default function RulesTable({
     const newIds = idsAposMover(linhas, adminIdx, targetIdx);
     onReorder(newIds);
   };
+
+  const confirmarApagar = () => {
+    if (!apagando) return;
+    const { id } = apagando;
+    setApagando(null);
+    onDelete(id);
+  };
+
+  const confirmacaoApagar = (id: string) =>
+    apagando?.id === id && canWrite && !editDisabled ? (
+      <InlineConfirm
+        mensagem={t('fwz.tabela.apagar.confirm', { desc: apagando.desc || apagando.id })}
+        onConfirm={confirmarApagar}
+        onCancel={() => setApagando(null)}
+      />
+    ) : null;
 
   const renderEditarEm = (editarEm?: string) => {
     if (!editarEm) return null;
@@ -176,6 +194,7 @@ export default function RulesTable({
           const isTravada = linha.tipo === 'travada';
           const isPadrao = linha.tipo === 'padrao';
           const adminIdx = isAdmin ? adminLinhas.findIndex((a) => a.regra.id === linha.regra.id) : -1;
+          const confirmacao = confirmacaoApagar(linha.regra.id);
 
           return (
             <div
@@ -223,6 +242,7 @@ export default function RulesTable({
                       onClick={() => handleMove(adminIdx, -1)}
                       className="p-1 text-gray-400 hover:text-white disabled:opacity-30"
                       title={t('fwz.tabela.subir')}
+                      aria-label={t('fwz.tabela.subir')}
                     >
                       <ArrowUp className="w-3.5 h-3.5" />
                     </button>
@@ -232,6 +252,7 @@ export default function RulesTable({
                       onClick={() => handleMove(adminIdx, 1)}
                       className="p-1 text-gray-400 hover:text-white disabled:opacity-30"
                       title={t('fwz.tabela.descer')}
+                      aria-label={t('fwz.tabela.descer')}
                     >
                       <ArrowDown className="w-3.5 h-3.5" />
                     </button>
@@ -240,6 +261,7 @@ export default function RulesTable({
                       onClick={() => onToggle(linha.regra.id, !linha.regra.ativa)}
                       className={`p-1 ${linha.regra.ativa ? 'text-emerald-400' : 'text-gray-500'}`}
                       title={linha.regra.ativa ? t('fwz.tabela.desativar') : t('fwz.tabela.ativar')}
+                      aria-label={linha.regra.ativa ? t('fwz.tabela.desativar') : t('fwz.tabela.ativar')}
                     >
                       <Power className="w-3.5 h-3.5" />
                     </button>
@@ -248,6 +270,7 @@ export default function RulesTable({
                       onClick={() => onEdit(linha.regra)}
                       className="p-1 text-blue-400 hover:text-blue-300"
                       title={t('fwz.tabela.editar')}
+                      aria-label={t('fwz.tabela.editar')}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -256,20 +279,24 @@ export default function RulesTable({
                       onClick={() => onDuplicate(linha.regra.id)}
                       className="p-1 text-gray-400 hover:text-white"
                       title={t('fwz.tabela.duplicar')}
+                      aria-label={t('fwz.tabela.duplicar')}
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDelete(linha.regra.id, linha.regra.descricao)}
+                      onClick={() => setApagando({ id: linha.regra.id, desc: linha.regra.descricao })}
                       className="p-1 text-rose-400 hover:text-rose-300"
                       title={t('fwz.tabela.apagar')}
+                      aria-label={t('fwz.tabela.apagar')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 )}
               </div>
+
+              {confirmacao}
 
               <div className="text-sm font-medium text-white">
                 {isPadrao
@@ -356,169 +383,184 @@ export default function RulesTable({
               const isPadrao = linha.tipo === 'padrao';
               const adminIdx = isAdmin ? adminLinhas.findIndex((a) => a.regra.id === linha.regra.id) : -1;
               const draggable = canWrite && !editDisabled && isAdmin;
+              const confirmacao = confirmacaoApagar(linha.regra.id);
 
               return (
-                <tr
-                  key={linha.chave}
-                  draggable={draggable}
-                  onDragStart={(e) => isAdmin && handleDragStart(e, adminIdx)}
-                  onDragOver={(e) => {
-                    if (draggable) e.preventDefault();
-                  }}
-                  onDrop={() => isAdmin && handleDrop(adminIdx)}
-                  className={`transition-colors ${
-                    isTravada
-                      ? 'bg-gray-950/40 text-gray-300'
-                      : isPadrao
-                      ? 'bg-gray-950/20 text-gray-400 font-medium'
-                      : 'hover:bg-gray-900/40 text-gray-200'
-                  } ${!linha.regra.ativa && !isPadrao ? 'opacity-40' : ''}`}
-                >
-                  <td className="py-2.5 px-2 text-center text-gray-600">
-                    {draggable && (
-                      <span className="cursor-grab active:cursor-grabbing inline-block p-1 hover:text-gray-300">
-                        <GripVertical className="w-3.5 h-3.5" />
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="py-2.5 px-2 text-center font-mono text-[11px] text-gray-500">
-                    {isAdmin ? adminIdx + 1 : '—'}
-                  </td>
-
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                          linha.regra.acao === 'accept'
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : linha.regra.acao === 'drop'
-                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                        }`}
-                      >
-                        {t(`fwz.acao.${linha.regra.acao}`)}
-                      </span>
-                      {isTravada && (
-                        <span className="px-1 py-0.5 rounded text-[9px] uppercase font-mono bg-gray-800 text-gray-400 border border-gray-700">
-                          {t('fwz.tabela.travada')}
+                <Fragment key={linha.chave}>
+                  <tr
+                    draggable={draggable}
+                    onDragStart={(e) => isAdmin && handleDragStart(e, adminIdx)}
+                    onDragOver={(e) => {
+                      if (draggable) e.preventDefault();
+                    }}
+                    onDrop={() => isAdmin && handleDrop(adminIdx)}
+                    className={`transition-colors ${
+                      isTravada
+                        ? 'bg-gray-950/40 text-gray-300'
+                        : isPadrao
+                        ? 'bg-gray-950/20 text-gray-400 font-medium'
+                        : 'hover:bg-gray-900/40 text-gray-200'
+                    } ${!linha.regra.ativa && !isPadrao ? 'opacity-40' : ''}`}
+                  >
+                    <td className="py-2.5 px-2 text-center text-gray-600">
+                      {draggable && (
+                        <span className="cursor-grab active:cursor-grabbing inline-block p-1 hover:text-gray-300">
+                          <GripVertical className="w-3.5 h-3.5" />
                         </span>
                       )}
-                      {linha.mudanca && (
-                        <span className="px-1 py-0.5 rounded text-[9px] uppercase font-mono bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                          {linha.mudanca === 'nova' ? t('fwz.tabela.nova') : t('fwz.tabela.alterada')}
+                    </td>
+
+                    <td className="py-2.5 px-2 text-center font-mono text-[11px] text-gray-500">
+                      {isAdmin ? adminIdx + 1 : '—'}
+                    </td>
+
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            linha.regra.acao === 'accept'
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                              : linha.regra.acao === 'drop'
+                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          }`}
+                        >
+                          {t(`fwz.acao.${linha.regra.acao}`)}
                         </span>
-                      )}
-                    </div>
-                  </td>
-
-                  <td className="py-2.5 px-3 font-mono uppercase text-gray-400">
-                    {isPadrao ? '—' : linha.regra.proto || t('fwz.tabela.proto_qualquer')}
-                  </td>
-
-                  <td className="py-2.5 px-3">
-                    {isPadrao ? '—' : nomePonta(linha.regra.origem, linha.nomes.origem, t)}
-                  </td>
-
-                  <td className="py-2.5 px-3">
-                    {isPadrao ? '—' : nomePonta(linha.regra.destino, linha.nomes.destino, t)}
-                  </td>
-
-                  <td className="py-2.5 px-3 font-mono">
-                    {isPadrao ? '—' : nomePorta(linha.regra.porta_destino, linha.nomes.porta, t)}
-                  </td>
-
-                  <td className="py-2.5 px-2 text-center">
-                    {linha.regra.agendamento_id ? (
-                      <span className="text-amber-400 inline-block" title={linha.nomes.agendamento}>
-                        <Clock className="w-3.5 h-3.5" />
-                      </span>
-                    ) : (
-                      <span className="text-gray-700">—</span>
-                    )}
-                  </td>
-
-                  <td className="py-2.5 px-2 text-center">
-                    {linha.regra.registrar ? (
-                      <span className="text-blue-400 inline-block" title={t('fwz.tabela.registrar')}>
-                        <FileText className="w-3.5 h-3.5" />
-                      </span>
-                    ) : (
-                      <span className="text-gray-700">—</span>
-                    )}
-                  </td>
-
-                  <td className="py-2.5 px-3 text-gray-300">
-                    {isPadrao
-                      ? (linha.desc_chave ? t(linha.desc_chave, linha.desc_vars) : t(`fwz.padrao.${zona}`))
-                      : linha.desc_chave
-                      ? t(linha.desc_chave, linha.desc_vars)
-                      : linha.regra.descricao || '—'}
-                  </td>
-
-                  <td className="py-2.5 px-3 font-mono text-[11px] text-gray-400">
-                    {formatarContador(linha.contador)}
-                  </td>
-
-                  <td className="py-2.5 px-3 text-right">
-                    {isTravada ? (
-                      renderEditarEm(linha.editar_em)
-                    ) : isAdmin && canWrite && !editDisabled ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          disabled={adminIdx === 0}
-                          onClick={() => handleMove(adminIdx, -1)}
-                          className="p-1 text-gray-500 hover:text-gray-200 disabled:opacity-20"
-                          title={t('fwz.tabela.subir')}
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={adminIdx === totalAdmin - 1}
-                          onClick={() => handleMove(adminIdx, 1)}
-                          className="p-1 text-gray-500 hover:text-gray-200 disabled:opacity-20"
-                          title={t('fwz.tabela.descer')}
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onToggle(linha.regra.id, !linha.regra.ativa)}
-                          className={`p-1 ${linha.regra.ativa ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-600 hover:text-gray-400'}`}
-                          title={linha.regra.ativa ? t('fwz.tabela.desativar') : t('fwz.tabela.ativar')}
-                        >
-                          <Power className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onEdit(linha.regra)}
-                          className="p-1 text-blue-400 hover:text-blue-300"
-                          title={t('fwz.tabela.editar')}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDuplicate(linha.regra.id)}
-                          className="p-1 text-gray-400 hover:text-gray-200"
-                          title={t('fwz.tabela.duplicar')}
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(linha.regra.id, linha.regra.descricao)}
-                          className="p-1 text-rose-400 hover:text-rose-300"
-                          title={t('fwz.tabela.apagar')}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {isTravada && (
+                          <span className="px-1 py-0.5 rounded text-[9px] uppercase font-mono bg-gray-800 text-gray-400 border border-gray-700">
+                            {t('fwz.tabela.travada')}
+                          </span>
+                        )}
+                        {linha.mudanca && (
+                          <span className="px-1 py-0.5 rounded text-[9px] uppercase font-mono bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                            {linha.mudanca === 'nova' ? t('fwz.tabela.nova') : t('fwz.tabela.alterada')}
+                          </span>
+                        )}
                       </div>
-                    ) : null}
-                  </td>
-                </tr>
+                    </td>
+
+                    <td className="py-2.5 px-3 font-mono uppercase text-gray-400">
+                      {isPadrao ? '—' : linha.regra.proto || t('fwz.tabela.proto_qualquer')}
+                    </td>
+
+                    <td className="py-2.5 px-3">
+                      {isPadrao ? '—' : nomePonta(linha.regra.origem, linha.nomes.origem, t)}
+                    </td>
+
+                    <td className="py-2.5 px-3">
+                      {isPadrao ? '—' : nomePonta(linha.regra.destino, linha.nomes.destino, t)}
+                    </td>
+
+                    <td className="py-2.5 px-3 font-mono">
+                      {isPadrao ? '—' : nomePorta(linha.regra.porta_destino, linha.nomes.porta, t)}
+                    </td>
+
+                    <td className="py-2.5 px-2 text-center">
+                      {linha.regra.agendamento_id ? (
+                        <span className="text-amber-400 inline-block" title={linha.nomes.agendamento}>
+                          <Clock className="w-3.5 h-3.5" />
+                        </span>
+                      ) : (
+                        <span className="text-gray-700">—</span>
+                      )}
+                    </td>
+
+                    <td className="py-2.5 px-2 text-center">
+                      {linha.regra.registrar ? (
+                        <span className="text-blue-400 inline-block" title={t('fwz.tabela.registrar')}>
+                          <FileText className="w-3.5 h-3.5" />
+                        </span>
+                      ) : (
+                        <span className="text-gray-700">—</span>
+                      )}
+                    </td>
+
+                    <td className="py-2.5 px-3 text-gray-300">
+                      {isPadrao
+                        ? (linha.desc_chave ? t(linha.desc_chave, linha.desc_vars) : t(`fwz.padrao.${zona}`))
+                        : linha.desc_chave
+                        ? t(linha.desc_chave, linha.desc_vars)
+                        : linha.regra.descricao || '—'}
+                    </td>
+
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-gray-400">
+                      {formatarContador(linha.contador)}
+                    </td>
+
+                    <td className="py-2.5 px-3 text-right">
+                      {isTravada ? (
+                        renderEditarEm(linha.editar_em)
+                      ) : isAdmin && canWrite && !editDisabled ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            disabled={adminIdx === 0}
+                            onClick={() => handleMove(adminIdx, -1)}
+                            className="p-1 text-gray-500 hover:text-gray-200 disabled:opacity-20"
+                            title={t('fwz.tabela.subir')}
+                            aria-label={t('fwz.tabela.subir')}
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={adminIdx === totalAdmin - 1}
+                            onClick={() => handleMove(adminIdx, 1)}
+                            className="p-1 text-gray-500 hover:text-gray-200 disabled:opacity-20"
+                            title={t('fwz.tabela.descer')}
+                            aria-label={t('fwz.tabela.descer')}
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onToggle(linha.regra.id, !linha.regra.ativa)}
+                            className={`p-1 ${linha.regra.ativa ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-600 hover:text-gray-400'}`}
+                            title={linha.regra.ativa ? t('fwz.tabela.desativar') : t('fwz.tabela.ativar')}
+                            aria-label={linha.regra.ativa ? t('fwz.tabela.desativar') : t('fwz.tabela.ativar')}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onEdit(linha.regra)}
+                            className="p-1 text-blue-400 hover:text-blue-300"
+                            title={t('fwz.tabela.editar')}
+                            aria-label={t('fwz.tabela.editar')}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDuplicate(linha.regra.id)}
+                            className="p-1 text-gray-400 hover:text-gray-200"
+                            title={t('fwz.tabela.duplicar')}
+                            aria-label={t('fwz.tabela.duplicar')}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setApagando({ id: linha.regra.id, desc: linha.regra.descricao })}
+                            className="p-1 text-rose-400 hover:text-rose-300"
+                            title={t('fwz.tabela.apagar')}
+                            aria-label={t('fwz.tabela.apagar')}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                  {confirmacao && (
+                    <tr>
+                      <td colSpan={12} className="px-3 py-2.5">
+                        {confirmacao}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>

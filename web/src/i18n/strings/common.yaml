@@ -205,6 +205,9 @@ common.saving:
 common.cancel:
   pt: "Cancelar"
   en: "Cancel"
+common.confirm:
+  pt: "Confirmar"
+  en: "Confirm"
 common.close:
   pt: "Fechar"
   en: "Close"

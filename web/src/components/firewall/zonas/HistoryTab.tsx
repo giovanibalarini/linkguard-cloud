@@ -1,18 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { RotateCcw, History, User, Clock, FileText } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
 import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
+import InlineConfirm from './InlineConfirm';
 import type { MsgLevel } from '../../../types';
-
-interface RevisaoFW {
-  id: string;
-  resumo: string;
-  motivo: string;
-  aplicado_em: number;
-  aplicado_por: string;
-}
+import type { RevisaoFW } from '../../../types/firewall';
 
 interface Props {
   canWrite: boolean;
@@ -21,9 +15,10 @@ interface Props {
 }
 
 export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [revisoes, setRevisoes] = useState<RevisaoFW[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
 
   const fetchHistorico = useCallback(async () => {
@@ -43,8 +38,8 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
 
   const handleRestaurar = async (rev: RevisaoFW) => {
     if (!canWrite) return;
-    if (!confirm(t('fwz.historico.restaurar.confirm'))) return;
 
+    setConfirmandoId(null);
     setRestaurandoId(rev.id);
     try {
       await client.post(`/api/firewall/historico/${rev.id}/restaurar`);
@@ -59,7 +54,7 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
 
   const formatData = (epochSec: number) => {
     if (!epochSec) return '-';
-    return new Date(epochSec * 1000).toLocaleString();
+    return new Date(epochSec * 1000).toLocaleString(lang);
   };
 
   return (
@@ -95,41 +90,54 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
             </thead>
             <tbody className="divide-y divide-gray-800/60">
               {revisoes.map((rev) => (
-                <tr key={rev.id} className="hover:bg-gray-800/30">
-                  <td className="py-2.5 px-3 whitespace-nowrap font-mono text-gray-400">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-gray-500" />
-                      <span>{formatData(rev.aplicado_em)}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-3 whitespace-nowrap text-gray-300">
-                    <div className="flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-gray-500" />
-                      <span>{rev.aplicado_por || '-'}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-3 text-gray-200">
-                    <div className="flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                      <span>{rev.resumo || '-'}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-3 text-gray-400 italic">
-                    {rev.motivo || '-'}
-                  </td>
-                  {canWrite && (
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => handleRestaurar(rev)}
-                        disabled={restaurandoId === rev.id}
-                        className="btn-secondary text-xs py-1 px-2.5 inline-flex items-center gap-1.5"
-                      >
-                        <RotateCcw className={`w-3.5 h-3.5 ${restaurandoId === rev.id ? 'animate-spin' : ''}`} />
-                        <span>{t('fwz.historico.restaurar')}</span>
-                      </button>
+                <Fragment key={rev.id}>
+                  <tr className="hover:bg-gray-800/30">
+                    <td className="py-2.5 px-3 whitespace-nowrap font-mono text-gray-400">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-gray-500" />
+                        <span>{formatData(rev.aplicado_em)}</span>
+                      </div>
                     </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap text-gray-300">
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-gray-500" />
+                        <span>{rev.aplicado_por || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-gray-200">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                        <span>{rev.resumo || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-gray-400 italic">
+                      {rev.motivo || '-'}
+                    </td>
+                    {canWrite && (
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => setConfirmandoId(rev.id)}
+                          disabled={restaurandoId === rev.id}
+                          className="btn-secondary text-xs py-1 px-2.5 inline-flex items-center gap-1.5"
+                        >
+                          <RotateCcw className={`w-3.5 h-3.5 ${restaurandoId === rev.id ? 'animate-spin' : ''}`} />
+                          <span>{t('fwz.historico.restaurar')}</span>
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                  {canWrite && confirmandoId === rev.id && (
+                    <tr>
+                      <td colSpan={5} className="py-2.5 px-3">
+                        <InlineConfirm
+                          mensagem={t('fwz.historico.restaurar.confirm')}
+                          onConfirm={() => handleRestaurar(rev)}
+                          onCancel={() => setConfirmandoId(null)}
+                        />
+                      </td>
+                    </tr>
                   )}
-                </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>

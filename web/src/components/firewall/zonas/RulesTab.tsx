@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Info, Plus } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
@@ -47,19 +47,16 @@ export default function RulesTab({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRegra, setEditingRegra] = useState<RegraFW | null>(null);
 
+  // Só a lista da zona: é a única coisa que muda com a zona aberta e com cada
+  // mutação de regra. A contagem da própria zona sai dela.
   const fetchZoneData = useCallback(async (z: Zona) => {
     setLoading(true);
     try {
-      const [regrasRes, aliasesRes, agendamentosRes] = await Promise.all([
-        client.get<{ zona: Zona; linhas: LinhaFW[] }>(`/api/firewall/regras?zona=${z}`),
-        client.get<AliasFW[]>('/api/firewall/aliases'),
-        client.get<AgendamentoFW[]>('/api/firewall/agendamentos'),
-      ]);
-
+      const regrasRes = await client.get<{ zona: Zona; linhas: LinhaFW[] }>(
+        `/api/firewall/regras?zona=${z}`,
+      );
       const currentLinhas = regrasRes.data?.linhas || [];
       setLinhas(currentLinhas);
-      setAliases(aliasesRes.data || []);
-      setAgendamentos(agendamentosRes.data || []);
 
       const adminCount = currentLinhas.filter((l) => l.tipo === 'admin').length;
       setCounts((prev) => ({ ...prev, [z]: adminCount }));
@@ -70,23 +67,42 @@ export default function RulesTab({
     }
   }, []);
 
-  const fetchOtherCounts = useCallback(async (currentZone: Zona) => {
-    for (const z of ZONAS) {
-      if (z === currentZone) continue;
-      try {
-        const res = await client.get<{ linhas: LinhaFW[] }>(`/api/firewall/regras?zona=${z}`);
-        const c = (res.data?.linhas || []).filter((l) => l.tipo === 'admin').length;
-        setCounts((prev) => ({ ...prev, [z]: c }));
-      } catch {
-        // Ignora erros
-      }
-    }
+  // Aliases e agendamentos (o que o editor oferece) e as contagens das outras
+  // zonas não dependem da zona aberta: leem-se uma vez ao abrir a aba, em vez de
+  // a cada troca de zona.
+  const fetchApoio = useCallback(async (aberta: Zona) => {
+    await Promise.all([
+      client
+        .get<AliasFW[]>('/api/firewall/aliases')
+        .then((res) => setAliases(res.data || []))
+        .catch((e) => console.error(e)),
+      client
+        .get<AgendamentoFW[]>('/api/firewall/agendamentos')
+        .then((res) => setAgendamentos(res.data || []))
+        .catch((e) => console.error(e)),
+      ...ZONAS.filter((z) => z !== aberta).map((z) =>
+        client
+          .get<{ linhas: LinhaFW[] }>(`/api/firewall/regras?zona=${z}`)
+          .then((res) => {
+            const c = (res.data?.linhas || []).filter((l) => l.tipo === 'admin').length;
+            setCounts((prev) => ({ ...prev, [z]: c }));
+          })
+          .catch(() => {
+            // Ignora erros
+          }),
+      ),
+    ]);
   }, []);
+
+  const zonaInicial = useRef(zona);
+
+  useEffect(() => {
+    fetchApoio(zonaInicial.current);
+  }, [fetchApoio]);
 
   useEffect(() => {
     fetchZoneData(zona);
-    fetchOtherCounts(zona);
-  }, [zona, fetchZoneData, fetchOtherCounts]);
+  }, [zona, fetchZoneData]);
 
   const refreshAll = async () => {
     await fetchZoneData(zona);
@@ -109,10 +125,9 @@ export default function RulesTab({
   const handleDuplicate = (id: string) =>
     executar(() => client.post(`/api/firewall/regras/${id}/duplicar`));
 
-  const handleDelete = async (id: string, desc: string) => {
-    if (!confirm(t('fwz.tabela.apagar.confirm', { desc: desc || id }))) return;
-    await executar(() => client.delete(`/api/firewall/regras/${id}`));
-  };
+  // A confirmação é da tabela (faixa inline na linha da regra).
+  const handleDelete = (id: string) =>
+    executar(() => client.delete(`/api/firewall/regras/${id}`));
 
   const handleReorder = (ids: string[]) =>
     executar(() => client.post('/api/firewall/regras/ordem', { zona, ids }));

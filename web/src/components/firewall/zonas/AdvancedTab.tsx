@@ -251,7 +251,7 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
                       onClick={() => handleLiberarContido(c.ip)}
                       className="text-blue-400 hover:text-blue-300 font-medium"
                     >
-                      {t('fwz.destinos.remover')}
+                      {t('fwz.avancado.contidos.liberar')}
                     </button>
                   )}
                 </span>

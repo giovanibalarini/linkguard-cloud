@@ -3,24 +3,7 @@ import { Search, RefreshCw, AlertCircle, ShieldAlert, ShieldCheck, ShieldX } fro
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
 import type { MsgLevel } from '../../../types';
-
-interface RegistroEntry {
-  time: string;
-  tipo: string;
-  chave: string;
-  zona?: string;
-  acao?: string;
-  descricao?: string;
-  desc_chave?: string;
-  desc_vars?: Record<string, string>;
-  in: string;
-  out: string;
-  src: string;
-  dst: string;
-  proto: string;
-  sport: string;
-  dport: string;
-}
+import type { RegistroFW } from '../../../types/firewall';
 
 interface Props {
   canWrite?: boolean;
@@ -29,7 +12,7 @@ interface Props {
 
 export default function FirewallLog({}: Props) {
   const { t } = useI18n();
-  const [entradas, setEntradas] = useState<RegistroEntry[]>([]);
+  const [entradas, setEntradas] = useState<RegistroFW[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
   const [debouncedBusca, setDebouncedBusca] = useState('');
@@ -48,7 +31,7 @@ export default function FirewallLog({}: Props) {
     try {
       const q = debouncedBusca.trim();
       const url = `/api/firewall/registro?limit=200${q ? `&q=${encodeURIComponent(q)}` : ''}`;
-      const { data } = await client.get<{ entradas: RegistroEntry[] }>(url);
+      const { data } = await client.get<{ entradas: RegistroFW[] }>(url);
       setEntradas(data?.entradas ?? []);
     } catch (e) {
       console.error(e);
@@ -71,7 +54,7 @@ export default function FirewallLog({}: Props) {
     };
   }, [carregar]);
 
-  const formatRuleName = (e: RegistroEntry): string => {
+  const formatRuleName = (e: RegistroFW): string => {
     if (e.descricao) return e.descricao;
     if (e.desc_chave) {
       try {

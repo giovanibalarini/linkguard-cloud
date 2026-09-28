@@ -117,6 +117,7 @@ export default function DestinosTab({ canWrite, children }: Props) {
                           onClick={() => handleRemover(ip)}
                           className="p-1 text-gray-500 hover:text-red-400 transition-colors"
                           title={t('fwz.destinos.remover')}
+                          aria-label={t('fwz.destinos.remover')}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

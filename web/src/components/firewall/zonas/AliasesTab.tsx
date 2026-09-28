@@ -1,23 +1,28 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Shield, Lock, Search, AlertCircle, Save } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
 import AliasEditor from './AliasEditor';
+import InlineConfirm from './InlineConfirm';
+import type { MsgLevel } from '../../../types';
 import type { AliasFW } from '../../../types/firewall';
 
 interface Props {
   canWrite: boolean;
   onRefreshGlobal?: () => void;
+  onMsg?: (text: string, level?: MsgLevel) => void;
 }
 
-export default function AliasesTab({ canWrite, onRefreshGlobal }: Props) {
+export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) {
   const { t } = useI18n();
 
   const [aliases, setAliases] = useState<AliasFW[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
   const [editorTarget, setEditorTarget] = useState<AliasFW | null | 'new'>(null);
+  const [apagando, setApagando] = useState<AliasFW | null>(null);
   const [erroUso, setErroUso] = useState<{ nome: string; usos: string[] } | null>(null);
 
   // Redes extras da VCN
@@ -55,7 +60,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal }: Props) {
   };
 
   const handleApagar = async (alias: AliasFW) => {
-    if (!confirm(t('fwz.aliases.apagar.confirm', { nome: alias.nome }))) return;
+    setApagando(null);
     setErroUso(null);
 
     try {
@@ -69,7 +74,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal }: Props) {
           usos: err.response.data.usos,
         });
       } else {
-        alert(err.response?.data?.error || t('common.error'));
+        onMsg?.(errMsg(err, t), 'error');
       }
     }
   };
@@ -88,8 +93,8 @@ export default function AliasesTab({ canWrite, onRefreshGlobal }: Props) {
       onRefreshGlobal?.();
       setSucessoExtras(true);
       setTimeout(() => setSucessoExtras(false), 3000);
-    } catch (e: any) {
-      alert(e.response?.data?.error || t('common.error'));
+    } catch (e) {
+      onMsg?.(errMsg(e, t), 'error');
     } finally {
       setSalvandoExtras(false);
     }
@@ -175,71 +180,85 @@ export default function AliasesTab({ canWrite, onRefreshGlobal }: Props) {
                 filtered.map((alias) => {
                   const isBuiltin = alias.embutido;
                   return (
-                    <tr
-                      key={alias.id}
-                      className={`hover:bg-gray-800/40 transition-colors ${
-                        isBuiltin ? 'bg-gray-900/30' : ''
-                      }`}
-                    >
-                      <td className="px-4 py-3 font-mono font-medium text-white flex items-center gap-2">
-                        {isBuiltin && (
-                          <span title={t('fwz.aliases.embutido')}>
-                            <Lock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                          </span>
-                        )}
-                        <span>{alias.nome}</span>
-                        {isBuiltin && (
-                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-sans">
-                            {t('fwz.aliases.embutido')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        {alias.tipo === 'enderecos'
-                          ? t('fwz.aliases.tipo.enderecos')
-                          : t('fwz.aliases.tipo.portas')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-mono text-xs text-gray-300 max-w-xs truncate" title={alias.itens.join(', ')}>
-                          {alias.itens.slice(0, 3).join(', ')}
-                          {alias.itens.length > 3 && (
-                            <span className="text-gray-500 ml-1">
-                              (+{alias.itens.length - 3})
+                    <Fragment key={alias.id}>
+                      <tr
+                        className={`hover:bg-gray-800/40 transition-colors ${
+                          isBuiltin ? 'bg-gray-900/30' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3 font-mono font-medium text-white flex items-center gap-2">
+                          {isBuiltin && (
+                            <span title={t('fwz.aliases.embutido')}>
+                              <Lock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                             </span>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        <div>{alias.descricao}</div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">
-                          {alias.usos && alias.usos > 0
-                            ? t('fwz.aliases.usado_por', { n: alias.usos })
-                            : t('fwz.aliases.usado_por_nenhum')}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {!isBuiltin && canWrite ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => setEditorTarget(alias)}
-                              className="text-gray-400 hover:text-white p-1"
-                              title={t('fwz.aliases.editar')}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleApagar(alias)}
-                              className="text-gray-400 hover:text-red-400 p-1"
-                              title={t('common.delete')}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                          <span>{alias.nome}</span>
+                          {isBuiltin && (
+                            <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-sans">
+                              {t('fwz.aliases.embutido')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          {alias.tipo === 'enderecos'
+                            ? t('fwz.aliases.tipo.enderecos')
+                            : t('fwz.aliases.tipo.portas')}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-mono text-xs text-gray-300 max-w-xs truncate" title={alias.itens.join(', ')}>
+                            {alias.itens.slice(0, 3).join(', ')}
+                            {alias.itens.length > 3 && (
+                              <span className="text-gray-500 ml-1">
+                                (+{alias.itens.length - 3})
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-xs text-gray-600">—</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          <div>{alias.descricao}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">
+                            {alias.usos && alias.usos > 0
+                              ? t('fwz.aliases.usado_por', { n: alias.usos })
+                              : t('fwz.aliases.usado_por_nenhum')}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {!isBuiltin && canWrite ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => setEditorTarget(alias)}
+                                className="text-gray-400 hover:text-white p-1"
+                                title={t('fwz.aliases.editar')}
+                                aria-label={t('fwz.aliases.editar')}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setApagando(alias)}
+                                className="text-gray-400 hover:text-red-400 p-1"
+                                title={t('common.delete')}
+                                aria-label={t('common.delete')}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {apagando?.id === alias.id && (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-3">
+                            <InlineConfirm
+                              mensagem={t('fwz.aliases.apagar.confirm', { nome: alias.nome })}
+                              onConfirm={() => handleApagar(alias)}
+                              onCancel={() => setApagando(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })
               )}

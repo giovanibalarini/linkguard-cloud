@@ -169,26 +169,27 @@ export interface RevisaoFW {
   id: string;
   resumo: string;
   motivo: string;
-  aplicado_em: string;
+  /** Epoch em segundos (int64 do servidor), não uma data em texto. */
+  aplicado_em: number;
   aplicado_por: string;
 }
 
+/** Uma linha de GET /api/firewall/registro (a resposta é {entradas: RegistroFW[]}). */
 export interface RegistroFW {
-  timestamp: string;
-  chave?: string;
-  tipo?: string;
-  regra_id?: string;
-  regra_nome?: string;
+  time: string;
+  /** regra | travada | padrao | legado */
+  tipo: string;
+  chave: string;
   zona?: string;
-  in_out?: string;
-  prefixo: string;
-  acao: string;
+  acao?: string;
+  descricao?: string;
+  desc_chave?: string;
+  desc_vars?: Record<string, string>;
+  in: string;
+  out: string;
+  src: string;
+  dst: string;
   proto: string;
-  origem_ip: string;
-  origem_porta?: number;
-  destino_ip: string;
-  destino_porta?: number;
-  pacotes?: number;
-  bytes?: number;
-  razao?: string;
+  sport: string;
+  dport: string;
 }

@@ -60,6 +60,7 @@ export default function DiffModal({ open, onClose, pendencias }: DiffModalProps)
             <button
               type="button"
               onClick={onClose}
+              aria-label={t('fwz.diff.fechar')}
               className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
             >
               <X className="w-4 h-4" />
@@ -123,7 +124,7 @@ export default function DiffModal({ open, onClose, pendencias }: DiffModalProps)
                         : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                     }`}
                   >
-                    {m.tipo}
+                    {t(`fwz.diff.tipo.${m.tipo}`)}
                   </span>
                   <span className="leading-relaxed flex-1">{renderMudancaTexto(m)}</span>
                 </div>

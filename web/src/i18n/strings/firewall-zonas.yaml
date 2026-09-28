@@ -98,12 +98,6 @@ fwz.ponta.addr_placeholder:
 fwz.ponta.picker.select:
   pt: "Selecione o tipo"
   en: "Select type"
-fwz.ponta.picker.busca:
-  pt: "Buscar..."
-  en: "Search..."
-fwz.ponta.picker.nenhum:
-  pt: "Nenhum resultado encontrado"
-  en: "No results found"
 
 fwz.porta.any:
   pt: "Qualquer"
@@ -231,6 +225,18 @@ fwz.diff.ajustes.alterada:
 fwz.diff.sem_mudancas:
   pt: "Nenhuma mudança estrutural pendente."
   en: "No structural changes pending."
+fwz.diff.tipo.criada:
+  pt: "Criada"
+  en: "Created"
+fwz.diff.tipo.alterada:
+  pt: "Alterada"
+  en: "Modified"
+fwz.diff.tipo.removida:
+  pt: "Removida"
+  en: "Removed"
+fwz.diff.tipo.movida:
+  pt: "Movida"
+  en: "Moved"
 
 # ─── Tabela de Regras ───────────────────────────────────────────────────────
 fwz.tabela.arrastar:
@@ -333,9 +339,6 @@ fwz.tabela.implicitas.titulo:
 fwz.tabela.implicitas.ajuda:
   pt: "Regras automáticas mantidas pelo LinkGuard (conexões estabelecidas, loopback, DHCP e descoberta de vizinhos)."
   en: "Automatic rules maintained by LinkGuard (established connections, loopback, DHCP, and neighbor discovery)."
-fwz.tabela.vazia:
-  pt: "Nenhuma regra personalizada nesta zona."
-  en: "No custom rules in this zone."
 fwz.tabela.adicionar:
   pt: "Adicionar regra"
   en: "Add rule"
@@ -347,9 +350,6 @@ fwz.editor.titulo_nova:
 fwz.editor.titulo_editar:
   pt: "Editar regra de firewall"
   en: "Edit firewall rule"
-fwz.editor.zona:
-  pt: "Zona"
-  en: "Zone"
 fwz.editor.acao:
   pt: "Ação"
   en: "Action"
@@ -380,9 +380,6 @@ fwz.editor.agendamento_sempre:
 fwz.editor.registrar:
   pt: "Registrar pacotes no log"
   en: "Log packets"
-fwz.editor.registrar_ajuda:
-  pt: "Gera entradas no log do firewall com taxa limitada."
-  en: "Generates rate-limited firewall log entries."
 fwz.editor.descricao:
   pt: "Descrição"
   en: "Description"
@@ -673,9 +670,6 @@ fw.padrao.vpn_fwd:
   en: "Block VPN client forwarding traffic not allowed by profiles"
 
 # ─── Aliases ────────────────────────────────────────────────────────────────
-fwz.aliases.titulo:
-  pt: "Aliases"
-  en: "Aliases"
 fwz.aliases.novo:
   pt: "Novo alias"
   en: "New alias"
@@ -753,9 +747,9 @@ fwz.aliases.busca:
   en: "Filter aliases..."
 
 # ─── Agendamentos ───────────────────────────────────────────────────────────
-fwz.agendamentos.titulo:
-  pt: "Agendamentos"
-  en: "Schedules"
+fwz.agendamentos.nota:
+  pt: "Janelas de dias e horários que uma regra pode usar para valer só nesses momentos."
+  en: "Day and time windows that a rule can use to apply only during those periods."
 fwz.agendamentos.novo:
   pt: "Novo agendamento"
   en: "New schedule"
@@ -839,9 +833,6 @@ fwz.agendamentos.usado_por_nenhum:
   en: "Not used"
 
 # ─── NAT ────────────────────────────────────────────────────────────────────
-fwz.nat.titulo:
-  pt: "Encaminhamento de Portas (DNAT)"
-  en: "Port Forwarding (DNAT)"
 fwz.nat.novo:
   pt: "Novo encaminhamento"
   en: "New port forward"
@@ -892,9 +883,6 @@ fwz.nat.saida:
   en: "Outbound NAT (Masquerade): automatically managed to allow outbound traffic from VCN and VPN to the Internet."
 
 # ─── Destinos ───────────────────────────────────────────────────────────────
-fwz.destinos.titulo:
-  pt: "Destinos Bloqueados"
-  en: "Blocked Destinations"
 fwz.destinos.managed_titulo:
   pt: "Destinos bloqueados por endereço IP"
   en: "Destinations blocked by IP address"
@@ -915,9 +903,6 @@ fwz.destinos.vazio:
   en: "No IP addresses blocked."
 
 # ─── Registro ───────────────────────────────────────────────────────────────
-fwz.registro.titulo:
-  pt: "Registro do Firewall"
-  en: "Firewall Log"
 fwz.registro.busca:
   pt: "Buscar nos registros..."
   en: "Search logs..."
@@ -982,9 +967,6 @@ fwz.historico.vazio:
   en: "No revisions recorded in history."
 
 # ─── Avançado ───────────────────────────────────────────────────────────────
-fwz.avancado.titulo:
-  pt: "Ajustes Avançados do Firewall"
-  en: "Advanced Firewall Settings"
 fwz.avancado.ajustes_titulo:
   pt: "Proteções e Opções Gerais"
   en: "Protections and General Options"
@@ -1030,6 +1012,9 @@ fwz.avancado.contidos.titulo:
 fwz.avancado.contidos.vazio:
   pt: "Nenhuma máquina em contenção de abuso no momento."
   en: "No hosts currently in abuse containment."
+fwz.avancado.contidos.liberar:
+  pt: "Liberar"
+  en: "Release"
 fwz.avancado.contidos.liberado:
   pt: "IP {ip} liberado da contenção."
   en: "IP {ip} released from containment."

@@ -19,7 +19,7 @@ import FirewallLog from '../components/firewall/zonas/FirewallLog';
 import HistoryTab from '../components/firewall/zonas/HistoryTab';
 import AdvancedTab from '../components/firewall/zonas/AdvancedTab';
 import DomainTargets from '../components/DomainTargets';
-import type { MsgLevel, SystemMetrics } from '../types';
+import type { MsgLevel } from '../types';
 import type { PendenciasFW, Zona } from '../types/firewall';
 
 const TABS = [
@@ -77,7 +77,6 @@ export default function Firewall() {
   const canWrite = can('firewall.write');
 
   const [params, setParams] = useSearchParams();
-  const [ifaces, setIfaces] = useState<string[]>([]);
   const [ruleset, setRuleset] = useState('');
   const [pendencias, setPendencias] = useState<PendenciasFW | null>(null);
 
@@ -117,11 +116,7 @@ export default function Firewall() {
   const fetchAuxData = useCallback(async () => {
     if (!canRead) return;
     try {
-      const [sys, rs] = await Promise.all([
-        client.get<SystemMetrics>('/api/system/status'),
-        client.get<{ ruleset: string }>('/api/nftables/ruleset'),
-      ]);
-      setIfaces((sys.data?.interfaces ?? []).map((i) => i.name).filter((n) => n && n !== 'lo'));
+      const rs = await client.get<{ ruleset: string }>('/api/nftables/ruleset');
       setRuleset(rs.data?.ruleset ?? '');
     } catch (e) {
       console.error(e);
@@ -229,11 +224,11 @@ export default function Firewall() {
           cor={cor}
         />
       ) : activeTab === 'aliases' ? (
-        <AliasesTab canWrite={canWrite} onRefreshGlobal={refreshAll} />
+        <AliasesTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : activeTab === 'agendamentos' ? (
-        <SchedulesTab canWrite={canWrite} onRefreshGlobal={refreshAll} />
+        <SchedulesTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : activeTab === 'nat' ? (
-        <NatTab canWrite={canWrite} onRefreshGlobal={refreshAll} />
+        <NatTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : activeTab === 'destinos' ? (
         <DestinosTab canWrite={canWrite}>
           <DomainTargets canEdit={can('firewall.write')} />

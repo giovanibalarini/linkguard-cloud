@@ -1,22 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Clock, AlertCircle } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
+import InlineConfirm from './InlineConfirm';
 import ScheduleEditor from './ScheduleEditor';
+import type { MsgLevel } from '../../../types';
 import type { AgendamentoFW } from '../../../types/firewall';
 
 interface Props {
   canWrite: boolean;
   onRefreshGlobal?: () => void;
+  onMsg?: (text: string, level?: MsgLevel) => void;
 }
 
-export default function SchedulesTab({ canWrite, onRefreshGlobal }: Props) {
+export default function SchedulesTab({ canWrite, onRefreshGlobal, onMsg }: Props) {
   const { t } = useI18n();
 
   const [schedules, setSchedules] = useState<AgendamentoFW[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorTarget, setEditorTarget] = useState<AgendamentoFW | null | 'new'>(null);
+  const [apagando, setApagando] = useState<AgendamentoFW | null>(null);
   const [erroUso, setErroUso] = useState<{ nome: string; usos: string[] } | null>(null);
 
   const fetchSchedules = useCallback(async () => {
@@ -45,7 +50,7 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal }: Props) {
   };
 
   const handleApagar = async (ag: AgendamentoFW) => {
-    if (!confirm(t('fwz.agendamentos.apagar.confirm', { nome: ag.nome }))) return;
+    setApagando(null);
     setErroUso(null);
 
     try {
@@ -59,7 +64,7 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal }: Props) {
           usos: err.response.data.usos,
         });
       } else {
-        alert(err.response?.data?.error || t('common.error'));
+        onMsg?.(errMsg(err, t), 'error');
       }
     }
   };
@@ -78,7 +83,7 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal }: Props) {
       {/* Barra de ações superior */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-gray-400">
-          {t('fwz.tab.agendamentos')}
+          {t('fwz.agendamentos.nota')}
         </p>
         {canWrite && (
           <button
@@ -134,48 +139,63 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal }: Props) {
                 </tr>
               ) : (
                 schedules.map((ag) => (
-                  <tr key={ag.id} className="hover:bg-gray-800/40 transition-colors">
-                    <td className="px-4 py-3 font-mono font-medium text-white flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      <span>{ag.nome}</span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-300">
-                      {ag.inicio} – {ag.fim}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-300">
-                      {formatDias(ag.dias)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
-                      <div>{ag.descricao || '—'}</div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">
-                        {ag.usos && ag.usos > 0
-                          ? t('fwz.agendamentos.usado_por', { n: ag.usos })
-                          : t('fwz.agendamentos.usado_por_nenhum')}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {canWrite ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => setEditorTarget(ag)}
-                            className="text-gray-400 hover:text-white p-1"
-                            title={t('fwz.agendamentos.editar')}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleApagar(ag)}
-                            className="text-gray-400 hover:text-red-400 p-1"
-                            title={t('common.delete')}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                  <Fragment key={ag.id}>
+                    <tr className="hover:bg-gray-800/40 transition-colors">
+                      <td className="px-4 py-3 font-mono font-medium text-white flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span>{ag.nome}</span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-300">
+                        {ag.inicio} – {ag.fim}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-300">
+                        {formatDias(ag.dias)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        <div>{ag.descricao || '—'}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">
+                          {ag.usos && ag.usos > 0
+                            ? t('fwz.agendamentos.usado_por', { n: ag.usos })
+                            : t('fwz.agendamentos.usado_por_nenhum')}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-600">—</span>
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {canWrite ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => setEditorTarget(ag)}
+                              className="text-gray-400 hover:text-white p-1"
+                              title={t('fwz.agendamentos.editar')}
+                              aria-label={t('fwz.agendamentos.editar')}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setApagando(ag)}
+                              className="text-gray-400 hover:text-red-400 p-1"
+                              title={t('common.delete')}
+                              aria-label={t('common.delete')}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {apagando?.id === ag.id && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-3">
+                          <InlineConfirm
+                            mensagem={t('fwz.agendamentos.apagar.confirm', { nome: ag.nome })}
+                            onConfirm={() => handleApagar(ag)}
+                            onCancel={() => setApagando(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))
               )}
             </tbody>
