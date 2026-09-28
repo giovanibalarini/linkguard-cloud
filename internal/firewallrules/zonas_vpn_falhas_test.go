@@ -621,3 +621,23 @@ func TestSnapshotComRegraDePessoaRemovidaPodeReverter(t *testing.T) {
 		t.Fatalf("o snapshot devia ser válido: %v", err)
 	}
 }
+
+func TestEditarSemAListaDePeersNaoEscreveNada(t *testing.T) {
+	f := novaVPNFalhas(t)
+	f.quebrar("wireguard_peers")
+
+	escritas := 0
+	err := f.svc.EditarConfigValidando(context.Background(), "admin", func(db *storage.DB) error {
+		escritas++
+		r := regraBloqueiaSSH()
+		return db.CriarRegraFW(&r)
+	})
+
+	g := exigirEtapa(t, err, StagePreflight)
+	if escritas != 0 || !strings.Contains(g.Message, "nada foi alterado") {
+		t.Fatalf("escritas=%d frase=%q: sem a lista de pessoas a escrita nem começa", escritas, g.Message)
+	}
+	if g.Err == nil {
+		t.Error("a causa técnica precisa ficar em Err")
+	}
+}

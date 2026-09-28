@@ -34,16 +34,20 @@ func (s *Service) Aplicada() (fwmodel.Config, bool, error) {
 }
 
 // pessoasUserIDs devolve os IDs dos usuários cadastrados na VPN para fins de validação de regras.
-func (s *Service) pessoasUserIDs() []string {
+// Uma leitura que falha é erro: tratar a lista como vazia acusaria toda regra
+// de pessoa de apontar para alguém que não existe.
+func (s *Service) pessoasUserIDs() ([]string, error) {
 	var userIDs []string
 	if s.db != nil {
-		if peers, err := s.db.ListWireGuardPeers(); err == nil {
-			for _, p := range peers {
-				userIDs = append(userIDs, p.UserID)
-			}
+		peers, err := s.db.ListWireGuardPeers()
+		if err != nil {
+			return nil, fmt.Errorf("listar peers da VPN: %w", err)
+		}
+		for _, p := range peers {
+			userIDs = append(userIDs, p.UserID)
 		}
 	}
-	return userIDs
+	return userIDs, nil
 }
 
 // Pendencias inspeciona se há alterações não aplicadas entre o rascunho em edição e o que está ativo.
@@ -71,7 +75,11 @@ func (s *Service) Pendencias(ctx context.Context) (Pendencias, error) {
 		aplicada = fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
 	}
 
-	out.Problemas = append(out.Problemas, fwmodel.Validar(emEdicao, s.pessoasUserIDs())...)
+	pessoas, err := s.pessoasUserIDs()
+	if err != nil {
+		return out, err
+	}
+	out.Problemas = append(out.Problemas, fwmodel.Validar(emEdicao, pessoas)...)
 
 	cAtual := fwmodel.Canonico(aplicada)
 	cNovo := fwmodel.Canonico(emEdicao)
@@ -190,6 +198,11 @@ func (s *Service) EditarConfigValidando(ctx context.Context, por string, escreve
 		return err
 	}
 
+	// Lida antes de escrever: se a lista falhar, nada foi tocado.
+	pessoas, err := s.pessoasUserIDs()
+	if err != nil {
+		return &GuardError{Stage: StagePreflight, Message: "não foi possível ler a lista de pessoas da VPN; nada foi alterado", Err: err}
+	}
 	antes, err := s.db.CarregarConfigEmEdicao()
 	if err != nil {
 		return &GuardError{Stage: StageWrite, Message: "carregar a configuração em edição", Err: err}
@@ -202,7 +215,7 @@ func (s *Service) EditarConfigValidando(ctx context.Context, por string, escreve
 		return &GuardError{Stage: StageWrite, Message: "reler a configuração em edição", Err: err}
 	}
 
-	problemas := fwmodel.ProblemasDaMudanca(antes, depois, s.pessoasUserIDs(), onde...)
+	problemas := fwmodel.ProblemasDaMudanca(antes, depois, pessoas, onde...)
 	if len(problemas) == 0 {
 		return nil
 	}
@@ -257,7 +270,11 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 		return &Applied{}, nil
 	}
 
-	if problemas := fwmodel.Validar(emEdicao, s.pessoasUserIDs()); fwmodel.TemErro(problemas) {
+	pessoas, err := s.pessoasUserIDs()
+	if err != nil {
+		return nil, &GuardError{Stage: StagePreflight, Message: "não foi possível ler a lista de pessoas da VPN; nada foi alterado", Err: err}
+	}
+	if problemas := fwmodel.Validar(emEdicao, pessoas); fwmodel.TemErro(problemas) {
 		var erros []fwmodel.Problema
 		for _, p := range problemas {
 			if p.Severidade == "erro" {
