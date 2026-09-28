@@ -38,7 +38,9 @@ func validateSnapshotV2(snap snapshotV2) error {
 	for _, p := range snap.PerfisVPN {
 		userIDs = append(userIDs, p.UserID)
 	}
-	problemas := fwmodel.Validar(snap.Config, userIDs)
+	// Mesma tolerância do render: a regra de quem já não tem VPN não impede reverter.
+	cfg, _ := fwmodel.SemRegrasDePessoaRemovida(snap.Config, userIDs)
+	problemas := fwmodel.Validar(cfg, userIDs)
 	if fwmodel.TemErro(problemas) {
 		var msgs []string
 		for _, prob := range problemas {

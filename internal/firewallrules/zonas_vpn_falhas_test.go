@@ -80,19 +80,20 @@ type vpnFalhas struct {
 	db      *storage.DB
 	exec    *zonasTestExec
 	porta   int
+	iface   string
 	pessoas []nftables.PessoaVPN
 }
 
 func novaVPNFalhas(t *testing.T) *vpnFalhas {
 	t.Helper()
 	svc, db, exec := newZonasTestService(t)
-	f := &vpnFalhas{t: t, svc: svc, db: db, exec: exec, porta: 51820}
+	f := &vpnFalhas{t: t, svc: svc, db: db, exec: exec, porta: 51820, iface: "linkguard"}
 	svc.SetFonteInsumos(func(context.Context) (nftables.Insumos, error) {
 		return nftables.Insumos{
 			RedesVCN:       []string{"10.0.0.0/16"},
 			RedeVPN:        "10.7.0.0/24",
 			PortaWireGuard: f.porta,
-			InterfaceVPN:   "linkguard",
+			InterfaceVPN:   f.iface,
 			PortasGerencia: []int{22, 443},
 			Pessoas:        f.pessoas,
 		}, nil
@@ -320,7 +321,7 @@ func TestMudancaVPNComJanelaDeOutraMudancaEConflito(t *testing.T) {
 	}
 }
 
-// --- a config aplicada não renderiza mais (ex.: a pessoa de uma regra foi revogada) ---
+// --- a config aplicada não renderiza mais (ex.: o alias de uma regra sumiu) ---
 
 func TestMudancaVPNComAplicadaQueNaoRenderizaAplicaSemJanela(t *testing.T) {
 	for _, reversivel := range []bool{true, false} {
@@ -330,14 +331,11 @@ func TestMudancaVPNComAplicadaQueNaoRenderizaAplicaSemJanela(t *testing.T) {
 		}
 		t.Run(nome, func(t *testing.T) {
 			f := novaVPNFalhas(t)
-			f.aplicadaCom(fwmodel.Config{
-				Formato: 1, Ajustes: fwmodel.AjustesPadrao(),
-				Regras: []fwmodel.Regra{regraDaPessoa("fantasma")},
-			})
+			f.iface = "interface inválida!"
 
-			// A pessoa da regra passa a existir: o render volta a funcionar.
+			// A escrita conserta o que impedia o render.
 			escrever := func() error {
-				f.pessoas = append(f.pessoas, nftables.PessoaVPN{UserID: "fantasma", Usuario: "fantasma", Endereco: "10.7.0.9", Total: true})
+				f.iface = "linkguard"
 				return f.mudaAEntrada()()
 			}
 			var desfazer func() error
@@ -463,11 +461,13 @@ func TestAplicarPreVooRecusadoNaoVazaOErroDoNft(t *testing.T) {
 
 func TestAplicarToleraAplicadaQueNaoRenderiza(t *testing.T) {
 	f := novaVPNFalhas(t)
+	quebrada := regraDaPessoa("x")
+	quebrada.Origem = fwmodel.Ponta{Tipo: fwmodel.PontaAlias, Valor: "alias-que-sumiu"}
 	f.aplicadaCom(fwmodel.Config{
 		Formato: 1, Ajustes: fwmodel.AjustesPadrao(),
-		Regras: []fwmodel.Regra{regraDaPessoa("fantasma")},
+		Regras: []fwmodel.Regra{quebrada},
 	})
-	// A saída é apagar a regra da pessoa que não existe mais.
+	// A saída é apagar a regra que cita o alias que não existe mais.
 	if err := f.db.SubstituirConfigEmEdicao(fwmodel.Config{
 		Formato: 1, Ajustes: fwmodel.AjustesPadrao(),
 		Regras: []fwmodel.Regra{regraBloqueiaSSH()},
@@ -607,5 +607,17 @@ func TestRenderizarNoBootRecusadoNaoVazaOErroParaUltimoErro(t *testing.T) {
 				t.Errorf("UltimoErro vai para a tela e só pode repetir a frase do operador: %q", f.svc.UltimoErro())
 			}
 		})
+	}
+}
+
+// Reverter para um snapshot em que uma regra cita quem já não tem VPN é
+// possível: a regra órfã não entra no render nem barra a reversão.
+func TestSnapshotComRegraDePessoaRemovidaPodeReverter(t *testing.T) {
+	snap := snapshotV2{Formato: 2, Config: fwmodel.Config{
+		Formato: 1, Ajustes: fwmodel.AjustesPadrao(),
+		Regras: []fwmodel.Regra{regraDaPessoa("fantasma")},
+	}}
+	if err := validateSnapshotV2(snap); err != nil {
+		t.Fatalf("o snapshot devia ser válido: %v", err)
 	}
 }
