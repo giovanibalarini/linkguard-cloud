@@ -160,6 +160,10 @@ fwz.pendencias.sucesso:
 fwz.pendencias.descartado_sucesso:
   pt: "Alterações descartadas com sucesso."
   en: "Changes discarded successfully."
+fwz.estado.ultimo_erro:
+  pt: "A última tentativa de aplicar o firewall falhou:"
+  en: "The last attempt to apply the firewall failed:"
+
 fwz.pendencias.com_erros:
   pt: "Corrija os erros abaixo antes de aplicar:"
   en: "Fix the errors below before applying:"

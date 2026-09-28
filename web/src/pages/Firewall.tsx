@@ -191,6 +191,13 @@ export default function Firewall() {
         />
       )}
 
+      {estado?.ultimo_erro && (
+        <div className="card border border-red-800 bg-red-950/40 text-sm text-red-200" role="alert">
+          <p className="font-medium">{t('fwz.estado.ultimo_erro')}</p>
+          <p className="mt-1 font-mono text-xs break-words">{estado.ultimo_erro}</p>
+        </div>
+      )}
+
       {/* Mensagem de notificação */}
       {msg.text && (
         <div className={`card border text-sm ${MSG_STYLES[msg.level]}`}>{msg.text}</div>
