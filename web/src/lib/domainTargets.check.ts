@@ -30,7 +30,7 @@ const baseTarget = {
 } satisfies DomainTargetView;
 check(targetPhase(baseTarget) === 'trial', 'ensaio aparece como ensaio');
 check(targetPhase({ ...baseTarget, stage: 'ativo', effective_stage: 'ativo' }) === 'active', 'ativo efetivo aparece ativo');
-check(targetPhase({ ...baseTarget, stage: 'ativo', suspended: true, suspension_reason: 'blocking_group_disabled' }) === 'suspended', 'suspensão não se disfarça de ensaio comum');
+check(targetPhase({ ...baseTarget, stage: 'ativo', suspended: true, suspension_reason: 'boot_pending' }) === 'suspended', 'suspensão não se disfarça de ensaio comum');
 
 const component = read('../components/DomainTargets.tsx');
 const firewallPage = read('../pages/Firewall.tsx');

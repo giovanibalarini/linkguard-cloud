@@ -63,8 +63,6 @@ export interface DomainRoutingState {
   generation: number;
   last_reconciled_at: string;
   last_error?: string;
-  blocking_group_present: boolean;
-  blocking_group_enabled: boolean;
   runtime: DomainRuntimeState;
   targets: DomainTargetView[];
 }
