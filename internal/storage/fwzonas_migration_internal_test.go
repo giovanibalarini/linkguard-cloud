@@ -37,8 +37,9 @@ func TestMigracao103E104BancoComDados(t *testing.T) {
 		INSERT INTO host_groups (id, name, description, hosts) VALUES
 		('hg-vcn', 'VCN', 'Grupo VCN', ?),
 		('hg-srv1', 'Servidores', 'Srv 1', ?),
-		('hg-srv2', 'SERVIDORES', 'Srv 2', ?)`,
-		hostsJSON1, hostsJSON2, hostsJSON3,
+		('hg-srv2', 'SERVIDORES', 'Srv 2', ?),
+		('hg-vcn2', 'vcn', 'Outro VCN', ?)`,
+		hostsJSON1, hostsJSON2, hostsJSON3, hostsJSON3,
 	); err != nil {
 		t.Fatalf("inserir host_groups legados: %v", err)
 	}
@@ -99,6 +100,12 @@ func TestMigracao103E104BancoComDados(t *testing.T) {
 	}
 	if nomeVCN != "VCN (grupo)" {
 		t.Errorf("nome reservado 'VCN' deveria ter virado 'VCN (grupo)', virou %q", nomeVCN)
+	}
+	// A colisão entre dois grupos reservados mantém o marcador "(grupo)".
+	var nomeVCN2 string
+	_ = db.conn.QueryRow(`SELECT nome FROM fw_aliases WHERE id = 'hg-vcn2'`).Scan(&nomeVCN2)
+	if nomeVCN2 != "vcn (grupo) (2)" {
+		t.Errorf("colisão de reservado perdeu o marcador: %q", nomeVCN2)
 	}
 	// Verifica aplicação de máscara
 	if itensVCN != `["10.0.1.0/24","10.0.2.20","192.168.1.1"]` {

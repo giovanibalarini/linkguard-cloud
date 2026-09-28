@@ -1804,68 +1804,77 @@ func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
 	if hgExists > 0 {
 		chavesExistentes := make(map[string]bool)
 		rowsEx, err := tx.Query(`SELECT nome_chave FROM fw_aliases`)
-		if err == nil {
-			for rowsEx.Next() {
-				var k string
-				if err := rowsEx.Scan(&k); err == nil {
-					chavesExistentes[k] = true
-				}
-			}
-			rowsEx.Close()
+		if err != nil {
+			return fmt.Errorf("ler os aliases existentes: %w", err)
 		}
+		for rowsEx.Next() {
+			var k string
+			if err := rowsEx.Scan(&k); err != nil {
+				rowsEx.Close()
+				return fmt.Errorf("ler chave de alias existente: %w", err)
+			}
+			chavesExistentes[k] = true
+		}
+		if err := rowsEx.Err(); err != nil {
+			rowsEx.Close()
+			return fmt.Errorf("ler os aliases existentes: %w", err)
+		}
+		rowsEx.Close()
 
 		rowsHG, err := tx.Query(`
 			SELECT id, name, description, hosts, created_at, updated_at
 			FROM host_groups
 			ORDER BY created_at ASC, id ASC`)
-		if err == nil {
-			defer rowsHG.Close()
-			for rowsHG.Next() {
-				var id, name, desc, hostsJSON, createdAt, updatedAt string
-				if err := rowsHG.Scan(&id, &name, &desc, &hostsJSON, &createdAt, &updatedAt); err != nil {
-					continue
-				}
+		if err != nil {
+			return fmt.Errorf("ler os grupos de hosts: %w", err)
+		}
+		defer rowsHG.Close()
+		for rowsHG.Next() {
+			var id, name, desc, hostsJSON, createdAt, updatedAt string
+			if err := rowsHG.Scan(&id, &name, &desc, &hostsJSON, &createdAt, &updatedAt); err != nil {
+				return fmt.Errorf("ler grupo de hosts: %w", err)
+			}
 
-				finalName := strings.TrimSpace(name)
-				if isNomeAliasReservadoMigracao(finalName) {
-					finalName = fmt.Sprintf("%s (grupo)", finalName)
-				}
+			baseName := strings.TrimSpace(name)
+			if isNomeAliasReservadoMigracao(baseName) {
+				baseName = fmt.Sprintf("%s (grupo)", baseName)
+			}
 
-				chaveBase := strings.ToLower(finalName)
-				chave := chaveBase
-				suf := 2
-				for chavesExistentes[chave] {
-					finalName = fmt.Sprintf("%s (%d)", name, suf)
-					chave = strings.ToLower(finalName)
-					suf++
-				}
-				chavesExistentes[chave] = true
+			finalName := baseName
+			chave := strings.ToLower(finalName)
+			for suf := 2; chavesExistentes[chave]; suf++ {
+				finalName = fmt.Sprintf("%s (%d)", baseName, suf)
+				chave = strings.ToLower(finalName)
+			}
+			chavesExistentes[chave] = true
 
-				var rawHosts []string
-				if hostsJSON != "" {
-					_ = json.Unmarshal([]byte(hostsJSON), &rawHosts)
-				}
-				var normHosts []string
-				for _, h := range rawHosts {
-					norm := normalizarItemEnderecoMigracao(h)
-					if norm != "" {
-						normHosts = append(normHosts, norm)
-					}
-				}
-				if normHosts == nil {
-					normHosts = []string{}
-				}
-				itensJSON, _ := json.Marshal(normHosts)
-
-				if _, err := tx.Exec(`
-					INSERT OR IGNORE INTO fw_aliases (
-						id, nome, nome_chave, tipo, descricao, itens, criado_em, atualizado_em
-					) VALUES (?, ?, ?, 'enderecos', ?, ?, ?, ?)`,
-					id, finalName, chave, desc, string(itensJSON), createdAt, updatedAt,
-				); err != nil {
-					return fmt.Errorf("migrar host_group %q para fw_aliases: %w", id, err)
+			var rawHosts []string
+			if hostsJSON != "" {
+				_ = json.Unmarshal([]byte(hostsJSON), &rawHosts)
+			}
+			var normHosts []string
+			for _, h := range rawHosts {
+				norm := normalizarItemEnderecoMigracao(h)
+				if norm != "" {
+					normHosts = append(normHosts, norm)
 				}
 			}
+			if normHosts == nil {
+				normHosts = []string{}
+			}
+			itensJSON, _ := json.Marshal(normHosts)
+
+			if _, err := tx.Exec(`
+				INSERT OR IGNORE INTO fw_aliases (
+					id, nome, nome_chave, tipo, descricao, itens, criado_em, atualizado_em
+				) VALUES (?, ?, ?, 'enderecos', ?, ?, ?, ?)`,
+				id, finalName, chave, desc, string(itensJSON), createdAt, updatedAt,
+			); err != nil {
+				return fmt.Errorf("migrar host_group %q para fw_aliases: %w", id, err)
+			}
+		}
+		if err := rowsHG.Err(); err != nil {
+			return fmt.Errorf("ler os grupos de hosts: %w", err)
 		}
 	}
 
