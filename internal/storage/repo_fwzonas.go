@@ -444,8 +444,8 @@ func (db *DB) CriarRegraFW(r *fwmodel.Regra) error {
 	return nil
 }
 
-// AtualizarRegraFW atualiza os campos de uma regra existente.
-// Se a zona tiver mudado, a regra é movida para o fim da nova zona.
+// AtualizarRegraFW atualiza os campos de uma regra existente. A posição não é
+// dela (só ReordenarRegrasFW a muda): se a zona mudou, a regra vai para o fim da nova.
 func (db *DB) AtualizarRegraFW(r fwmodel.Regra) error {
 	var zonaAtual string
 	var posAtual int
@@ -468,8 +468,6 @@ func (db *DB) AtualizarRegraFW(r fwmodel.Regra) error {
 			return fmt.Errorf("calcular nova posição na zona %q: %w", r.Zona, err)
 		}
 		posicao = maxPos + 1
-	} else if r.Posicao >= 0 {
-		posicao = r.Posicao
 	}
 
 	ativaInt := 0
@@ -843,9 +841,9 @@ func (db *DB) AtualizarEncaminhamentoFW(enc fwmodel.Encaminhamento) error {
 	res, err := db.conn.Exec(`
 		UPDATE fw_encaminhamentos SET
 			nome = ?, ativo = ?, proto = ?, porta_externa = ?, ip_destino = ?, porta_destino = ?,
-			posicao = ?, atualizado_em = CURRENT_TIMESTAMP
+			atualizado_em = CURRENT_TIMESTAMP
 		WHERE id = ?`,
-		enc.Nome, ativoInt, enc.Proto, enc.PortaExterna, enc.IPDestino, enc.PortaDestino, enc.Posicao, enc.ID,
+		enc.Nome, ativoInt, enc.Proto, enc.PortaExterna, enc.IPDestino, enc.PortaDestino, enc.ID,
 	)
 	if err != nil {
 		return db.restricaoFW(fmt.Errorf("atualizar fw_encaminhamentos: %w", err), "encaminhamento", enc.ID, "", "")
