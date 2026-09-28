@@ -596,6 +596,26 @@ func TestRenderZonas_HashEntrada_Janela(t *testing.T) {
 	}
 }
 
+func TestRenderZonas_HashEntrada_MudaComDNAT(t *testing.T) {
+	cen := cenariosDeTeste()["oci_tipico"]
+	base, err := RenderZonas(cen.config, cen.insumos)
+	if err != nil {
+		t.Fatalf("base falhou: %v", err)
+	}
+	cfg := cen.config
+	cfg.Encaminhamentos = append(append([]fwmodel.Encaminhamento{}, cfg.Encaminhamentos...), fwmodel.Encaminhamento{
+		ID: "dnat-22", Nome: "ssh", Ativo: true, Proto: "tcp",
+		PortaExterna: 22, IPDestino: "10.0.1.50", PortaDestino: 22,
+	})
+	com, err := RenderZonas(cfg, cen.insumos)
+	if err != nil {
+		t.Fatalf("com DNAT falhou: %v", err)
+	}
+	if com.HashEntrada == base.HashEntrada {
+		t.Fatal("um DNAT novo não alterou HashEntrada: mudança que pode cortar a gerência ficaria sem janela")
+	}
+}
+
 // TestRenderZonas_SimulacaoPacotes estende o simulador de regras para seguir jumps e comentários,
 // comprovando que o script produzido resolve os defeitos 1, 2 e 3.
 func TestRenderZonas_SimulacaoPacotes(t *testing.T) {

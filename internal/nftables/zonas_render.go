@@ -452,7 +452,7 @@ func RenderZonas(c fwmodel.Config, in Insumos) (Ruleset, error) {
 	script := b.String()
 
 	// 6. Computar HashEntrada: sha256 das linhas de input, zona_*_in e dos sets referenciados por elas
-	hashEntrada := calcularHashEntrada(regrasInput, regrasFlutIn, regrasInetIn, regrasVCNIn, regrasVPNIn, conteudoSets)
+	hashEntrada := calcularHashEntrada(regrasInput, regrasFlutIn, regrasInetIn, regrasVCNIn, regrasVPNIn, dnatRules, conteudoSets)
 
 	return Ruleset{
 		Script:      script,
@@ -717,8 +717,9 @@ func montarLimpezaLegado(existentes Existentes, userSets []userSet) []string {
 }
 
 // calcularHashEntrada calcula o SHA256 em hexadecimal de todas as regras de entrada
-// (input e zona_*_in) e dos elementos dos sets que elas consultam.
-func calcularHashEntrada(regrasInput, flutIn, inetIn, vcnIn, vpnIn []string, sets map[string]string) string {
+// (input, zona_*_in) e dos elementos dos sets que elas consultam. O prerouting_dnat
+// entra porque um DNAT numa porta de gerência tira o acesso ao próprio gateway.
+func calcularHashEntrada(regrasInput, flutIn, inetIn, vcnIn, vpnIn, dnat []string, sets map[string]string) string {
 	var sb strings.Builder
 
 	adicionarRegras := func(nomeChain string, regras []string) {
@@ -733,6 +734,7 @@ func calcularHashEntrada(regrasInput, flutIn, inetIn, vcnIn, vpnIn []string, set
 	adicionarRegras("zona_vcn_in", vcnIn)
 	adicionarRegras("zona_vpn_in", vpnIn)
 	adicionarRegras("input", regrasInput)
+	adicionarRegras("prerouting_dnat", dnat)
 
 	// Achar todos os sets referenciados (@nome_do_set)
 	textoEntrada := sb.String()
