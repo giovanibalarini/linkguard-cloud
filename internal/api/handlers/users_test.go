@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
 	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
+	"github.com/giovanibalarini/linkguard-cloud/internal/wireguard"
 )
 
 func withChiURLParam(r *http.Request, key, value string) *http.Request {
@@ -290,21 +292,183 @@ func TestUpdateAllowsPasswordResetOnEquallyOrLessPrivilegedTarget(t *testing.T) 
 }
 
 type testVPNApplier struct {
-	called bool
-	por    string
-	resumo string
+	called     bool
+	por        string
+	resumo     string
+	reversivel bool
+	trancada   bool  // recusa antes de escrever, como a janela aberta
+	depois     error // falha do firewall depois de a escrita ter ficado
 }
 
 func (a *testVPNApplier) AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error) {
 	a.called = true
 	a.por = por
 	a.resumo = resumo
+	a.reversivel = desfazer != nil
+	if a.trancada {
+		return nil, &firewallrules.GuardError{Stage: firewallrules.StageLocked, Message: "há uma janela de confirmação aberta"}
+	}
 	if escrever != nil {
 		if err := escrever(); err != nil {
 			return nil, err
 		}
 	}
+	if a.depois != nil {
+		return nil, a.depois
+	}
 	return &firewallrules.Applied{}, nil
+}
+
+type testVPNReconciler struct {
+	chamadas int
+	err      error
+}
+
+func (r *testVPNReconciler) Reconcile(context.Context) error {
+	r.chamadas++
+	return r.err
+}
+
+const detalheInternoUsuarios = "exit status 1: /var/lib/linkguard/wg0.conf: permission denied"
+
+// usuarioComVPN cria o admin que pede e o alvo com peer, e devolve a chamada
+// já montada.
+func usuarioComVPN(t *testing.T, h *handlers.UsersHandler, db *storage.DB) (alvo *storage.User, apaga func() *httptest.ResponseRecorder) {
+	t.Helper()
+	adminRole := adminRoleID(t, db)
+	admin := &storage.User{Username: "superadmin"}
+	if err := db.CreateUser(admin, "$2a$10$fakehashfakehashfakehashfakehashfakehashfakehashfa", []string{adminRole}); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	alvo = &storage.User{Username: "alvo-vpn"}
+	if err := db.CreateUser(alvo, "$2a$10$fakehashfakehashfakehashfakehashfakehashfakehashfa", []string{adminRole}); err != nil {
+		t.Fatalf("CreateUser alvo: %v", err)
+	}
+	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: alvo.ID, Username: alvo.Username, Address: "10.7.0.10/32"}); err != nil {
+		t.Fatalf("UpsertWireGuardPeer: %v", err)
+	}
+	return alvo, func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodDelete, "/api/users/"+alvo.ID, nil)
+		req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: admin.ID, Username: admin.Username}))
+		req = withChiURLParam(req, "id", alvo.ID)
+		w := httptest.NewRecorder()
+		h.Delete(w, req)
+		return w
+	}
+}
+
+func usuarioExiste(t *testing.T, db *storage.DB, id string) bool {
+	t.Helper()
+	u, err := db.GetUserByID(id)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	return u != nil
+}
+
+func TestDeleteUserReconciliaAVPNESemVolta(t *testing.T) {
+	h, db := newUsersTestHandler(t)
+	alvo, apaga := usuarioComVPN(t, h, db)
+	fw, wg := &testVPNApplier{}, &testVPNReconciler{}
+	h.SetVPNApplier(fw)
+	h.SetVPNReconciler(wg)
+
+	w := apaga()
+
+	if w.Code != http.StatusOK || usuarioExiste(t, db, alvo.ID) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if wg.chamadas != 1 {
+		t.Fatalf("apagar o usuário tem de tirar a chave do wg0.conf: %d reconciliações", wg.chamadas)
+	}
+	if fw.reversivel {
+		t.Fatal("apagar um usuário não tem volta")
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("warning")) {
+		t.Fatalf("nada pendente: %s", w.Body.String())
+	}
+}
+
+func TestDeleteUserFalhaDoWireGuardApagaEAvisaSemVazar(t *testing.T) {
+	h, db := newUsersTestHandler(t)
+	alvo, apaga := usuarioComVPN(t, h, db)
+	fw := &testVPNApplier{}
+	h.SetVPNApplier(fw)
+	h.SetVPNReconciler(&testVPNReconciler{err: &wireguard.FalhaDeReconciliacao{Err: errors.New(detalheInternoUsuarios)}})
+
+	w := apaga()
+
+	if w.Code != http.StatusOK || usuarioExiste(t, db, alvo.ID) {
+		t.Fatalf("o usuário foi apagado no banco: status=%d body=%s", w.Code, w.Body.String())
+	}
+	if !fw.called || fw.reversivel {
+		t.Fatalf("o firewall tem de seguir a decisão mesmo com o WireGuard falho (called=%v reversivel=%v)", fw.called, fw.reversivel)
+	}
+	var out map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("resposta: %v %s", err, w.Body.String())
+	}
+	if out["status"] != "deleted" || out["warning"] != "vpn_reconcile_pending" {
+		t.Fatalf("resposta = %v", out)
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("wg0.conf")) {
+		t.Fatalf("detalhe interno vazou: %s", w.Body.String())
+	}
+	auditouExclusao(t, db, alvo.Username)
+}
+
+func TestDeleteUserFalhaDoFirewallDepoisDeApagarAvisa(t *testing.T) {
+	h, db := newUsersTestHandler(t)
+	alvo, apaga := usuarioComVPN(t, h, db)
+	h.SetVPNApplier(&testVPNApplier{depois: &firewallrules.GuardError{
+		Stage: firewallrules.StageReconcile, Gravada: true, Err: errors.New(detalheInternoUsuarios),
+		Message: "o firewall recusou o ruleset; a mudança ficou gravada, mas o firewall não foi reconciliado",
+	}})
+	h.SetVPNReconciler(&testVPNReconciler{})
+
+	w := apaga()
+
+	if w.Code != http.StatusOK || usuarioExiste(t, db, alvo.ID) {
+		t.Fatalf("o usuário foi apagado no banco: status=%d body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("vpn_reconcile_pending")) || bytes.Contains(w.Body.Bytes(), []byte("wg0.conf")) {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	auditouExclusao(t, db, alvo.Username)
+}
+
+func TestDeleteUserComJanelaAbertaNaoApagaNada(t *testing.T) {
+	h, db := newUsersTestHandler(t)
+	alvo, apaga := usuarioComVPN(t, h, db)
+	wg := &testVPNReconciler{}
+	h.SetVPNApplier(&testVPNApplier{trancada: true})
+	h.SetVPNReconciler(wg)
+
+	w := apaga()
+
+	if w.Code != http.StatusConflict || !usuarioExiste(t, db, alvo.ID) || wg.chamadas != 0 {
+		t.Fatalf("status=%d existe=%v reconciliações=%d body=%s", w.Code, usuarioExiste(t, db, alvo.ID), wg.chamadas, w.Body.String())
+	}
+}
+
+func auditouExclusao(t *testing.T, db *storage.DB, username string) {
+	t.Helper()
+	logs, err := db.GetAuditLogs(50)
+	if err != nil {
+		t.Fatalf("GetAuditLogs: %v", err)
+	}
+	achou := false
+	for _, l := range logs {
+		if l.Action == "user.delete" && l.Resource == "user:"+username {
+			achou = true
+		}
+		if bytes.Contains([]byte(l.Details), []byte("wg0.conf")) {
+			t.Fatalf("detalhe interno vazou na auditoria: %q", l.Details)
+		}
+	}
+	if !achou {
+		t.Fatal("o usuário foi apagado e a exclusão tem de estar na auditoria")
+	}
 }
 
 func TestDeleteUserWithWireGuardPeerTriggersVPNApplier(t *testing.T) {

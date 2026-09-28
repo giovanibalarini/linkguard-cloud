@@ -46,6 +46,11 @@ func writeGuardError(w http.ResponseWriter, err error) {
 
 	switch g.Stage {
 	case firewallrules.StageValidate, firewallrules.StagePreflight:
+		if g.Stage == firewallrules.StagePreflight && g.Err != nil {
+			// Um pré-voo que não conseguiu ler o estado leva a causa técnica
+			// (banco, insumos); a tela só vê o resumo.
+			slog.Warn("mutação de firewall recusada no pré-voo", "err", g.Err)
+		}
 		if len(g.Problemas) > 0 {
 			// Os problemas vão junto para o painel traduzi-los; o texto fica
 			// como resumo para quem lê a resposta crua.

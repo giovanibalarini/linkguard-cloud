@@ -120,16 +120,16 @@ var (
 func ValidateConfig(c Config) error {
 	prefix, err := netip.ParsePrefix(strings.TrimSpace(c.Address))
 	if err != nil || !prefix.Addr().Is4() || prefix.Bits() < 16 || prefix.Bits() > 30 || prefix != prefix.Masked() && prefix.Addr() == prefix.Masked().Addr() {
-		return fmt.Errorf("endereço do túnel inválido: use IPv4 CIDR com prefixo /16 a /30")
+		return recusa(PedidoInvalido, "endereço do túnel inválido: use IPv4 CIDR com prefixo /16 a /30")
 	}
 	if prefix.Addr() == prefix.Masked().Addr() || prefix.Addr() == lastAddr(prefix.Masked()) {
-		return fmt.Errorf("o endereço do servidor não pode ser o endereço de rede ou broadcast")
+		return recusa(PedidoInvalido, "o endereço do servidor não pode ser o endereço de rede ou broadcast")
 	}
 	if c.ListenPort < 1 || c.ListenPort > 65535 {
-		return fmt.Errorf("porta WireGuard inválida")
+		return recusa(PedidoInvalido, "porta WireGuard inválida")
 	}
 	if c.EndpointHost != "" && !validEndpointHost(c.EndpointHost) {
-		return fmt.Errorf("endpoint inválido: use um endereço IP ou hostname")
+		return recusa(PedidoInvalido, "endpoint inválido: use um endereço IP ou hostname")
 	}
 	return nil
 }
@@ -191,7 +191,7 @@ func ValidateMTU(mtu int) error {
 		return nil
 	}
 	if mtu < MTUMin || mtu > MTUMax {
-		return fmt.Errorf("MTU inválido: use 0 para o padrão do cliente ou um valor entre %d e %d", MTUMin, MTUMax)
+		return recusa(PedidoInvalido, "MTU inválido: use 0 para o padrão do cliente ou um valor entre %d e %d", MTUMin, MTUMax)
 	}
 	return nil
 }
@@ -218,7 +218,7 @@ func NormalizeRoutes(routes []string) ([]string, error) {
 		} else if addr, err := netip.ParseAddr(route); err == nil && addr.Is4() {
 			canonical = netip.PrefixFrom(addr, 32).String()
 		} else {
-			return nil, fmt.Errorf("destino inválido para a rota do túnel: %q", raw)
+			return nil, recusa(PedidoInvalido, "destino inválido para a rota do túnel: %q", raw)
 		}
 		if seen[canonical] {
 			continue
@@ -312,7 +312,7 @@ func NextAddress(c Config, peers []Peer) (string, error) {
 			return addr.String() + "/32", nil
 		}
 	}
-	return "", fmt.Errorf("sem endereços livres no túnel %s", network)
+	return "", recusa(EstadoImpede, "sem endereços livres no túnel %s", network)
 }
 
 func lastAddr(prefix netip.Prefix) netip.Addr {

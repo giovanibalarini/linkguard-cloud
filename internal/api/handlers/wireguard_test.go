@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -33,27 +32,53 @@ type wireGuardServiceStub struct {
 	enrolledFor    bool
 	mine           wireguard.MyVPN
 	mineUserID     string
+
+	// Falhas injetáveis e o que o serviço recebeu, para os testes de falha.
+	db        *storage.DB // quando presente, Enroll/EnrollFor/Revoke mexem no peer como o serviço real
+	updateErr error
+	updates   []wireguard.Config
+	enrollErr error
+	revokeErr error
+	revokes   []string
+	accessErr error
 }
 
 func (s *wireGuardServiceStub) Overview(context.Context) (wireguard.Overview, error) {
 	return s.overview, nil
 }
-func (s *wireGuardServiceStub) UpdateConfig(_ context.Context, _ wireguard.Config) error {
+func (s *wireGuardServiceStub) UpdateConfig(_ context.Context, c wireguard.Config) error {
 	s.updateCalled = true
-	return nil
+	s.updates = append(s.updates, c)
+	return s.updateErr
+}
+func (s *wireGuardServiceStub) gravaPeer(userID string) {
+	if s.db == nil {
+		return
+	}
+	_, _ = s.db.UpsertWireGuardPeer(&storage.WireGuardPeer{
+		UserID: userID, Username: "user-" + userID, Address: "10.7.0.9/32", AccessMode: "full",
+	})
 }
 func (s *wireGuardServiceStub) Enroll(_ context.Context, userID string) (wireguard.Enrollment, error) {
 	s.enrolledUserID = userID
+	if s.enrollErr != nil {
+		return wireguard.Enrollment{}, s.enrollErr
+	}
+	s.gravaPeer(userID)
 	return s.enrollment, nil
 }
 func (s *wireGuardServiceStub) Revoke(_ context.Context, userID string) error {
 	s.revokedUserID = userID
-	return nil
+	s.revokes = append(s.revokes, userID)
+	if s.db != nil && s.revokeErr == nil {
+		_, _ = s.db.DeleteWireGuardPeer(userID)
+	}
+	return s.revokeErr
 }
 func (s *wireGuardServiceStub) SetPeerAccess(_ context.Context, userID string, access wireguard.PeerAccess) error {
 	s.accessUserID = userID
 	s.access = access
-	return nil
+	return s.accessErr
 }
 func (s *wireGuardServiceStub) ClientConfig(_ context.Context, userID string) (wireguard.Enrollment, error) {
 	s.reissuedUserID = userID
@@ -64,6 +89,10 @@ func (s *wireGuardServiceStub) EnrollFor(_ context.Context, userID string, acces
 	s.enrolledUserID = userID
 	s.access = access
 	s.enrolledFor = true
+	if s.enrollErr != nil {
+		return wireguard.Enrollment{}, s.enrollErr
+	}
+	s.gravaPeer(userID)
 	return s.enrollment, nil
 }
 func (s *wireGuardServiceStub) Mine(_ context.Context, userID string) (wireguard.MyVPN, error) {
@@ -78,21 +107,15 @@ func (s *wireGuardServiceStub) Config() (wireguard.Config, error) {
 	}, nil
 }
 
-type wireGuardReconcilerStub struct{ err error }
+// wireGuardReconcilerStub é o aplicador que dá certo: roda a escrita e devolve.
+// As falhas do firewall ficam em vpnApplierStub.
+type wireGuardReconcilerStub struct{}
 
-func (s wireGuardReconcilerStub) Reconcile(context.Context) error { return s.err }
-
-func (s wireGuardReconcilerStub) AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error) {
+func (wireGuardReconcilerStub) AplicarMudancaVPN(ctx context.Context, por, resumo string, escrever func() error, desfazer func() error) (*firewallrules.Applied, error) {
 	if escrever != nil {
 		if err := escrever(); err != nil {
 			return nil, err
 		}
-	}
-	if s.err != nil {
-		if desfazer != nil {
-			_ = desfazer()
-		}
-		return nil, s.err
 	}
 	return &firewallrules.Applied{}, nil
 }
@@ -184,24 +207,6 @@ func TestWireGuardUpdateRejectsInjectionBeforeCallingService(t *testing.T) {
 	}
 }
 
-func TestWireGuardEnrollmentSurvivesIntegrationFailure(t *testing.T) {
-	db := newWireGuardHandlerTestDB(t)
-	svc := &wireGuardServiceStub{enrollment: wireguard.Enrollment{ClientConfig: "one-time-private"}}
-	h := NewWireGuardHandler(db, svc, wireGuardReconcilerStub{err: errors.New("nft unavailable")})
-	req := httptest.NewRequest(http.MethodPost, "/api/vpn/enrollment", nil)
-	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "local-user"}))
-	w := httptest.NewRecorder()
-
-	h.EnrollSelf(w, req)
-
-	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), "one-time-private") {
-		t.Fatalf("one-time material was lost: status=%d body=%s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "apply_error") || svc.recorded == nil {
-		t.Fatalf("integration failure not reported/recorded: body=%s recorded=%v", w.Body.String(), svc.recorded)
-	}
-}
-
 func TestWireGuardSetPeerAccess(t *testing.T) {
 	db := newWireGuardHandlerTestDB(t)
 	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{UserID: "u-123", Username: "user123", Address: "10.7.0.5/32"}); err != nil {
@@ -278,55 +283,6 @@ func TestWireGuardSetPeerAccessRecusaAliasInexistente(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "alias de endereços inexistente ou ainda não aplicado") {
 		t.Fatalf("mensagem inesperada: %s", w.Body.String())
-	}
-}
-
-type wireGuardServiceRealUpdateStub struct {
-	wireGuardServiceStub
-	db *storage.DB
-}
-
-func (s *wireGuardServiceRealUpdateStub) SetPeerAccess(_ context.Context, userID string, access wireguard.PeerAccess) error {
-	return s.db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
-		AccessMode:        access.AccessMode,
-		AllowedHostGroups: access.AllowedHostGroups,
-		AllowedPorts:      access.AllowedPorts,
-		TunnelMode:        access.TunnelMode,
-		ExtraRoutes:       access.ExtraRoutes,
-		MTU:               access.MTU,
-	})
-}
-
-func TestWireGuardSetPeerAccessReverteEmFalhaDoFirewall(t *testing.T) {
-	db := newWireGuardHandlerTestDB(t)
-	if _, err := db.UpsertWireGuardPeer(&storage.WireGuardPeer{
-		UserID:     "u-123",
-		Username:   "user123",
-		Address:    "10.7.0.5/32",
-		AccessMode: "full",
-	}); err != nil {
-		t.Fatalf("UpsertWireGuardPeer: %v", err)
-	}
-	svc := &wireGuardServiceRealUpdateStub{db: db}
-	applierFalha := wireGuardReconcilerStub{err: errors.New("falha nftables")}
-	h := NewWireGuardHandler(db, svc, applierFalha)
-	r := chi.NewRouter()
-	r.Put("/api/vpn/peers/{userID}/access", h.SetPeerAccess)
-
-	body := `{"access_mode":"restricted","allowed_host_groups":["hg-1"]}`
-	req := httptest.NewRequest(http.MethodPut, "/api/vpn/peers/u-123/access", strings.NewReader(body))
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500; body = %s", w.Code, w.Body.String())
-	}
-	peer, err := db.GetWireGuardPeer("u-123")
-	if err != nil {
-		t.Fatalf("GetWireGuardPeer: %v", err)
-	}
-	if peer.AccessMode != "full" {
-		t.Fatalf("perfil no banco não reverteu: modo=%s", peer.AccessMode)
 	}
 }
 

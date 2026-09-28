@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -152,12 +153,19 @@ func (s *Service) RecordIntegrationError(integrationErr error) {
 	s.recordApply(c, fmt.Errorf("a integração da VPN com firewall/DNS não foi reconciliada"))
 }
 
+// reconcileLocked faz o sistema seguir o que o banco diz. Toda falha volta como
+// FalhaDeReconciliacao: quem chama já gravou a decisão, e é essa classe que o
+// diferencia de uma recusa do pedido.
 func (s *Service) reconcileLocked(ctx context.Context) error {
 	c, err := s.Config()
 	if err == nil {
 		// Sink validation is intentionally repeated for DB rows restored or
 		// written by an older build. It runs before package/secret/file changes.
-		err = ValidateConfig(c)
+		// O texto é achatado (%s): a config gravada inválida não é uma Recusa
+		// do pedido de agora, e não pode ser lida como se fosse.
+		if verr := ValidateConfig(c); verr != nil {
+			err = fmt.Errorf("a configuração da VPN gravada é inválida: %s", verr)
+		}
 	}
 	if err == nil {
 		if c.Enabled {
@@ -167,7 +175,10 @@ func (s *Service) reconcileLocked(ctx context.Context) error {
 		}
 	}
 	s.recordApply(c, err)
-	return err
+	if err != nil {
+		return &FalhaDeReconciliacao{Err: err}
+	}
+	return nil
 }
 
 func (s *Service) recordApply(c Config, applyErr error) {
@@ -340,7 +351,7 @@ func peersFromStorage(rows []storage.WireGuardPeer) []Peer {
 func (s *Service) resolveEndpoint(c Config) (string, error) {
 	host := c.EndpointHost
 	if !validEndpointHost(host) {
-		return "", fmt.Errorf("configure o endereço público da VPN (hostname ou IP)")
+		return "", recusa(EstadoImpede, "configure o endereço público da VPN (hostname ou IP)")
 	}
 	return host, nil
 }
@@ -375,10 +386,10 @@ func (s *Service) enroll(ctx context.Context, userID string, access *PeerAccess)
 		return Enrollment{}, err
 	}
 	if err := ValidateConfig(c); err != nil {
-		return Enrollment{}, err
+		return Enrollment{}, daConfigGravada(err)
 	}
 	if !c.Enabled {
-		return Enrollment{}, fmt.Errorf("ative o WireGuard antes de enrolar um usuário")
+		return Enrollment{}, recusa(EstadoImpede, "ative o WireGuard antes de enrolar um usuário")
 	}
 	endpoint, err := s.resolveEndpoint(c)
 	if err != nil {
@@ -389,7 +400,7 @@ func (s *Service) enroll(ctx context.Context, userID string, access *PeerAccess)
 		return Enrollment{}, err
 	}
 	if user == nil {
-		return Enrollment{}, fmt.Errorf("usuário local não encontrado")
+		return Enrollment{}, recusa(NaoEncontrado, "usuário local não encontrado")
 	}
 	stored, err := s.db.ListWireGuardPeers()
 	if err != nil {
@@ -442,11 +453,11 @@ func (s *Service) enroll(ctx context.Context, userID string, access *PeerAccess)
 		ExtraRoutes: extraRoutes, MTU: mtu}
 	routes, err := s.resolveRoutes(accessMode, allowedGroups, extraRoutes)
 	if err != nil {
-		return Enrollment{}, err
+		return Enrollment{}, daConfigGravada(err)
 	}
 	clientConfig, err := RenderClientConfig(c, serverPublic, peer, clientPrivate, endpoint, routes)
 	if err != nil {
-		return Enrollment{}, err
+		return Enrollment{}, daConfigGravada(err)
 	}
 	secretName := "wireguard_peer_private_" + uuid.NewString()
 	if err := s.secrets.Set(secretName, clientPrivate); err != nil {
@@ -501,15 +512,20 @@ func (s *Service) Revoke(ctx context.Context, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removed, err := s.db.DeleteWireGuardPeer(userID)
-	if err != nil || removed == nil {
+	if err != nil {
 		return err
 	}
-	secretErr := s.secrets.Delete(removed.SecretName)
-	applyErr := s.reconcileLocked(ctx)
-	if secretErr != nil {
-		return secretErr
+	// Reconcilia mesmo sem a linha do peer: um Revoke que falhou no meio
+	// (a linha saiu, o wg0.conf não) só se conserta se a nova tentativa
+	// reescrever a config — e é ela que tira a chave do servidor.
+	if removed != nil {
+		if err := s.secrets.Delete(removed.SecretName); err != nil {
+			// O peer já não existe; um segredo órfão no cofre é sujeira, não
+			// motivo para deixar a chave viva no servidor.
+			slog.Warn("não foi possível apagar do cofre a chave de um peer revogado", "err", err)
+		}
 	}
-	return applyErr
+	return s.reconcileLocked(ctx)
 }
 
 // PeerAccess é o perfil que o painel edita de uma vez: o que o peer ALCANÇA
@@ -568,7 +584,7 @@ func (s *Service) ClientConfig(ctx context.Context, userID string) (Enrollment, 
 		return Enrollment{}, err
 	}
 	if err := ValidateConfig(c); err != nil {
-		return Enrollment{}, err
+		return Enrollment{}, daConfigGravada(err)
 	}
 	endpoint, err := s.resolveEndpoint(c)
 	if err != nil {
@@ -579,25 +595,25 @@ func (s *Service) ClientConfig(ctx context.Context, userID string) (Enrollment, 
 		return Enrollment{}, err
 	}
 	if stored == nil {
-		return Enrollment{}, fmt.Errorf("nenhuma identidade WireGuard para este usuário")
+		return Enrollment{}, recusa(NaoEncontrado, "nenhuma identidade WireGuard para este usuário")
 	}
 	private, err := s.secrets.Get(stored.SecretName)
 	if err != nil {
 		return Enrollment{}, err
 	}
 	if private == "" {
-		return Enrollment{}, fmt.Errorf("a chave deste peer não está mais no cofre; gere a configuração novamente")
+		return Enrollment{}, recusa(EstadoImpede, "a chave deste peer não está mais no cofre; gere a configuração novamente")
 	}
 	// A privada guardada tem que corresponder à pública que o servidor conhece.
 	// Sem esta conferência, um cofre restaurado de outro backup entregaria uma
 	// config que o túnel não aceita, e o sintoma seria só um handshake mudo.
 	public, err := PublicKey(private)
 	if err != nil || public != stored.PublicKey {
-		return Enrollment{}, fmt.Errorf("a chave guardada não corresponde ao peer registrado; gere a configuração novamente")
+		return Enrollment{}, recusa(EstadoImpede, "a chave guardada não corresponde ao peer registrado; gere a configuração novamente")
 	}
 	routes, err := s.resolveRoutes(stored.AccessMode, stored.AllowedHostGroups, stored.ExtraRoutes)
 	if err != nil {
-		return Enrollment{}, err
+		return Enrollment{}, daConfigGravada(err)
 	}
 	_, serverPublic, err := s.ensureServerKey()
 	if err != nil {
@@ -606,7 +622,7 @@ func (s *Service) ClientConfig(ctx context.Context, userID string) (Enrollment, 
 	peer := peersFromStorage([]storage.WireGuardPeer{*stored})[0]
 	clientConfig, err := RenderClientConfig(c, serverPublic, peer, private, endpoint, routes)
 	if err != nil {
-		return Enrollment{}, err
+		return Enrollment{}, daConfigGravada(err)
 	}
 	if err := s.db.MarkWireGuardConfigIssued(userID); err != nil {
 		return Enrollment{}, err
@@ -638,7 +654,7 @@ func (s *Service) SetPeerAccess(ctx context.Context, userID string, access PeerA
 		return err
 	}
 	if peer == nil {
-		return fmt.Errorf("peer não encontrado")
+		return recusa(NaoEncontrado, "peer não encontrado")
 	}
 
 	if err := s.db.UpdateWireGuardPeerAccess(userID, storage.WireGuardPeerAccess{
@@ -841,14 +857,14 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 		access.AccessMode = "full"
 	}
 	if access.AccessMode != "full" && access.AccessMode != "restricted" {
-		return PeerAccess{}, fmt.Errorf("modo de acesso inválido: use 'full' ou 'restricted'")
+		return PeerAccess{}, recusa(PedidoInvalido, "modo de acesso inválido: use 'full' ou 'restricted'")
 	}
 	access.TunnelMode = strings.TrimSpace(access.TunnelMode)
 	if access.TunnelMode == "" {
 		access.TunnelMode = TunnelFull
 	}
 	if access.TunnelMode != TunnelFull && access.TunnelMode != TunnelSplit {
-		return PeerAccess{}, fmt.Errorf("modo de túnel inválido: use %q ou %q", TunnelFull, TunnelSplit)
+		return PeerAccess{}, recusa(PedidoInvalido, "modo de túnel inválido: use %q ou %q", TunnelFull, TunnelSplit)
 	}
 	if err := ValidateMTU(access.MTU); err != nil {
 		return PeerAccess{}, err
@@ -864,14 +880,14 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 
 	if len(access.AllowedHostGroups) > 0 {
 		if db == nil {
-			return PeerAccess{}, fmt.Errorf("alias de endereços inexistente ou ainda não aplicado")
+			return PeerAccess{}, recusa(PedidoInvalido, "alias de endereços inexistente ou ainda não aplicado")
 		}
 		aplicada, existe, err := db.CarregarConfigAplicada()
 		if err != nil {
 			return PeerAccess{}, fmt.Errorf("carregar config aplicada: %w", err)
 		}
 		if !existe {
-			return PeerAccess{}, fmt.Errorf("alias de endereços inexistente ou ainda não aplicado")
+			return PeerAccess{}, recusa(PedidoInvalido, "alias de endereços inexistente ou ainda não aplicado")
 		}
 		aliasAddr := make(map[string]bool)
 		aliasAddr[fwmodel.AliasVCN] = true
@@ -883,7 +899,7 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 		}
 		for _, id := range access.AllowedHostGroups {
 			if !aliasAddr[id] {
-				return PeerAccess{}, fmt.Errorf("alias de endereços inexistente ou ainda não aplicado")
+				return PeerAccess{}, recusa(PedidoInvalido, "alias de endereços inexistente ou ainda não aplicado")
 			}
 		}
 	}
@@ -895,7 +911,7 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 			continue
 		}
 		if !nftables.ValidPort(port) {
-			return PeerAccess{}, fmt.Errorf("porta inválida %q: use números de 1 a 65535 ou faixas como 8000-8100", port)
+			return PeerAccess{}, recusa(PedidoInvalido, "porta inválida %q: use números de 1 a 65535 ou faixas como 8000-8100", port)
 		}
 		ports = append(ports, port)
 	}

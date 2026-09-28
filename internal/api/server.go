@@ -483,7 +483,10 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 		// with no matching GET for client material: the private config and QR
 		// exist in that one protected response only.
 		if s.wgSvc != nil {
-			vpnH := handlers.NewWireGuardHandler(s.db, s.wgSvc, s.frSvc)
+			vpnH := handlers.NewWireGuardHandler(s.db, s.wgSvc, nil)
+			if s.frSvc != nil {
+				vpnH.SetVPNApplier(s.frSvc)
+			}
 			vpnH.SetDNSReload(netH.ReloadCurrent)
 			r.With(require(auth.PermVPNRead)).Get("/api/vpn", vpnH.Get)
 			r.With(require(auth.PermVPNWrite)).Put("/api/vpn", vpnH.UpdateConfig)
@@ -574,6 +577,9 @@ func (s *Server) buildRouter(cfg Config) *chi.Mux {
 
 		// User & role management (RBAC administration)
 		usersH := handlers.NewUsersHandler(s.db)
+		if s.wgSvc != nil {
+			usersH.SetVPNReconciler(s.wgSvc)
+		}
 		if s.frSvc != nil {
 			usersH.SetVPNApplier(s.frSvc)
 		}

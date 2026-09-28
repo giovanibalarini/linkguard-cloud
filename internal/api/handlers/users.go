@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/giovanibalarini/linkguard-cloud/internal/auth"
+	"github.com/giovanibalarini/linkguard-cloud/internal/firewallrules"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
@@ -17,6 +20,13 @@ import (
 type UsersHandler struct {
 	db *storage.DB
 	fr vpnApplier
+	wg vpnReconciler
+}
+
+// vpnReconciler faz o WireGuard do sistema seguir o banco. Apagar um usuário
+// remove o peer dele do banco, mas só uma reconciliação tira a chave do wg0.conf.
+type vpnReconciler interface {
+	Reconcile(context.Context) error
 }
 
 // NewUsersHandler creates a UsersHandler.
@@ -26,6 +36,10 @@ func NewUsersHandler(db *storage.DB) *UsersHandler {
 
 func (h *UsersHandler) SetVPNApplier(fr vpnApplier) {
 	h.fr = fr
+}
+
+func (h *UsersHandler) SetVPNReconciler(wg vpnReconciler) {
+	h.wg = wg
 }
 
 // List returns all users with their assigned role IDs (no password hashes).
@@ -245,26 +259,50 @@ func (h *UsersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
-	if peer != nil && h.fr != nil {
-		actor := actorName(r)
-		escrever := func() error {
-			return h.db.DeleteUser(id)
-		}
-		desfazer := func() error {
-			return nil
-		}
-		if _, err := h.fr.AplicarMudancaVPN(r.Context(), actor, "apagar usuário "+user.Username, escrever, desfazer); err != nil {
-			writeInternalError(w, err)
-			return
-		}
-	} else {
+	if peer == nil {
 		if err := h.db.DeleteUser(id); err != nil {
 			writeInternalError(w, err)
 			return
 		}
+		auditAction(h.db, r, "user.delete", "user:"+user.Username, "")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	}
+
+	// Quem tinha VPN só perde o acesso quando o wg0.conf deixa de ter a chave
+	// dele e o firewall deixa de ter as regras dele. Apagar não tem volta
+	// (desfazer nil): ressuscitar o usuário reabriria justamente o que o
+	// operador acabou de fechar.
+	apagado := false
+	escrever := func() error {
+		if err := h.db.DeleteUser(id); err != nil {
+			return err
+		}
+		apagado = true
+		if h.wg != nil {
+			return h.wg.Reconcile(r.Context())
+		}
+		return nil
+	}
+	falhaWG, err := aplicarMudancaVPN(r.Context(), h.fr, actorName(r), "apagar usuário "+user.Username, escrever, nil)
+	if err != nil && !apagado {
+		var g *firewallrules.GuardError
+		if asGuardError(err, &g) {
+			writeGuardError(w, err)
+		} else {
+			writeInternalError(w, err)
+		}
+		return
+	}
+	resp := map[string]string{"status": "deleted"}
+	if err != nil || falhaWG != nil {
+		// O usuário já não existe; o que falta é a VPN e o firewall o
+		// acompanharem. O texto do erro fica no log, não na resposta.
+		slog.Error("o usuário foi apagado, mas a VPN ou o firewall não foram reconciliados", "usuario", user.Username, "err", errors.Join(err, falhaWG))
+		resp["warning"] = "vpn_reconcile_pending"
 	}
 	auditAction(h.db, r, "user.delete", "user:"+user.Username, "")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // permissionsBeyond returns the permissions targetID holds that actorID does
