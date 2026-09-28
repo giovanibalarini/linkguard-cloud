@@ -391,23 +391,38 @@ func TestConversaoIgnoraGruposSistemaEVPN(t *testing.T) {
 		RedesVCN: []string{"10.0.0.0/16"},
 	}
 
-	// Grupos de sistema
+	// Os grupos do sistema como o legado os criava: quem os identifica é o
+	// kind, e o nome é só o de exibição. Cada um leva uma regra de bloqueio
+	// para provar que a exclusão é por kind e não por o grupo estar vazio.
 	_ = db.CreateFirewallGroup(&storage.FirewallGroup{
-		ID:        "grp-sys-1",
-		Name:      "Hosts bloqueados",
-		ChainName: "grp_sys_1",
-		Position:  1,
-		Enabled:   true,
-		Kind:      "system",
+		ID:          "grp-sys-1",
+		Name:        "Hosts bloqueados",
+		ChainName:   "grp_sys_1",
+		Position:    1,
+		Enabled:     true,
+		Fallthrough: "continue",
+		Kind:        "blocked_hosts",
 	})
 	_ = db.CreateFirewallGroup(&storage.FirewallGroup{
-		ID:        "grp-sys-2",
-		Name:      "Destinos bloqueados",
-		ChainName: "grp_sys_2",
-		Position:  2,
-		Enabled:   true,
-		Kind:      "system",
+		ID:          "grp-sys-2",
+		Name:        "Destinos bloqueados",
+		ChainName:   "grp_sys_2",
+		Position:    2,
+		Enabled:     true,
+		Fallthrough: "continue",
+		Kind:        "blocklist",
 	})
+	for _, grupo := range []string{"grp-sys-1", "grp-sys-2"} {
+		_ = db.CreateFirewallRule(&storage.FirewallRule{
+			ID:          "r-" + grupo,
+			GroupID:     grupo,
+			Position:    1,
+			Enabled:     true,
+			Action:      "drop",
+			Saddr:       "203.0.113.9",
+			Description: "bloqueio do sistema",
+		})
+	}
 
 	// Grupo de peer WireGuard e regra ZTNA
 	_ = db.CreateFirewallGroup(&storage.FirewallGroup{

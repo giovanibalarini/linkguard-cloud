@@ -103,11 +103,9 @@ func (s *Service) ConverterLegadoUmaVez(ctx context.Context, f FatosConversao) e
 
 	// 2. Mapeamento dos grupos do admin e suas regras
 	for _, g := range grupos {
-		// Ignora grupos do sistema e grupos de VPN (que agora derivam dinamicamente dos perfis)
-		if g.Kind == "system" || g.Name == "blocked_hosts" || g.Name == "blocklist" {
-			continue
-		}
-		if g.Kind == "wireguard_peer" {
+		// Ignora os grupos do sistema (kind blocked_hosts/blocklist: viram linhas
+		// travadas do modelo novo) e os de VPN (derivados dos perfis).
+		if g.Kind == "blocked_hosts" || g.Kind == "blocklist" || g.Kind == "wireguard_peer" {
 			continue
 		}
 
