@@ -500,7 +500,10 @@ func montarLinhasVPN(ctx *contextoRender, pessoasProntas []pessoaPronta) ([]Linh
 			if p.Total {
 				continue
 			}
-			portasFormatadas := formatarPortasVPN(p.Portas)
+			portasFormatadas, err := formatarPortasVPN(p.Portas)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("pessoa %q: %w", p.UserID, err)
+			}
 
 			for _, av := range pr.aliases {
 				var nftList []LinhaNft
@@ -608,23 +611,20 @@ func montarLinhasVPN(ctx *contextoRender, pessoasProntas []pessoaPronta) ([]Linh
 }
 
 // formatarPortasVPN normaliza a lista de portas em string CSV para o conjunto nftables.
-func formatarPortasVPN(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	parts := strings.Split(raw, ",")
-	var ordenadas []string
-	for _, p := range parts {
+// Cada item é validado: o texto vem do banco e vai direto para o `nft -f`.
+func formatarPortasVPN(raw string) (string, error) {
+	var itens []string
+	for _, p := range strings.Split(raw, ",") {
 		item := strings.TrimSpace(p)
-		if item != "" {
-			ordenadas = append(ordenadas, item)
+		if item == "" {
+			continue
 		}
+		if !validPort(item) {
+			return "", fmt.Errorf("porta inválida %q", item)
+		}
+		itens = append(itens, item)
 	}
-	if len(ordenadas) == 0 {
-		return ""
-	}
-	return strings.Join(ordenadas, ", ")
+	return strings.Join(itens, ", "), nil
 }
 
 // coletarRegrasAdminDaZona filtra e ordena as regras do admin por posição.

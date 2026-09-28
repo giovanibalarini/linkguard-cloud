@@ -111,6 +111,15 @@ func RenderZonas(c fwmodel.Config, in Insumos) (Ruleset, error) {
 		return Ruleset{}, fmt.Errorf("configuração do firewall inválida: %s", strings.Join(msgs, "; "))
 	}
 
+	for _, p := range in.Pessoas {
+		if !fwmodel.IDValido(p.UserID) {
+			return Ruleset{}, fmt.Errorf("pessoa da VPN com identificador inválido %q", p.UserID)
+		}
+		if ip := net.ParseIP(p.Endereco); ip == nil || ip.To4() == nil || strings.Contains(p.Endereco, ":") {
+			return Ruleset{}, fmt.Errorf("pessoa %q: endereço da VPN inválido %q", p.UserID, p.Endereco)
+		}
+	}
+
 	if in.InterfaceVPN == "" {
 		in.InterfaceVPN = "linkguard"
 	}

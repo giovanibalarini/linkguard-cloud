@@ -580,22 +580,26 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 		if wgEnabled {
 			portaWG = wgPort
 			ifaceVPN = wireguard.InterfaceName
-			if peers, err := db.ListWireGuardPeers(); err == nil {
-				for _, p := range peers {
-					addr := strings.TrimSuffix(p.Address, "/32")
-					usuario := p.Username
-					if usuario == "" {
-						usuario = p.UserID
-					}
-					pessoas = append(pessoas, nftables.PessoaVPN{
-						UserID:   p.UserID,
-						Usuario:  usuario,
-						Endereco: addr,
-						Total:    p.AccessMode == "full",
-						Aliases:  p.AllowedHostGroups,
-						Portas:   p.AllowedPorts,
-					})
+			// Sem a lista de peers o render trataria toda regra de pessoa como
+			// órfã e a descartaria: melhor não renderizar do que renderizar menos.
+			peers, err := db.ListWireGuardPeers()
+			if err != nil {
+				return nftables.Insumos{}, fmt.Errorf("listar peers da VPN: %w", err)
+			}
+			for _, p := range peers {
+				addr := strings.TrimSuffix(p.Address, "/32")
+				usuario := p.Username
+				if usuario == "" {
+					usuario = p.UserID
 				}
+				pessoas = append(pessoas, nftables.PessoaVPN{
+					UserID:   p.UserID,
+					Usuario:  usuario,
+					Endereco: addr,
+					Total:    p.AccessMode == "full",
+					Aliases:  p.AllowedHostGroups,
+					Portas:   p.AllowedPorts,
+				})
 			}
 		}
 
