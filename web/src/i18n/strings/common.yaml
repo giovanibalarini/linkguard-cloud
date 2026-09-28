@@ -127,6 +127,11 @@ dashboard.subtitle:
 common.loading:
   pt: "Carregando..."
   en: "Loading..."
+# Última palavra quando o backend não disse nada (sem `erro`/`error` no corpo e
+# sem mensagem do axios). Frase inteira, porque sai sozinha na tela.
+common.error:
+  pt: "Falha na operação"
+  en: "The operation failed"
 
 # Faixa do confirmar-ou-reverte — a rede de segurança. O texto aqui é o que
 # impede o operador de se trancar fora, então cada frase é traduzida inteira,

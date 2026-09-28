@@ -210,7 +210,7 @@ export default function RulesTable({
 
                   {linha.mudanca && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-mono bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                      {linha.mudanca === 'criada' ? t('fwz.tabela.nova') : t('fwz.tabela.alterada')}
+                      {linha.mudanca === 'nova' ? t('fwz.tabela.nova') : t('fwz.tabela.alterada')}
                     </span>
                   )}
                 </div>
@@ -406,7 +406,7 @@ export default function RulesTable({
                       )}
                       {linha.mudanca && (
                         <span className="px-1 py-0.5 rounded text-[9px] uppercase font-mono bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                          {linha.mudanca === 'criada' ? t('fwz.tabela.nova') : t('fwz.tabela.alterada')}
+                          {linha.mudanca === 'nova' ? t('fwz.tabela.nova') : t('fwz.tabela.alterada')}
                         </span>
                       )}
                     </div>

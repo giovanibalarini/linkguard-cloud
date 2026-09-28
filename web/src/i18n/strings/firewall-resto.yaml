@@ -225,12 +225,6 @@ fwx.domains.delete.confirm:
 fwx.domains.reason.boot:
   pt: "Suspenso: a inicialização ainda não concluiu a reconciliação do firewall."
   en: "Suspended: startup has not finished reconciling the firewall."
-fwx.domains.reason.blockMissing:
-  pt: "Suspenso: o grupo sistêmico de bloqueio por domínio não existe."
-  en: "Suspended: the system domain-blocking group is missing."
-fwx.domains.reason.blockDisabled:
-  pt: "Suspenso: o grupo sistêmico de bloqueio por domínio está desabilitado."
-  en: "Suspended: the system domain-blocking group is disabled."
 fwx.domains.reason.invalidIntent:
   pt: "Suspenso: esta linha não é um bloqueio válido (as de \"direcionar\" saíram com o multi-WAN). Apague-a."
   en: "Suspended: this row is not a valid block (\"route\" rows were removed with multi-WAN). Delete it."

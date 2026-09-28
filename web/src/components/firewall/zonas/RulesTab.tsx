@@ -93,42 +93,29 @@ export default function RulesTab({
     await onRefreshGlobal();
   };
 
-  const handleToggle = async (id: string, ativa: boolean) => {
-    try {
-      await client.post(`/api/firewall/regras/${id}/ativar`, { ativa });
-      await refreshAll();
-    } catch (e: any) {
-      console.error(e);
-    }
+  // Toda mutação de regra passa por cor.run: é ele que mostra o erro do backend
+  // (a frase e os problemas, traduzidos) na faixa da página e que relê o estado
+  // e as pendências. A lista da zona é desta aba, então é relida aqui - também
+  // na falha, porque um 404 ou um 409 quase sempre quer dizer que a lista na
+  // tela ficou velha.
+  const executar = async (fn: () => Promise<unknown>) => {
+    await cor.run(fn, '');
+    await fetchZoneData(zona);
   };
 
-  const handleDuplicate = async (id: string) => {
-    try {
-      await client.post(`/api/firewall/regras/${id}/duplicar`);
-      await refreshAll();
-    } catch (e: any) {
-      console.error(e);
-    }
-  };
+  const handleToggle = (id: string, ativa: boolean) =>
+    executar(() => client.post(`/api/firewall/regras/${id}/ativar`, { ativa }));
+
+  const handleDuplicate = (id: string) =>
+    executar(() => client.post(`/api/firewall/regras/${id}/duplicar`));
 
   const handleDelete = async (id: string, desc: string) => {
     if (!confirm(t('fwz.tabela.apagar.confirm', { desc: desc || id }))) return;
-    try {
-      await client.delete(`/api/firewall/regras/${id}`);
-      await refreshAll();
-    } catch (e: any) {
-      console.error(e);
-    }
+    await executar(() => client.delete(`/api/firewall/regras/${id}`));
   };
 
-  const handleReorder = async (ids: string[]) => {
-    try {
-      await client.post('/api/firewall/regras/ordem', { zona, ids });
-      await refreshAll();
-    } catch (e: any) {
-      console.error(e);
-    }
-  };
+  const handleReorder = (ids: string[]) =>
+    executar(() => client.post('/api/firewall/regras/ordem', { zona, ids }));
 
   const openNewRule = () => {
     setEditingRegra(null);

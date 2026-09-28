@@ -230,7 +230,7 @@ export function useConfirmOrRevert(
       await refreshPending();
       return true;
     } catch (e) {
-      msgRef.current(tRef.current('common.errorPrefix') + errMsg(e), 'error');
+      msgRef.current(tRef.current('common.errorPrefix') + errMsg(e, tRef.current), 'error');
       // Uma mutação que falhou não deixa a tela como estava: a reversão que
       // não conclui, por exemplo, já restaurou o BANCO e devolve 500 — sem
       // este load a lista continuaria mostrando o grupo que acabou de deixar

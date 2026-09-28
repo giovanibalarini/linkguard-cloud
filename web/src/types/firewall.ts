@@ -98,7 +98,7 @@ export interface LinhaFW {
     bytes: number;
     medido: boolean;
   };
-  mudanca?: string; // 'criada' | 'alterada' | 'removida' | 'movida'
+  mudanca?: 'nova' | 'alterada' | ''; // só nas linhas do admin com mudança pendente
   nft?: LinhaNft[];
 }
 
@@ -133,13 +133,14 @@ export interface PendenciasFW {
   problemas: ProblemaFW[];
 }
 
+// Um item do relatório da conversão do legado (GET /api/firewall/estado ->
+// conversao). `mensagem` é a frase pronta do backend; `origem` diz de onde ela
+// veio: "regra:<id>", "grupo:<id>", "politica:input", "politica:forward", "vpn".
 export interface ItemRelatorioConversao {
-  grupo: string;
-  regra: string;
-  zona_destino: string;
-  acao: string;
-  motivo: string;
-  aviso: string;
+  tipo: 'flutuante' | 'politica' | 'aviso';
+  origem: string;
+  mensagem: string;
+  detalhes?: string;
 }
 
 export interface JanelaFW {

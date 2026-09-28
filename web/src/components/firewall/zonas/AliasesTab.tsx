@@ -83,7 +83,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal }: Props) {
     setSalvandoExtras(true);
     setSucessoExtras(false);
     try {
-      await client.put('/api/firewall/vcn-extras', { redes });
+      await client.put('/api/firewall/aliases/sys:vcn/extras', { redes });
       await fetchAliases();
       onRefreshGlobal?.();
       setSucessoExtras(true);

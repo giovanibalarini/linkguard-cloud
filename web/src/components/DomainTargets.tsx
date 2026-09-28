@@ -22,8 +22,6 @@ interface Props {
 
 const reasonKeys: Record<string, string> = {
   boot_pending: 'fwx.domains.reason.boot',
-  blocking_group_missing: 'fwx.domains.reason.blockMissing',
-  blocking_group_disabled: 'fwx.domains.reason.blockDisabled',
   invalid_intent: 'fwx.domains.reason.invalidIntent',
 };
 

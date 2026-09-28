@@ -400,21 +400,35 @@ fwz.conversao.desc:
 fwz.conversao.entendi:
   pt: "Entendi e revisar regras"
   en: "Understood and review rules"
-fwz.conversao.col_grupo:
-  pt: "Grupo original"
-  en: "Original group"
-fwz.conversao.col_regra:
-  pt: "Regra"
-  en: "Rule"
-fwz.conversao.col_zona:
-  pt: "Zona de destino"
-  en: "Destination zone"
-fwz.conversao.col_acao:
-  pt: "Ação"
-  en: "Action"
-fwz.conversao.col_motivo:
-  pt: "Motivo / Ajustes"
-  en: "Reason / Adjustments"
+fwz.conversao.ver:
+  pt: "Ver detalhes ({n})"
+  en: "Show details ({n})"
+fwz.conversao.recolher:
+  pt: "Recolher detalhes"
+  en: "Hide details"
+# Colunas do relatório: o backend manda {tipo, origem, mensagem, detalhes}.
+fwz.conversao.col_tipo:
+  pt: "Tipo"
+  en: "Type"
+fwz.conversao.col_origem:
+  pt: "Origem"
+  en: "Origin"
+fwz.conversao.col_mensagem:
+  pt: "Mensagem"
+  en: "Message"
+fwz.conversao.col_detalhes:
+  pt: "Detalhes"
+  en: "Details"
+# Um rótulo por `tipo` que o backend emite.
+fwz.conversao.tipo.flutuante:
+  pt: "Movida para Flutuantes"
+  en: "Moved to Floating"
+fwz.conversao.tipo.politica:
+  pt: "Política anterior"
+  en: "Previous policy"
+fwz.conversao.tipo.aviso:
+  pt: "Aviso"
+  en: "Notice"
 
 # ─── Problemas de Validação ─────────────────────────────────────────────────
 fwz.problema.aliasIdVazio:
