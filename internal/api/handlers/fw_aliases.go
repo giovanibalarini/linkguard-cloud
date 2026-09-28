@@ -131,9 +131,9 @@ func (h *FirewallHandler) CriarAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.CriarAliasFW(&a)
-	})
+	}, "alias:"+a.ID)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -162,9 +162,9 @@ func (h *FirewallHandler) AtualizarAlias(w http.ResponseWriter, r *http.Request)
 	}
 	a.ID = id
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.AtualizarAliasFW(a)
-	})
+	}, "alias:"+id)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -199,7 +199,7 @@ func (h *FirewallHandler) ApagarAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err = h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ApagarAliasFW(id)
 	})
 	if err != nil {
@@ -224,7 +224,7 @@ func (h *FirewallHandler) PutVCNExtras(w http.ResponseWriter, r *http.Request) {
 		body.Redes = []string{}
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		cfg, err := db.CarregarConfigEmEdicao()
 		if err != nil {
 			return err
@@ -232,7 +232,7 @@ func (h *FirewallHandler) PutVCNExtras(w http.ResponseWriter, r *http.Request) {
 		novosAjustes := cfg.Ajustes
 		novosAjustes.RedesVCNExtras = body.Redes
 		return db.SalvarAjustesFW(novosAjustes)
-	})
+	}, "ajustes")
 	if err != nil {
 		writeGuardError(w, err)
 		return

@@ -151,7 +151,7 @@ func (h *FirewallHandler) PutAjustes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		cfg, err := db.CarregarConfigEmEdicao()
 		if err != nil {
 			return err
@@ -169,7 +169,7 @@ func (h *FirewallHandler) PutAjustes(w http.ResponseWriter, r *http.Request) {
 			RedesVCNExtras:      cfg.Ajustes.RedesVCNExtras, // preserva extras
 		}
 		return db.SalvarAjustesFW(novosAjustes)
-	})
+	}, "ajustes")
 
 	if err != nil {
 		writeGuardError(w, err)

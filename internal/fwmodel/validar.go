@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// MaxDescricaoRegra é o maior tamanho, em caracteres, da descrição de uma regra.
+const MaxDescricaoRegra = 200
+
 // Problema descreve um erro ou aviso encontrado durante a validação da configuração.
 type Problema struct {
 	Severidade string            `json:"severidade"` // "erro" | "aviso"
@@ -335,7 +338,7 @@ func Validar(c Config, pessoas []string) []Problema {
 		}
 
 		// Descrição
-		if len([]rune(r.Descricao)) > 200 {
+		if len([]rune(r.Descricao)) > MaxDescricaoRegra {
 			addErro(onde, "fwz.problema.descricaoMuitoLonga", map[string]string{"tamanho": strconv.Itoa(len([]rune(r.Descricao)))})
 		}
 

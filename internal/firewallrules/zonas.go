@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -46,11 +47,17 @@ func (s *Service) pessoasUserIDs() []string {
 }
 
 // Pendencias inspeciona se há alterações não aplicadas entre o rascunho em edição e o que está ativo.
+//
+// Nunca falha por causa do CONTEÚDO da configuração: com um alias inválido, ou
+// uma configuração que não renderiza, responde com o que dá para saber e lista
+// o motivo em Problemas. É esta resposta que o painel usa para mostrar o que
+// está errado e travar o Aplicar; se ela caísse, o operador perderia a tela
+// justamente quando mais precisa dela.
 func (s *Service) Pendencias(ctx context.Context) (Pendencias, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var out Pendencias
+	out := Pendencias{Mudancas: []fwmodel.Mudanca{}, Problemas: []fwmodel.Problema{}}
 	emEdicao, err := s.db.CarregarConfigEmEdicao()
 	if err != nil {
 		return out, fmt.Errorf("carregar config em edição: %w", err)
@@ -64,10 +71,7 @@ func (s *Service) Pendencias(ctx context.Context) (Pendencias, error) {
 		aplicada = fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
 	}
 
-	out.Problemas = fwmodel.Validar(emEdicao, s.pessoasUserIDs())
-	if out.Problemas == nil {
-		out.Problemas = []fwmodel.Problema{}
-	}
+	out.Problemas = append(out.Problemas, fwmodel.Validar(emEdicao, s.pessoasUserIDs())...)
 
 	cAtual := fwmodel.Canonico(aplicada)
 	cNovo := fwmodel.Canonico(emEdicao)
@@ -76,19 +80,26 @@ func (s *Service) Pendencias(ctx context.Context) (Pendencias, error) {
 	if out.Mudancas == nil {
 		out.Mudancas = []fwmodel.Mudanca{}
 	}
+	// Sem o render não há como saber se o acesso à caixa muda; na dúvida, a janela.
+	out.PrecisaJanela = out.Pendente
 
 	ins, err := s.insumos(ctx)
 	if err != nil {
 		return out, fmt.Errorf("ler insumos: %w", err)
 	}
 
-	atual, err := nftables.RenderZonas(aplicada, ins)
-	if err != nil {
-		return out, fmt.Errorf("renderizar configuração aplicada: %w", err)
-	}
 	novo, err := nftables.RenderZonas(emEdicao, ins)
 	if err != nil {
-		return out, fmt.Errorf("renderizar configuração em edição: %w", err)
+		if !fwmodel.TemErro(out.Problemas) {
+			out.Problemas = append(out.Problemas, problemaDeRender("fwz.problema.renderFalhou", "erro", err))
+		}
+		return out, nil
+	}
+	atual, err := nftables.RenderZonas(aplicada, ins)
+	if err != nil {
+		slog.Warn("a configuração aplicada não renderiza mais com os insumos de hoje", "err", err)
+		out.Problemas = append(out.Problemas, problemaDeRender("fwz.problema.aplicadaNaoRenderiza", "aviso", err))
+		return out, nil
 	}
 
 	out.DiffNft = fwmodel.DiffLinhas(atual.Script, novo.Script)
@@ -97,16 +108,81 @@ func (s *Service) Pendencias(ctx context.Context) (Pendencias, error) {
 	return out, nil
 }
 
-// EditarConfig é o portão único para qualquer escrita na configuração em edição.
-// Recusa com 409 (StageLocked) caso haja uma janela de confirmação aberta.
-func (s *Service) EditarConfig(ctx context.Context, por string, f func(db *storage.DB) error) error {
+// problemaDeRender traduz a recusa do renderizador em um problema que o painel
+// sabe mostrar. O texto vem do próprio renderizador e só cita a configuração,
+// nunca caminho ou saída de comando.
+func problemaDeRender(chave, severidade string, err error) fwmodel.Problema {
+	return fwmodel.Problema{
+		Severidade: severidade,
+		Onde:       "geral",
+		Chave:      chave,
+		Vars:       map[string]string{"detalhe": err.Error()},
+	}
+}
+
+// erroDeValidacao é o GuardError de uma configuração que não pode seguir,
+// com os problemas anexados para o painel traduzir.
+func erroDeValidacao(prefixo string, problemas []fwmodel.Problema) *GuardError {
+	partes := make([]string, 0, len(problemas))
+	for _, p := range problemas {
+		partes = append(partes, fmt.Sprintf("%s: %s", p.Onde, p.Chave))
+	}
+	msg := strings.Join(partes, "; ")
+	if prefixo != "" {
+		msg = prefixo + ": " + msg
+	}
+	return &GuardError{Stage: StageValidate, Message: msg, Err: errors.New(msg), Problemas: problemas}
+}
+
+// EditarConfigValidando é o portão único para qualquer escrita na configuração
+// em edição. Recusa com 409 (StageLocked) enquanto houver uma janela de
+// confirmação aberta e, além disso, recusa — e desfaz — a escrita que deixaria
+// a configuração inválida.
+//
+// A escrita roda, a configuração é relida e comparada com a de antes
+// (fwmodel.ProblemasDaMudanca): um erro que não existia, ou um erro em algum
+// dos objetos de `onde` ("regra:<id>", "alias:<id>"…), desfaz tudo e volta em
+// GuardError.Problemas. Validar escrevendo e relendo, em vez de montar o
+// objeto em memória, dá o mesmo veredito do Aplicar — que valida o que está no
+// banco — sem uma segunda cópia das regras de "o que é um objeto válido".
+//
+// Um erro que já estava lá e não é dos objetos tocados não tranca a edição:
+// senão a única saída de uma configuração quebrada seria o Descartar.
+func (s *Service) EditarConfigValidando(ctx context.Context, por string, escrever func(db *storage.DB) error, onde ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.guardWindowOpen(); err != nil {
 		return err
 	}
-	return f(s.db)
+
+	antes, err := s.db.CarregarConfigEmEdicao()
+	if err != nil {
+		return &GuardError{Stage: StageWrite, Message: "carregar a configuração em edição", Err: err}
+	}
+	if err := escrever(s.db); err != nil {
+		return err
+	}
+	depois, err := s.db.CarregarConfigEmEdicao()
+	if err != nil {
+		return &GuardError{Stage: StageWrite, Message: "reler a configuração em edição", Err: err}
+	}
+
+	problemas := fwmodel.ProblemasDaMudanca(antes, depois, s.pessoasUserIDs(), onde...)
+	if len(problemas) == 0 {
+		return nil
+	}
+
+	if err := s.db.SubstituirConfigEmEdicao(antes); err != nil {
+		slog.Error("a escrita recusada não pôde ser desfeita", "err", err)
+		return &GuardError{
+			Stage:     StageWrite,
+			Message:   "a mudança foi recusada, mas não foi possível desfazê-la: confira a configuração em edição",
+			Err:       err,
+			Problemas: problemas,
+		}
+	}
+	return erroDeValidacao("a mudança deixaria a configuração do firewall inválida", problemas)
 }
 
 // Aplicar executa os 12 passos da aplicação segura do firewall por zonas (§2.8).
@@ -155,20 +231,14 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 		return &Applied{}, nil
 	}
 
-	problemas := fwmodel.Validar(emEdicao, s.pessoasUserIDs())
-	if fwmodel.TemErro(problemas) {
-		var erros []string
+	if problemas := fwmodel.Validar(emEdicao, s.pessoasUserIDs()); fwmodel.TemErro(problemas) {
+		var erros []fwmodel.Problema
 		for _, p := range problemas {
 			if p.Severidade == "erro" {
-				erros = append(erros, fmt.Sprintf("%s: %s", p.Onde, p.Chave))
+				erros = append(erros, p)
 			}
 		}
-		msg := strings.Join(erros, "; ")
-		return nil, &GuardError{
-			Stage:   StageValidate,
-			Message: msg,
-			Err:     fmt.Errorf("%s", msg),
-		}
+		return nil, erroDeValidacao("", erros)
 	}
 
 	// 4. Lê insumos
@@ -574,11 +644,17 @@ func (s *Service) Linhas(ctx context.Context, zona fwmodel.Zona) ([]nftables.Lin
 		return nil, fmt.Errorf("ler insumos: %w", err)
 	}
 
+	var linhas []nftables.Linha
 	ruleset, err := nftables.RenderZonas(emEdicao, ins)
 	if err != nil {
-		return nil, fmt.Errorf("renderizar linhas: %w", err)
+		// A lista de regras é a tela em que o operador conserta o que está
+		// quebrado; se ela caísse junto com a configuração, não haveria por
+		// onde consertar. Sem o render, mostra as regras do admin em ordem.
+		slog.Warn("a configuração em edição não renderiza; a lista mostra só as regras do admin", "zona", zona, "err", err)
+		linhas = nftables.LinhasSemRender(emEdicao, zona)
+	} else {
+		linhas = ruleset.Linhas[zona]
 	}
-	linhas := ruleset.Linhas[zona]
 	if len(linhas) == 0 {
 		return []nftables.Linha{}, nil
 	}
@@ -609,6 +685,10 @@ func (s *Service) RedesVCNExtrasAplicadas() []string {
 }
 
 // PreviaRegra avalia a regra e devolve os problemas de validação e a representação nftables correspondente.
+//
+// Só os problemas da própria regra contam, e o nft dela sai de um render
+// mínimo (a regra, o que ela referencia e os ajustes): a prévia não pode cair
+// por causa de um alias ruim que a regra nem usa.
 func (s *Service) PreviaRegra(ctx context.Context, r fwmodel.Regra) ([]nftables.LinhaNft, []fwmodel.Problema, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -627,68 +707,87 @@ func (s *Service) PreviaRegra(ctx context.Context, r fwmodel.Regra) ([]nftables.
 		r.ID = "previa"
 	}
 
-	// Lista de IDs de pessoas para validação
 	pessoas := make([]string, 0, len(ins.Pessoas))
 	for _, p := range ins.Pessoas {
 		pessoas = append(pessoas, p.UserID)
 	}
 
-	// Cria uma cópia da configuração com a regra adicionada ou substituída
+	// A regra entra na configuração (ou toma o lugar da que tem o mesmo ID)
+	// para a validação enxergar os aliases e agendamentos como o Aplicar veria.
 	testCfg := emEdicao
+	testCfg.Regras = make([]fwmodel.Regra, 0, len(emEdicao.Regras)+1)
 	substituiu := false
-	for i, reg := range testCfg.Regras {
+	for _, reg := range emEdicao.Regras {
 		if reg.ID == r.ID {
-			testCfg.Regras[i] = r
+			reg = r
 			substituiu = true
-			break
 		}
+		testCfg.Regras = append(testCfg.Regras, reg)
 	}
 	if !substituiu {
 		testCfg.Regras = append(testCfg.Regras, r)
 	}
 
-	todosProblemas := fwmodel.Validar(testCfg, pessoas)
-	var problemas []fwmodel.Problema
-	for _, p := range todosProblemas {
+	problemas := []fwmodel.Problema{}
+	for _, p := range fwmodel.Validar(testCfg, pessoas) {
 		if p.Onde == "regra:"+r.ID {
 			problemas = append(problemas, p)
 		}
 	}
-	if problemas == nil {
-		problemas = []fwmodel.Problema{}
-	}
-
 	if fwmodel.TemErro(problemas) {
 		return []nftables.LinhaNft{}, problemas, nil
 	}
 
-	// Força ativa para gerar os comandos nftables
-	rAtiva := r
-	rAtiva.Ativa = true
-	for i, reg := range testCfg.Regras {
-		if reg.ID == r.ID {
-			testCfg.Regras[i] = rAtiva
-			break
-		}
-	}
-
-	ruleset, err := nftables.RenderZonas(testCfg, ins)
+	ruleset, err := nftables.RenderZonas(configMinimaDaRegra(emEdicao, r), ins)
 	if err != nil {
-		return nil, problemas, err
+		problemas = append(problemas, fwmodel.Problema{
+			Severidade: "erro",
+			Onde:       "regra:" + r.ID,
+			Chave:      "fwz.problema.renderFalhou",
+			Vars:       map[string]string{"detalhe": err.Error()},
+		})
+		return []nftables.LinhaNft{}, problemas, nil
 	}
 
-	var nft []nftables.LinhaNft
+	nft := []nftables.LinhaNft{}
 	for _, linha := range ruleset.Linhas[r.Zona] {
 		if linha.Chave == "r:"+r.ID {
 			nft = linha.Nft
 			break
 		}
 	}
-	if nft == nil {
-		nft = []nftables.LinhaNft{}
+	return nft, problemas, nil
+}
+
+// configMinimaDaRegra é a menor configuração que renderiza a regra: ela mesma
+// (ativa, senão não geraria nft), os aliases e o agendamento que referencia e
+// os ajustes reais.
+func configMinimaDaRegra(c fwmodel.Config, r fwmodel.Regra) fwmodel.Config {
+	usados := map[string]bool{}
+	if r.Origem.Tipo == fwmodel.PontaAlias {
+		usados[r.Origem.Valor] = true
+	}
+	if r.Destino.Tipo == fwmodel.PontaAlias {
+		usados[r.Destino.Valor] = true
+	}
+	if r.PortaDestino.Tipo == fwmodel.PortaAlias {
+		usados[r.PortaDestino.Valor] = true
 	}
 
-	return nft, problemas, nil
+	cfg := fwmodel.Config{Formato: c.Formato, Ajustes: c.Ajustes}
+	for _, a := range c.Aliases {
+		if usados[a.ID] {
+			cfg.Aliases = append(cfg.Aliases, a)
+		}
+	}
+	for _, ag := range c.Agendamentos {
+		if r.AgendamentoID != "" && ag.ID == r.AgendamentoID {
+			cfg.Agendamentos = append(cfg.Agendamentos, ag)
+		}
+	}
+	r.Ativa = true
+	cfg.Regras = []fwmodel.Regra{r}
+	return cfg
 }
 
 func resumoMudancas(mudancas []fwmodel.Mudanca) string {

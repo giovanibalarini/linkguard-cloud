@@ -227,9 +227,9 @@ func (h *FirewallHandler) CriarRegra(w http.ResponseWriter, r *http.Request) {
 		regra.Acao = fwmodel.AcaoAccept
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.CriarRegraFW(&regra)
-	})
+	}, "regra:"+regra.ID)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -254,9 +254,9 @@ func (h *FirewallHandler) AtualizarRegra(w http.ResponseWriter, r *http.Request)
 	}
 	regra.ID = id
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.AtualizarRegraFW(regra)
-	})
+	}, "regra:"+id)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -274,7 +274,7 @@ func (h *FirewallHandler) ApagarRegra(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ApagarRegraFW(id)
 	})
 	if err != nil {
@@ -302,9 +302,9 @@ func (h *FirewallHandler) AtivarRegra(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.AtivarRegraFW(id, body.Ativa)
-	})
+	}, "regra:"+id)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -327,7 +327,7 @@ func (h *FirewallHandler) DuplicarRegra(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var copia *fwmodel.Regra
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		var err error
 		copia, err = db.DuplicarRegraFW(id)
 		return err
@@ -352,7 +352,7 @@ func (h *FirewallHandler) ReordenarRegras(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ReordenarRegrasFW(body.Zona, body.IDs)
 	})
 	if err != nil {

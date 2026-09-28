@@ -40,9 +40,9 @@ func (h *FirewallHandler) CriarNAT(w http.ResponseWriter, r *http.Request) {
 		enc.Proto = "tcp"
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.CriarEncaminhamentoFW(&enc)
-	})
+	}, "encaminhamento:"+enc.ID)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -67,9 +67,9 @@ func (h *FirewallHandler) AtualizarNAT(w http.ResponseWriter, r *http.Request) {
 	}
 	enc.ID = id
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.AtualizarEncaminhamentoFW(enc)
-	})
+	}, "encaminhamento:"+id)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -87,7 +87,7 @@ func (h *FirewallHandler) ApagarNAT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ApagarEncaminhamentoFW(id)
 	})
 	if err != nil {
@@ -115,9 +115,9 @@ func (h *FirewallHandler) AtivarNAT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.AtivarEncaminhamentoFW(id, body.Ativo)
-	})
+	}, "encaminhamento:"+id)
 	if err != nil {
 		writeGuardError(w, err)
 		return

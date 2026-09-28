@@ -21,7 +21,8 @@ func asGuardError(err error, target **firewallrules.GuardError) bool {
 // diferente do operador:
 //
 //	400 — "o que você mandou não serve" (campos, ou o nft recusando o
-//	      resultado). Nada foi tocado.
+//	      resultado). Nada foi tocado. Quando a recusa vem da validação, a
+//	      resposta traz também `problemas`, para o painel mostrar cada um.
 //	409 — "não é a sua vez": há uma janela aberta. É conflito de ESTADO, não
 //	      erro do pedido, e a mensagem nomeia a mudança e quem a aplicou,
 //	      porque é isso que ele precisa para decidir entre confirmar e reverter.
@@ -32,7 +33,7 @@ func asGuardError(err error, target **firewallrules.GuardError) bool {
 func writeGuardError(w http.ResponseWriter, err error) {
 	var g *firewallrules.GuardError
 	if !asGuardError(err, &g) {
-		// Não deveria acontecer: ApplyGuarded / EditarConfig devolve GuardError em todo
+		// Não deveria acontecer: ApplyGuarded / EditarConfigValidando devolve GuardError em todo
 		// caminho de erro. Se acontecer, o genérico é o lado seguro.
 		slog.Error("erro sem etapa vindo do firewall", "err", err)
 		writeInternalError(w, err)
@@ -41,6 +42,12 @@ func writeGuardError(w http.ResponseWriter, err error) {
 
 	switch g.Stage {
 	case firewallrules.StageValidate, firewallrules.StagePreflight:
+		if len(g.Problemas) > 0 {
+			// Os problemas vão junto para o painel traduzi-los; o texto fica
+			// como resumo para quem lê a resposta crua.
+			writeJSON(w, http.StatusBadRequest, map[string]any{"erro": g.Message, "problemas": g.Problemas})
+			return
+		}
 		writeError(w, http.StatusBadRequest, g.Message)
 
 	case firewallrules.StageLocked:

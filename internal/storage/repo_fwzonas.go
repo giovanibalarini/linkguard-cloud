@@ -583,7 +583,12 @@ func (db *DB) DuplicarRegraFW(id string) (*fwmodel.Regra, error) {
 	r.ID = uuid.NewString()
 	r.Posicao = novaPosicao
 	if r.Descricao != "" {
-		r.Descricao = "Cópia de " + r.Descricao
+		// A cópia de uma regra de descrição longa não pode nascer inválida.
+		desc := []rune("Cópia de " + r.Descricao)
+		if len(desc) > fwmodel.MaxDescricaoRegra {
+			desc = desc[:fwmodel.MaxDescricaoRegra]
+		}
+		r.Descricao = string(desc)
 	} else {
 		r.Descricao = "Cópia"
 	}

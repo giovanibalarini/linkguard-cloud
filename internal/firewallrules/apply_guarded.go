@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/giovanibalarini/linkguard-cloud/internal/storage"
 )
 
@@ -42,9 +43,10 @@ func (s Stage) String() string {
 
 // GuardError é a falha de uma mutação ou aplicação de firewall, com a etapa e a frase que o operador deve ler.
 type GuardError struct {
-	Stage   Stage
-	Message string // para o operador
-	Err     error  // a causa técnica, para o log
+	Stage     Stage
+	Message   string             // para o operador
+	Err       error              // a causa técnica, para o log
+	Problemas []fwmodel.Problema // o que a validação achou; a interface os traduz
 }
 
 func (e *GuardError) Error() string {

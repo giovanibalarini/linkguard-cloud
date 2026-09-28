@@ -65,9 +65,9 @@ func (h *FirewallHandler) CriarAgendamento(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.CriarAgendamentoFW(&ag)
-	})
+	}, "agendamento:"+ag.ID)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -92,9 +92,9 @@ func (h *FirewallHandler) AtualizarAgendamento(w http.ResponseWriter, r *http.Re
 	}
 	ag.ID = id
 
-	err := h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.AtualizarAgendamentoFW(ag)
-	})
+	}, "agendamento:"+id)
 	if err != nil {
 		writeGuardError(w, err)
 		return
@@ -125,7 +125,7 @@ func (h *FirewallHandler) ApagarAgendamento(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	err = h.fr.EditarConfig(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err = h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ApagarAgendamentoFW(id)
 	})
 	if err != nil {

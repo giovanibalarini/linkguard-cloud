@@ -173,7 +173,7 @@ func TestFirewallRoutesPermissions(t *testing.T) {
 	}
 
 	// Escritor pode criar regra -> 201
-	res = doReq(router, http.MethodPost, "/api/firewall/regras", userW.ID, `{"zona":"internet","acao":"accept","descricao":"Liberar web"}`)
+	res = doReq(router, http.MethodPost, "/api/firewall/regras", userW.ID, `{"zona":"internet","acao":"accept","descricao":"Liberar web","origem":{"kind":"any"},"destino":{"kind":"any"},"porta_destino":{"kind":"any"}}`)
 	if res.Code != http.StatusCreated {
 		t.Fatalf("escritor esperava 201 em POST /regras, obteve %d: %s", res.Code, res.Body.String())
 	}

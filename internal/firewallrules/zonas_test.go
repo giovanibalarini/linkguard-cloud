@@ -436,12 +436,12 @@ func TestJanelaAbertaRecusaMutacoes409(t *testing.T) {
 		t.Errorf("Descartar deveria recusar com StageLocked (409), obteve: %v", err)
 	}
 
-	// 3. EditarConfig recusa com 409 (StageLocked)
-	err = svc.EditarConfig(ctx, "outro", func(db *storage.DB) error {
+	// 3. EditarConfigValidando recusa com 409 (StageLocked)
+	err = svc.EditarConfigValidando(ctx, "outro", func(db *storage.DB) error {
 		return nil
 	})
 	if stage, ok := StageOf(err); !ok || stage != StageLocked {
-		t.Errorf("EditarConfig deveria recusar com StageLocked (409), obteve: %v", err)
+		t.Errorf("EditarConfigValidando deveria recusar com StageLocked (409), obteve: %v", err)
 	}
 
 	// 4. AplicarMudancaVPN recusa com 409 (StageLocked)
