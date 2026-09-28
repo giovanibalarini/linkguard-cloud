@@ -186,20 +186,7 @@ func (h *FirewallHandler) ApagarAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	usos, err := h.db.UsosDoAlias(id)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	if len(usos) > 0 {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"erro": "alias em uso",
-			"usos": usos,
-		})
-		return
-	}
-
-	err = h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ApagarAliasFW(id)
 	})
 	if err != nil {

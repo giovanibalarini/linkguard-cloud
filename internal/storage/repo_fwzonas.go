@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -197,7 +196,7 @@ func (db *DB) substituirConfigEmEdicaoTx(tx *sql.Tx, c fwmodel.Config) error {
 	defer stmtAl.Close()
 
 	for _, a := range norm.Aliases {
-		nomeChave := strings.ToLower(strings.TrimSpace(a.Nome))
+		nomeChave := nomeChaveFW(a.Nome)
 		itensJSON, _ := json.Marshal(a.Itens)
 		if _, err := stmtAl.Exec(a.ID, a.Nome, nomeChave, string(a.Tipo), a.Descricao, string(itensJSON)); err != nil {
 			return fmt.Errorf("gravar alias %q: %w", a.ID, err)
@@ -214,7 +213,7 @@ func (db *DB) substituirConfigEmEdicaoTx(tx *sql.Tx, c fwmodel.Config) error {
 	defer stmtAg.Close()
 
 	for _, ag := range norm.Agendamentos {
-		nomeChave := strings.ToLower(strings.TrimSpace(ag.Nome))
+		nomeChave := nomeChaveFW(ag.Nome)
 		if _, err := stmtAg.Exec(ag.ID, ag.Nome, nomeChave, ag.Descricao, ag.Dias, ag.Inicio, ag.Fim); err != nil {
 			return fmt.Errorf("gravar agendamento %q: %w", ag.ID, err)
 		}
@@ -391,7 +390,7 @@ func (db *DB) CarregarRevisao(id string) (fwmodel.Config, error) {
 	err := db.conn.QueryRow(`SELECT config FROM fw_revisoes WHERE id = ?`, id).Scan(&rawConfig)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fwmodel.Config{}, fmt.Errorf("revisão %q não encontrada", id)
+			return fwmodel.Config{}, fwNaoEncontrada("revisão", id)
 		}
 		return fwmodel.Config{}, fmt.Errorf("carregar revisão %q: %w", id, err)
 	}
@@ -440,7 +439,7 @@ func (db *DB) CriarRegraFW(r *fwmodel.Regra) error {
 		string(r.PortaDestino.Tipo), r.PortaDestino.Valor, r.AgendamentoID, regInt, r.Descricao,
 	)
 	if err != nil {
-		return fmt.Errorf("inserir fw_regras: %w", err)
+		return db.restricaoFW(fmt.Errorf("inserir fw_regras: %w", err), "regra", r.ID, "", "")
 	}
 	return nil
 }
@@ -453,7 +452,7 @@ func (db *DB) AtualizarRegraFW(r fwmodel.Regra) error {
 	err := db.conn.QueryRow(`SELECT zona, posicao FROM fw_regras WHERE id = ?`, r.ID).Scan(&zonaAtual, &posAtual)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("regra %q não encontrada", r.ID)
+			return fwNaoEncontrada("regra", r.ID)
 		}
 		return fmt.Errorf("consultar regra %q: %w", r.ID, err)
 	}
@@ -495,7 +494,7 @@ func (db *DB) AtualizarRegraFW(r fwmodel.Regra) error {
 		r.Descricao, r.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar fw_regras: %w", err)
+		return db.restricaoFW(fmt.Errorf("atualizar fw_regras: %w", err), "regra", r.ID, "", "")
 	}
 	return nil
 }
@@ -508,7 +507,7 @@ func (db *DB) ApagarRegraFW(id string) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("regra %q não encontrada", id)
+		return fwNaoEncontrada("regra", id)
 	}
 	return nil
 }
@@ -528,7 +527,7 @@ func (db *DB) AtivarRegraFW(id string, ativa bool) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("regra %q não encontrada", id)
+		return fwNaoEncontrada("regra", id)
 	}
 	return nil
 }
@@ -557,7 +556,7 @@ func (db *DB) DuplicarRegraFW(id string) (*fwmodel.Regra, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("regra %q não encontrada", id)
+			return nil, fwNaoEncontrada("regra", id)
 		}
 		return nil, fmt.Errorf("consultar regra para duplicar: %w", err)
 	}
@@ -640,13 +639,22 @@ func (db *DB) ReordenarRegrasFW(zona fwmodel.Zona, ids []string) error {
 		existentes[id] = true
 	}
 
-	if len(existentes) != len(ids) {
-		return fmt.Errorf("a reordenação exige a lista completa das regras da zona (%d esperadas, %d fornecidas)", len(existentes), len(ids))
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("ler as regras da zona %q: %w", zona, err)
 	}
+
+	if len(existentes) != len(ids) {
+		return fwEntradaInvalida("regra", "", fmt.Sprintf("a reordenação exige a lista completa das regras da zona (%d esperadas, %d fornecidas)", len(existentes), len(ids)))
+	}
+	vistos := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		if !existentes[id] {
-			return fmt.Errorf("id %q não pertence à zona %q", id, zona)
+			return fwEntradaInvalida("regra", id, fmt.Sprintf("id %q não pertence à zona %q", id, zona))
 		}
+		if vistos[id] {
+			return fwEntradaInvalida("regra", id, fmt.Sprintf("id %q repetido na lista da zona %q", id, zona))
+		}
+		vistos[id] = true
 	}
 
 	tx, err := db.conn.Begin()
@@ -675,7 +683,7 @@ func (db *DB) CriarAliasFW(a *fwmodel.Alias) error {
 	if a.ID == "" {
 		a.ID = uuid.NewString()
 	}
-	nomeChave := strings.ToLower(strings.TrimSpace(a.Nome))
+	nomeChave := nomeChaveFW(a.Nome)
 	itensJSON, err := json.Marshal(a.Itens)
 	if err != nil {
 		return fmt.Errorf("serializar itens do alias: %w", err)
@@ -687,14 +695,14 @@ func (db *DB) CriarAliasFW(a *fwmodel.Alias) error {
 		a.ID, a.Nome, nomeChave, string(a.Tipo), a.Descricao, string(itensJSON),
 	)
 	if err != nil {
-		return fmt.Errorf("inserir fw_aliases: %w", err)
+		return db.restricaoFW(fmt.Errorf("inserir fw_aliases: %w", err), "alias", a.ID, a.Nome, "fw_aliases")
 	}
 	return nil
 }
 
 // AtualizarAliasFW atualiza um alias existente na configuração em edição.
 func (db *DB) AtualizarAliasFW(a fwmodel.Alias) error {
-	nomeChave := strings.ToLower(strings.TrimSpace(a.Nome))
+	nomeChave := nomeChaveFW(a.Nome)
 	itensJSON, err := json.Marshal(a.Itens)
 	if err != nil {
 		return fmt.Errorf("serializar itens do alias: %w", err)
@@ -707,11 +715,11 @@ func (db *DB) AtualizarAliasFW(a fwmodel.Alias) error {
 		a.Nome, nomeChave, string(a.Tipo), a.Descricao, string(itensJSON), a.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar fw_aliases: %w", err)
+		return db.restricaoFW(fmt.Errorf("atualizar fw_aliases: %w", err), "alias", a.ID, a.Nome, "fw_aliases")
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("alias %q não encontrado", a.ID)
+		return fwNaoEncontrado("alias", a.ID)
 	}
 	return nil
 }
@@ -723,7 +731,7 @@ func (db *DB) ApagarAliasFW(id string) error {
 		return fmt.Errorf("verificar usos do alias %q: %w", id, err)
 	}
 	if len(usos) > 0 {
-		return fmt.Errorf("alias %q em uso: %v", id, usos)
+		return fwEmUso("alias", id, usos)
 	}
 
 	res, err := db.conn.Exec(`DELETE FROM fw_aliases WHERE id = ?`, id)
@@ -732,7 +740,7 @@ func (db *DB) ApagarAliasFW(id string) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("alias %q não encontrado", id)
+		return fwNaoEncontrado("alias", id)
 	}
 	return nil
 }
@@ -742,7 +750,7 @@ func (db *DB) CriarAgendamentoFW(ag *fwmodel.Agendamento) error {
 	if ag.ID == "" {
 		ag.ID = uuid.NewString()
 	}
-	nomeChave := strings.ToLower(strings.TrimSpace(ag.Nome))
+	nomeChave := nomeChaveFW(ag.Nome)
 
 	_, err := db.conn.Exec(`
 		INSERT INTO fw_agendamentos (id, nome, nome_chave, descricao, dias, inicio, fim)
@@ -750,14 +758,14 @@ func (db *DB) CriarAgendamentoFW(ag *fwmodel.Agendamento) error {
 		ag.ID, ag.Nome, nomeChave, ag.Descricao, ag.Dias, ag.Inicio, ag.Fim,
 	)
 	if err != nil {
-		return fmt.Errorf("inserir fw_agendamentos: %w", err)
+		return db.restricaoFW(fmt.Errorf("inserir fw_agendamentos: %w", err), "agendamento", ag.ID, ag.Nome, "fw_agendamentos")
 	}
 	return nil
 }
 
 // AtualizarAgendamentoFW atualiza um agendamento existente na configuração em edição.
 func (db *DB) AtualizarAgendamentoFW(ag fwmodel.Agendamento) error {
-	nomeChave := strings.ToLower(strings.TrimSpace(ag.Nome))
+	nomeChave := nomeChaveFW(ag.Nome)
 
 	res, err := db.conn.Exec(`
 		UPDATE fw_agendamentos SET
@@ -766,11 +774,11 @@ func (db *DB) AtualizarAgendamentoFW(ag fwmodel.Agendamento) error {
 		ag.Nome, nomeChave, ag.Descricao, ag.Dias, ag.Inicio, ag.Fim, ag.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar fw_agendamentos: %w", err)
+		return db.restricaoFW(fmt.Errorf("atualizar fw_agendamentos: %w", err), "agendamento", ag.ID, ag.Nome, "fw_agendamentos")
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("agendamento %q não encontrado", ag.ID)
+		return fwNaoEncontrado("agendamento", ag.ID)
 	}
 	return nil
 }
@@ -782,7 +790,7 @@ func (db *DB) ApagarAgendamentoFW(id string) error {
 		return fmt.Errorf("verificar usos do agendamento %q: %w", id, err)
 	}
 	if len(usos) > 0 {
-		return fmt.Errorf("agendamento %q em uso: %v", id, usos)
+		return fwEmUso("agendamento", id, usos)
 	}
 
 	res, err := db.conn.Exec(`DELETE FROM fw_agendamentos WHERE id = ?`, id)
@@ -791,7 +799,7 @@ func (db *DB) ApagarAgendamentoFW(id string) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("agendamento %q não encontrado", id)
+		return fwNaoEncontrado("agendamento", id)
 	}
 	return nil
 }
@@ -820,7 +828,7 @@ func (db *DB) CriarEncaminhamentoFW(enc *fwmodel.Encaminhamento) error {
 		enc.ID, enc.Nome, ativoInt, enc.Proto, enc.PortaExterna, enc.IPDestino, enc.PortaDestino, enc.Posicao,
 	)
 	if err != nil {
-		return fmt.Errorf("inserir fw_encaminhamentos: %w", err)
+		return db.restricaoFW(fmt.Errorf("inserir fw_encaminhamentos: %w", err), "encaminhamento", enc.ID, "", "")
 	}
 	return nil
 }
@@ -840,11 +848,11 @@ func (db *DB) AtualizarEncaminhamentoFW(enc fwmodel.Encaminhamento) error {
 		enc.Nome, ativoInt, enc.Proto, enc.PortaExterna, enc.IPDestino, enc.PortaDestino, enc.Posicao, enc.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar fw_encaminhamentos: %w", err)
+		return db.restricaoFW(fmt.Errorf("atualizar fw_encaminhamentos: %w", err), "encaminhamento", enc.ID, "", "")
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("encaminhamento %q não encontrado", enc.ID)
+		return fwNaoEncontrado("encaminhamento", enc.ID)
 	}
 	return nil
 }
@@ -857,7 +865,7 @@ func (db *DB) ApagarEncaminhamentoFW(id string) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("encaminhamento %q não encontrado", id)
+		return fwNaoEncontrado("encaminhamento", id)
 	}
 	return nil
 }
@@ -874,7 +882,7 @@ func (db *DB) AtivarEncaminhamentoFW(id string, ativo bool) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("encaminhamento %q não encontrado", id)
+		return fwNaoEncontrado("encaminhamento", id)
 	}
 	return nil
 }

@@ -112,20 +112,7 @@ func (h *FirewallHandler) ApagarAgendamento(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	usos, err := h.db.UsosDoAgendamento(id)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	if len(usos) > 0 {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"erro": "agendamento em uso",
-			"usos": usos,
-		})
-		return
-	}
-
-	err = h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
+	err := h.fr.EditarConfigValidando(r.Context(), actingUser(r), func(db *storage.DB) error {
 		return db.ApagarAgendamentoFW(id)
 	})
 	if err != nil {

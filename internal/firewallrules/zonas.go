@@ -134,6 +134,40 @@ func erroDeValidacao(prefixo string, problemas []fwmodel.Problema) *GuardError {
 	return &GuardError{Stage: StageValidate, Message: msg, Err: errors.New(msg), Problemas: problemas}
 }
 
+// erroDaEscrita classifica o que o repositório devolveu ao escrever. As recusas
+// que ele sabe nomear (o objeto não existe, está em uso, o nome ou o
+// identificador já é de outro, o banco não aceita o valor) são do PEDIDO e
+// viram 404, 409 ou 400. Qualquer outra coisa é falha do servidor: a causa
+// técnica fica em Err, para o log, e o operador lê uma frase que não cita o
+// banco.
+func erroDaEscrita(err error) *GuardError {
+	var e *storage.ErroFW
+	if !errors.As(err, &e) {
+		return &GuardError{Stage: StageWrite, Message: "gravar a mudança na configuração em edição", Err: err}
+	}
+	switch e.Tipo {
+	case storage.FWNaoEncontrado:
+		return &GuardError{Stage: StageNotFound, Message: e.Msg, Err: err}
+	case storage.FWEmUso:
+		return &GuardError{Stage: StageInUse, Message: e.Objeto + " em uso", Err: err, Usos: e.Usos}
+	case storage.FWConflito:
+		if e.Campo == "nome" {
+			g := erroDeValidacao("", []fwmodel.Problema{{
+				Severidade: "erro",
+				Onde:       e.Objeto + ":" + e.ID,
+				Chave:      "fwz.problema." + e.Objeto + "NomeDuplicado",
+				Vars:       map[string]string{"nome": e.Nome, "outro_id": e.Outro},
+			}})
+			g.Err = err
+			return g
+		}
+		return &GuardError{Stage: StageValidate, Message: e.Msg, Err: err}
+	case storage.FWEntradaInvalida:
+		return &GuardError{Stage: StageValidate, Message: e.Msg, Err: err}
+	}
+	return &GuardError{Stage: StageWrite, Message: "gravar a mudança na configuração em edição", Err: err}
+}
+
 // EditarConfigValidando é o portão único para qualquer escrita na configuração
 // em edição. Recusa com 409 (StageLocked) enquanto houver uma janela de
 // confirmação aberta e, além disso, recusa — e desfaz — a escrita que deixaria
@@ -161,7 +195,7 @@ func (s *Service) EditarConfigValidando(ctx context.Context, por string, escreve
 		return &GuardError{Stage: StageWrite, Message: "carregar a configuração em edição", Err: err}
 	}
 	if err := escrever(s.db); err != nil {
-		return err
+		return erroDaEscrita(err)
 	}
 	depois, err := s.db.CarregarConfigEmEdicao()
 	if err != nil {
@@ -432,11 +466,11 @@ func (s *Service) RestaurarRevisao(ctx context.Context, id, por string) error {
 
 	rev, err := s.db.CarregarRevisao(id)
 	if err != nil {
-		return fmt.Errorf("carregar revisão %s: %w", id, err)
+		return erroDaEscrita(fmt.Errorf("carregar revisão %s: %w", id, err))
 	}
 
 	if err := s.db.SubstituirConfigEmEdicao(rev); err != nil {
-		return fmt.Errorf("substituir config em edição pela revisão %s: %w", id, err)
+		return erroDaEscrita(fmt.Errorf("substituir config em edição pela revisão %s: %w", id, err))
 	}
 
 	_ = s.db.CreateAuditLog(&storage.AuditLog{

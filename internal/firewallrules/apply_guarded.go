@@ -19,6 +19,8 @@ const (
 	StageWrite                  // a escrita no banco falhou; a janela foi descartada
 	StageReconcile              // o firewall vivo recusou; o estado anterior VOLTOU
 	StageStuck                  // o firewall recusou E a reversão não concluiu
+	StageNotFound               // o objeto pedido não existe; nada foi tocado
+	StageInUse                  // o objeto é usado por outros; nada foi tocado
 )
 
 func (s Stage) String() string {
@@ -37,6 +39,10 @@ func (s Stage) String() string {
 		return "reconciliação"
 	case StageStuck:
 		return "reconciliação e reversão"
+	case StageNotFound:
+		return "objeto não encontrado"
+	case StageInUse:
+		return "objeto em uso"
 	}
 	return "desconhecida"
 }
@@ -47,6 +53,7 @@ type GuardError struct {
 	Message   string             // para o operador
 	Err       error              // a causa técnica, para o log
 	Problemas []fwmodel.Problema // o que a validação achou; a interface os traduz
+	Usos      []string           // StageInUse: quem usa o objeto que se tentou apagar
 }
 
 func (e *GuardError) Error() string {

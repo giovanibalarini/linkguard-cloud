@@ -23,9 +23,13 @@ func asGuardError(err error, target **firewallrules.GuardError) bool {
 //	400 — "o que você mandou não serve" (campos, ou o nft recusando o
 //	      resultado). Nada foi tocado. Quando a recusa vem da validação, a
 //	      resposta traz também `problemas`, para o painel mostrar cada um.
+//	404 — "isso não existe": o alias, a regra, a revisão… pedida não está na
+//	      configuração. Nada foi tocado.
 //	409 — "não é a sua vez": há uma janela aberta. É conflito de ESTADO, não
 //	      erro do pedido, e a mensagem nomeia a mudança e quem a aplicou,
 //	      porque é isso que ele precisa para decidir entre confirmar e reverter.
+//	      O outro 409 é o "em uso" (alias, agendamento), e a diferença é o campo
+//	      `usos`: só ele o traz, e é por ele que o painel os distingue.
 //	500 — algo do lado do servidor não deu certo. Aqui a FRASE importa mais
 //	      que o número: ela é a diferença entre "nada mudou" e "pode ter
 //	      ficado pela metade, o LinkGuard está tentando reverter" — e é ela
@@ -52,6 +56,12 @@ func writeGuardError(w http.ResponseWriter, err error) {
 
 	case firewallrules.StageLocked:
 		writeError(w, http.StatusConflict, g.Message)
+
+	case firewallrules.StageNotFound:
+		writeError(w, http.StatusNotFound, g.Message)
+
+	case firewallrules.StageInUse:
+		writeJSON(w, http.StatusConflict, map[string]any{"erro": g.Message, "usos": g.Usos})
 
 	case firewallrules.StageWrite:
 		// A causa técnica (erro de banco) não vai para a tela — writeInternalError
