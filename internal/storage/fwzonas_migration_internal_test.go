@@ -149,3 +149,58 @@ func TestMigracao103E104BancoComDados(t *testing.T) {
 		t.Fatalf("segunda execução de 103 e 104 falhou: %v", err)
 	}
 }
+
+func TestMigracao104DescartaOQueOValidarRecusaria(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "sujo.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.conn.Exec(`DELETE FROM schema_migrations WHERE version >= 103`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tbl := range []string{"fw_regras", "fw_aliases", "fw_agendamentos", "fw_encaminhamentos", "fw_ajustes", "fw_aplicado", "fw_revisoes"} {
+		if _, err := db.conn.Exec("DROP TABLE IF EXISTS " + tbl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.conn.Exec(`INSERT INTO host_groups (id, name, description, hosts) VALUES
+		('id com espaço!', 'Sujo', '', '["10.0.0.5","não é ip","::ffff:10.0.0.9","fd00::1"]')`); err != nil {
+		t.Fatal(err)
+	}
+	pfs := `[{"id":"ruim","name":"porta zero","enabled":true,"proto":"tcp","ext_port":0,"dest_ip":"10.0.0.5","dest_port":80},
+		{"id":"ip-ruim","name":"ip","enabled":true,"proto":"tcp","ext_port":80,"dest_ip":"host.local","dest_port":80},
+		{"id":"bom","name":"ok","enabled":true,"proto":"tcp","ext_port":80,"dest_ip":"10.0.0.5","dest_port":80}]`
+	if _, err := db.conn.Exec(`INSERT OR REPLACE INTO settings (key, value) VALUES ('port_forwards', ?)`, pfs); err != nil {
+		t.Fatal(err)
+	}
+
+	var migs []migration
+	for _, m := range schemaMigrations {
+		if m.version >= 103 && m.version <= 104 {
+			migs = append(migs, m)
+		}
+	}
+	if err := db.runMigrations(migs); err != nil {
+		t.Fatalf("migrações: %v", err)
+	}
+
+	var id, itens string
+	if err := db.conn.QueryRow(`SELECT id, itens FROM fw_aliases WHERE nome = 'Sujo'`).Scan(&id, &itens); err != nil {
+		t.Fatalf("alias não migrado: %v", err)
+	}
+	if id == "id com espaço!" {
+		t.Errorf("id inválido foi copiado para o alias")
+	}
+	if itens != `["10.0.0.5","10.0.0.9"]` {
+		t.Errorf("itens inválidos sobreviveram: %s", itens)
+	}
+	var n int
+	if err := db.conn.QueryRow(`SELECT COUNT(*) FROM fw_encaminhamentos`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("só o encaminhamento válido devia ser migrado, há %d", n)
+	}
+}

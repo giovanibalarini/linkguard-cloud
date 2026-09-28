@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/giovanibalarini/linkguard-cloud/internal/fwmodel"
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
@@ -1796,6 +1798,16 @@ func normalizarItemEnderecoMigracao(addr string) string {
 	return addr
 }
 
+// enderecoValidoNaMigracao diz se o item vira um endereço ou rede IPv4 que o Validar aceita;
+// o que não passa aqui derrubaria a renderização do firewall inteiro no boot.
+func enderecoValidoNaMigracao(s string) bool {
+	if a, err := netip.ParseAddr(s); err == nil {
+		return a.Is4()
+	}
+	p, err := netip.ParsePrefix(s)
+	return err == nil && p.Addr().Is4()
+}
+
 // upAliasesDosGruposDeHosts migra os dados de host_groups para fw_aliases e port_forwards para fw_encaminhamentos (migração 104).
 func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
 	// 1. host_groups -> fw_aliases
@@ -1835,6 +1847,9 @@ func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
 				return fmt.Errorf("ler grupo de hosts: %w", err)
 			}
 
+			if !fwmodel.IDValido(id) {
+				id = uuid.NewString()
+			}
 			baseName := strings.TrimSpace(name)
 			if isNomeAliasReservadoMigracao(baseName) {
 				baseName = fmt.Sprintf("%s (grupo)", baseName)
@@ -1855,9 +1870,11 @@ func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
 			var normHosts []string
 			for _, h := range rawHosts {
 				norm := normalizarItemEnderecoMigracao(h)
-				if norm != "" {
-					normHosts = append(normHosts, norm)
+				if !enderecoValidoNaMigracao(norm) {
+					slog.Warn("migração 104: item de grupo de hosts descartado por não ser IPv4 nem rede IPv4", "grupo", id, "item", h)
+					continue
 				}
+				normHosts = append(normHosts, norm)
 			}
 			if normHosts == nil {
 				normHosts = []string{}
@@ -1897,7 +1914,7 @@ func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
 		if err := json.Unmarshal([]byte(pfRaw), &forwards); err == nil {
 			for pos, fwd := range forwards {
 				id := strings.TrimSpace(fwd.ID)
-				if id == "" {
+				if !fwmodel.IDValido(id) {
 					id = uuid.NewString()
 				}
 				nome := strings.TrimSpace(fwd.Name)
@@ -1920,6 +1937,10 @@ func upAliasesDosGruposDeHosts(tx *sql.Tx) error {
 				}
 
 				destIP := normalizarItemEnderecoMigracao(fwd.DestIP)
+				if fwd.ExtPort < 1 || fwd.ExtPort > 65535 || fwd.DestPort < 1 || fwd.DestPort > 65535 || !enderecoValidoNaMigracao(destIP) || strings.Contains(destIP, "/") {
+					slog.Warn("migração 104: encaminhamento descartado por porta ou IP de destino inválido", "encaminhamento", id, "nome", nome)
+					continue
+				}
 
 				if _, err := tx.Exec(`
 					INSERT OR IGNORE INTO fw_encaminhamentos (
