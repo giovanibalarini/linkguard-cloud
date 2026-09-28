@@ -20,12 +20,27 @@ type zonasTestExec struct {
 	failCheck error
 	failApply error
 	readMap   map[string]string
+
+	// applies conta os `nft -f`; scripts guarda o que cada um levou. failApplyAt
+	// (1 = o primeiro) recusa só o N-ésimo, para provar a reversão de um
+	// ruleset que já tinha entrado.
+	applies     int
+	scripts     []string
+	failApplyAt int
 }
 
 func (z *zonasTestExec) Execute(_ context.Context, cmd string, args ...string) (string, error) {
 	z.executed = append(z.executed, append([]string{cmd}, args...))
-	if z.failApply != nil && cmd == "nft" && len(args) > 0 && args[0] == "-f" {
-		return "", z.failApply
+	if cmd == "nft" && len(args) > 1 && args[0] == "-f" {
+		z.applies++
+		script, _ := os.ReadFile(args[1])
+		z.scripts = append(z.scripts, string(script))
+		if z.failApply != nil {
+			return "", z.failApply
+		}
+		if z.failApplyAt == z.applies {
+			return "", errors.New("nft -f recusou o script de reversão")
+		}
 	}
 	return "", nil
 }
@@ -479,12 +494,9 @@ func TestAplicarNftFFalhaDescartaJanela(t *testing.T) {
 
 	_, err := svc.Aplicar(ctx, "admin")
 	if err == nil {
-		t.Fatal("esperava erro de execução StageWrite (500)")
+		t.Fatal("esperava erro de reconciliação StageReconcile (500)")
 	}
-	stage, ok := StageOf(err)
-	if !ok || stage != StageWrite {
-		t.Fatalf("esperava StageWrite, obteve: %v", err)
-	}
+	exigirEtapa(t, err, StageReconcile)
 
 	// Janela deve ter sido descartada
 	pending, err := db.GetPendingChange()

@@ -220,14 +220,14 @@ func (s *Service) EditarConfigValidando(ctx context.Context, por string, escreve
 }
 
 // Aplicar executa os 12 passos da aplicação segura do firewall por zonas (§2.8).
+//
+// Toda falha volta como GuardError cuja Message é a frase que o operador lê:
+// cita a configuração, nunca o banco nem a saída do nft. A causa técnica fica
+// em Err, e o handler a manda para o log.
 func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied, errOut error) {
 	s.mu.Lock()
 	defer func() {
-		if errOut != nil {
-			s.ultimoErro = errOut.Error()
-		} else {
-			s.ultimoErro = ""
-		}
+		s.ultimoErro = mensagemDoErro(errOut)
 		s.mu.Unlock()
 	}()
 
@@ -239,20 +239,12 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 	// 3. Carrega em edição e aplicada; validação
 	emEdicao, err := s.db.CarregarConfigEmEdicao()
 	if err != nil {
-		return nil, &GuardError{
-			Stage:   StageWrite,
-			Message: fmt.Sprintf("carregar config em edição: %v", err),
-			Err:     err,
-		}
+		return nil, &GuardError{Stage: StageWrite, Message: "não foi possível ler a configuração em edição", Err: err}
 	}
 
 	aplicada, existe, err := s.db.CarregarConfigAplicada()
 	if err != nil {
-		return nil, &GuardError{
-			Stage:   StageWrite,
-			Message: fmt.Sprintf("carregar config aplicada: %v", err),
-			Err:     err,
-		}
+		return nil, &GuardError{Stage: StageWrite, Message: "não foi possível ler a configuração aplicada", Err: err}
 	}
 	if !existe {
 		aplicada = fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
@@ -280,7 +272,7 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 	if err != nil {
 		return nil, &GuardError{
 			Stage:   StagePreflight,
-			Message: fmt.Sprintf("obter insumos do firewall: %v", err),
+			Message: "não foi possível ler os dados da máquina para montar o firewall; nada foi alterado",
 			Err:     err,
 		}
 	}
@@ -289,25 +281,28 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 	novo, err := nftables.RenderZonas(emEdicao, ins)
 	if err != nil {
 		return nil, &GuardError{
-			Stage:   StagePreflight,
-			Message: fmt.Sprintf("renderizar configuração nova: %v", err),
-			Err:     err,
+			Stage:     StagePreflight,
+			Message:   "o firewall não pôde ser montado com esta configuração; nada foi alterado",
+			Err:       err,
+			Problemas: []fwmodel.Problema{problemaDeRender("fwz.problema.renderFalhou", "erro", err)},
 		}
 	}
-	atual, err := nftables.RenderZonas(aplicada, ins)
-	if err != nil {
-		return nil, &GuardError{
-			Stage:   StagePreflight,
-			Message: fmt.Sprintf("renderizar configuração atual: %v", err),
-			Err:     err,
-		}
+	// A aplicada que deixou de renderizar (a pessoa de uma regra foi revogada,
+	// uma rede saiu dos insumos) não pode trancar a saída: consertá-la É aplicar
+	// a que está em edição. E sem um estado anterior que renderize não há para
+	// onde a janela de confirmação reverter, então essa mudança entra sem ela.
+	var atual *nftables.Ruleset
+	if r, err := nftables.RenderZonas(aplicada, ins); err != nil {
+		slog.Warn("a configuração aplicada não renderiza com os insumos de hoje; a nova entra sem janela de confirmação", "err", err)
+	} else {
+		atual = &r
 	}
 
 	// 6. Pré-voo nft -c -f
 	if err := s.nft.TestarScript(ctx, novo.Script); err != nil {
 		return nil, &GuardError{
 			Stage:   StagePreflight,
-			Message: fmt.Sprintf("o nftables recusou o script: %v", err),
+			Message: "o nftables recusou as regras novas na verificação; nada foi alterado",
 			Err:     err,
 		}
 	}
@@ -318,26 +313,25 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 
 	var windowID string
 	var pendingObj *storage.PendingChange
-	if novo.HashEntrada != atual.HashEntrada {
-		var perfis []perfilVPN
-		if peers, err := s.db.ListWireGuardPeers(); err == nil {
-			for _, peer := range peers {
-				perfis = append(perfis, perfilVPN{
-					UserID:            peer.UserID,
-					AccessMode:        peer.AccessMode,
-					AllowedHostGroups: peer.AllowedHostGroups,
-					AllowedPorts:      peer.AllowedPorts,
-				})
+	if atual != nil && novo.HashEntrada != atual.HashEntrada {
+		// Os perfis dos peers são metade do que a reversão restaura: sem eles o
+		// snapshot devolveria todo mundo a "restrito, sem aliases". Se não dá
+		// para lê-los, nada é tocado.
+		perfis, err := s.perfisVPN()
+		if err != nil {
+			return nil, &GuardError{
+				Stage:   StagePreflight,
+				Message: "não foi possível ler os perfis da VPN para guardar o estado anterior; nada foi alterado",
+				Err:     err,
 			}
 		}
-		snap := snapshotV2{
-			Formato:   2,
-			Config:    aplicada,
-			PerfisVPN: perfis,
-		}
-		snapBytes, err := json.Marshal(snap)
+		snapBytes, err := json.Marshal(snapshotV2{Formato: 2, Config: aplicada, PerfisVPN: perfis})
 		if err != nil {
-			return nil, fmt.Errorf("serializar snapshot v2: %w", err)
+			return nil, &GuardError{
+				Stage:   StageWindow,
+				Message: "não foi possível guardar o estado anterior para a janela de confirmação; nada foi alterado",
+				Err:     err,
+			}
 		}
 
 		id, err := s.openWindowLocked(string(snapBytes), por, resumo)
@@ -347,40 +341,29 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 			}
 			return nil, &GuardError{
 				Stage:   StageWindow,
-				Message: fmt.Sprintf("abrir janela de confirmação: %v", err),
+				Message: "não foi possível armar a janela de confirmação; nada foi alterado",
 				Err:     err,
 			}
 		}
 		windowID = id
-		pendingObj, _ = s.db.GetPendingChange()
+		pendingObj = s.pendenteDaJanela()
 	}
 
-	// 8. Aplica no kernel de forma atômica (nft -f)
+	// 8. Aplica no kernel de forma atômica (nft -f). O nft -f é tudo-ou-nada:
+	// recusado, o kernel segue como estava, e não há o que reaplicar.
 	if err := s.nft.AplicarScript(ctx, novo.Script); err != nil {
-		if windowID != "" {
-			_ = s.db.ClearPendingChange()
-			s.clearWindowMemory(windowID)
-		}
+		s.descartarJanela(windowID)
 		return nil, &GuardError{
-			Stage:   StageWrite,
-			Message: fmt.Sprintf("falha ao aplicar ruleset no nftables: %v", err),
+			Stage:   StageReconcile,
+			Message: "o nftables recusou as regras novas; nada foi alterado",
 			Err:     err,
 		}
 	}
 
 	// 9. Numa transação: salva aplicada e histórico de revisão
 	if err := s.db.SalvarAplicadaERevisao(emEdicao, por, resumo, "aplicar", s.now()); err != nil {
-		// Falha na gravação: desfaz no kernel reaplicando o script anterior
-		_ = s.nft.AplicarScript(ctx, atual.Script)
-		if windowID != "" {
-			_ = s.db.ClearPendingChange()
-			s.clearWindowMemory(windowID)
-		}
-		return nil, &GuardError{
-			Stage:   StageWrite,
-			Message: fmt.Sprintf("falha ao gravar configuração aplicada no banco: %v", err),
-			Err:     err,
-		}
+		s.descartarJanela(windowID)
+		return nil, s.voltarKernelAposFalhaDeGravacao(ctx, atual, err)
 	}
 
 	// 10. Para cada alias cujos itens mudaram, marca rotas do WireGuard como desatualizadas
@@ -393,12 +376,12 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 		aliasMapDepois[a.ID] = a
 		ant, existe := aliasMapAntes[a.ID]
 		if !existe || !equalStringSlices(ant.Itens, a.Itens) {
-			_ = s.db.MarkWireGuardRoutesChangedByHostGroup(a.ID)
+			s.marcarRotasDesatualizadas(a.ID)
 		}
 	}
 	for _, a := range aplicada.Aliases {
 		if _, existe := aliasMapDepois[a.ID]; !existe {
-			_ = s.db.MarkWireGuardRoutesChangedByHostGroup(a.ID)
+			s.marcarRotasDesatualizadas(a.ID)
 		}
 	}
 
@@ -421,6 +404,33 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 	}, nil
 }
 
+// voltarKernelAposFalhaDeGravacao trata o pior meio-termo do Aplicar: o nft -f
+// já pôs as regras novas no kernel e o banco não guardou que elas são as
+// aplicadas — o próximo boot renderizaria as antigas e a tela as mostraria
+// como as em vigor. A saída é devolver o kernel ao que a aplicada renderiza.
+// Sem um ruleset anterior que renderize, ou se o nft recusar a volta, o estado
+// fica pela metade e a frase diz como concluir.
+func (s *Service) voltarKernelAposFalhaDeGravacao(ctx context.Context, atual *nftables.Ruleset, causa error) *GuardError {
+	const pelaMetade = "as regras novas já valem no firewall, mas não foi possível gravar isso no banco nem voltar atrás; aplique de novo para concluir"
+	if atual == nil {
+		return &GuardError{Stage: StageStuck, Message: pelaMetade, Err: causa}
+	}
+	if err := s.nft.AplicarScript(ctx, atual.Script); err != nil {
+		return &GuardError{Stage: StageStuck, Message: pelaMetade, Err: errors.Join(causa, err)}
+	}
+	return &GuardError{
+		Stage:   StageWrite,
+		Message: "as regras novas não puderam ser gravadas no banco; o firewall voltou ao que era e nada foi alterado",
+		Err:     causa,
+	}
+}
+
+func (s *Service) marcarRotasDesatualizadas(aliasID string) {
+	if err := s.db.MarkWireGuardRoutesChangedByHostGroup(aliasID); err != nil {
+		slog.Warn("não foi possível marcar as rotas da VPN como desatualizadas", "alias", aliasID, "err", err)
+	}
+}
+
 // Descartar descarta as alterações na configuração em edição, restaurando o que está aplicado.
 func (s *Service) Descartar(ctx context.Context, por string) error {
 	s.mu.Lock()
@@ -432,18 +442,14 @@ func (s *Service) Descartar(ctx context.Context, por string) error {
 
 	aplicada, existe, err := s.db.CarregarConfigAplicada()
 	if err != nil {
-		return &GuardError{Stage: StageWrite, Err: err, Message: err.Error()}
+		return &GuardError{Stage: StageWrite, Message: "não foi possível ler a configuração aplicada", Err: err}
 	}
 	if !existe {
 		aplicada = fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
 	}
 
 	if err := s.db.SubstituirConfigEmEdicao(aplicada); err != nil {
-		return &GuardError{
-			Stage:   StageWrite,
-			Message: fmt.Sprintf("falha ao descartar alterações em edição: %v", err),
-			Err:     err,
-		}
+		return &GuardError{Stage: StageWrite, Message: "não foi possível descartar as alterações em edição", Err: err}
 	}
 
 	_ = s.db.CreateAuditLog(&storage.AuditLog{
@@ -482,180 +488,51 @@ func (s *Service) RestaurarRevisao(ctx context.Context, id, por string) error {
 	return nil
 }
 
-// AplicarMudancaVPN aplica alterações no WireGuard (perfis, usuários) imediatamente (§2.8, decisão fixa 3).
-func (s *Service) AplicarMudancaVPN(ctx context.Context, por, resumo string,
-	escrever func() error, desfazer func() error) (*Applied, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.guardWindowOpen(); err != nil {
-		return nil, err
-	}
-
-	aplicada, existe, err := s.db.CarregarConfigAplicada()
-	if err != nil {
-		return nil, &GuardError{Stage: StageWrite, Err: err, Message: err.Error()}
-	}
-	if !existe {
-		aplicada = fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
-	}
-
-	insumosAntes, err := s.insumos(ctx)
-	if err != nil {
-		return nil, &GuardError{Stage: StagePreflight, Err: err, Message: err.Error()}
-	}
-	atual, err := nftables.RenderZonas(aplicada, insumosAntes)
-	if err != nil {
-		return nil, &GuardError{Stage: StagePreflight, Err: err, Message: err.Error()}
-	}
-
-	var perfisAntes []perfilVPN
-	if peers, err := s.db.ListWireGuardPeers(); err == nil {
-		for _, peer := range peers {
-			perfisAntes = append(perfisAntes, perfilVPN{
-				UserID:            peer.UserID,
-				AccessMode:        peer.AccessMode,
-				AllowedHostGroups: peer.AllowedHostGroups,
-				AllowedPorts:      peer.AllowedPorts,
-			})
-		}
-	}
-	snap := snapshotV2{
-		Formato:   2,
-		Config:    aplicada,
-		PerfisVPN: perfisAntes,
-	}
-	snapBytes, err := json.Marshal(snap)
-	if err != nil {
-		return nil, fmt.Errorf("serializar snapshot v2: %w", err)
-	}
-
-	// Executa a escrita solicitada (ex: persistência de novo peer ou perfil)
-	if escrever != nil {
-		if err := escrever(); err != nil {
-			return nil, err
-		}
-	}
-
-	insumosNovos, err := s.insumos(ctx)
-	if err != nil {
-		if desfazer != nil {
-			_ = desfazer()
-		}
-		return nil, &GuardError{Stage: StagePreflight, Err: err, Message: err.Error()}
-	}
-
-	// Renderiza com a configuração aplicada + os insumos novos
-	novo, err := nftables.RenderZonas(aplicada, insumosNovos)
-	if err != nil {
-		if desfazer != nil {
-			_ = desfazer()
-		}
-		return nil, &GuardError{Stage: StagePreflight, Err: err, Message: err.Error()}
-	}
-
-	// Pré-voo com nft -c
-	if err := s.nft.TestarScript(ctx, novo.Script); err != nil {
-		if desfazer != nil {
-			_ = desfazer()
-		}
-		return nil, &GuardError{
-			Stage:   StagePreflight,
-			Message: fmt.Sprintf("o nftables recusou o script: %v", err),
-			Err:     err,
-		}
-	}
-
-	var windowID string
-	var pendingObj *storage.PendingChange
-	if novo.HashEntrada != atual.HashEntrada {
-		id, err := s.openWindowLocked(string(snapBytes), por, resumo)
-		if err != nil {
-			if desfazer != nil {
-				_ = desfazer()
-			}
-			if IsWindowConflict(err) {
-				return nil, &GuardError{Stage: StageLocked, Message: err.Error(), Err: err}
-			}
-			return nil, &GuardError{Stage: StageWindow, Message: err.Error(), Err: err}
-		}
-		windowID = id
-		pendingObj, _ = s.db.GetPendingChange()
-	}
-
-	if err := s.nft.AplicarScript(ctx, novo.Script); err != nil {
-		if desfazer != nil {
-			_ = desfazer()
-		}
-		if windowID != "" {
-			_ = s.db.ClearPendingChange()
-			s.clearWindowMemory(windowID)
-		}
-		return nil, &GuardError{
-			Stage:   StageWrite,
-			Message: fmt.Sprintf("falha ao aplicar ruleset no nftables: %v", err),
-			Err:     err,
-		}
-	}
-
-	_ = s.db.CreateAuditLog(&storage.AuditLog{
-		User:     por,
-		Action:   "vpn.perfil.aplicar",
-		Resource: "vpn",
-		Details:  resumo,
-	})
-	_ = s.nft.Persist(ctx)
-	s.saveNftSnapshot(ctx)
-
-	return &Applied{WindowID: windowID, Pending: pendingObj}, nil
-}
-
 // RenderizarNoBoot renderiza e aplica o ruleset no arranque do sistema (§2.8, §4 T5).
 // Se fw_aplicado estiver vazio, inicializa com o conteúdo de em edição (motivo: "conversao").
+//
+// As falhas voltam como GuardError, no mesmo padrão do Aplicar: a frase é a
+// que fica em UltimoErro (e vai para a tela); a causa técnica, em Err, para o log.
 func (s *Service) RenderizarNoBoot(ctx context.Context) (errOut error) {
 	s.mu.Lock()
 	defer func() {
-		if errOut != nil {
-			s.ultimoErro = errOut.Error()
-		} else {
-			s.ultimoErro = ""
-		}
+		s.ultimoErro = mensagemDoErro(errOut)
 		s.mu.Unlock()
 	}()
 
 	aplicada, existe, err := s.db.CarregarConfigAplicada()
 	if err != nil {
-		return fmt.Errorf("carregar config aplicada no boot: %w", err)
+		return &GuardError{Stage: StageWrite, Message: "no boot, não foi possível ler a configuração aplicada", Err: err}
 	}
 	if !existe {
 		emEdicao, err := s.db.CarregarConfigEmEdicao()
 		if err != nil {
-			return fmt.Errorf("carregar config em edição no boot: %w", err)
+			return &GuardError{Stage: StageWrite, Message: "no boot, não foi possível ler a configuração em edição", Err: err}
 		}
 		if err := s.db.SalvarAplicadaERevisao(emEdicao, "sistema", "aplicação inicial no boot", "conversao", s.now()); err != nil {
-			return fmt.Errorf("salvar aplicada no boot: %w", err)
+			return &GuardError{Stage: StageWrite, Message: "no boot, não foi possível gravar a configuração aplicada inicial", Err: err}
 		}
 		aplicada = emEdicao
 	}
 
 	ins, err := s.insumos(ctx)
 	if err != nil {
-		return fmt.Errorf("ler insumos no boot: %w", err)
+		return &GuardError{Stage: StagePreflight, Message: "no boot, não foi possível ler os dados da máquina para montar o firewall", Err: err}
 	}
 
 	ruleset, err := nftables.RenderZonas(aplicada, ins)
 	if err != nil {
 		slog.Error("falha ao renderizar script nftables no boot", "err", err)
-		return err
+		return &GuardError{Stage: StagePreflight, Message: "no boot, a configuração aplicada não pôde ser montada em regras do firewall", Err: err}
 	}
 	if err := s.nft.TestarScript(ctx, ruleset.Script); err != nil {
 		slog.Error("script nftables gerado no boot falhou na validação", "err", err)
-		return err
+		return &GuardError{Stage: StagePreflight, Message: "no boot, o nftables recusou as regras geradas na verificação", Err: err}
 	}
 
 	if err := s.nft.AplicarScript(ctx, ruleset.Script); err != nil {
 		slog.Error("falha ao aplicar script nftables no boot", "err", err)
-		return err
+		return &GuardError{Stage: StageReconcile, Message: "no boot, o nftables recusou as regras geradas", Err: err}
 	}
 
 	_ = s.nft.Persist(ctx)

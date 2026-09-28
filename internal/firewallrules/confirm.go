@@ -174,89 +174,26 @@ func IsWindowConflict(err error) bool {
 	return errors.As(err, &e)
 }
 
-// OpenConfirmWindow grava o pendente ANTES de a mudança ser aplicada: a partir
-// daqui ela tem 90 segundos para ser confirmada, e quem falhar em aplicá-la
-// desfaz a janela (RevertPending) em vez de deixá-la para trás.
+// openWindowLocked arma a janela: grava o pendente ANTES de a mudança ser
+// aplicada, e a partir daqui ela tem 90 segundos para ser confirmada. Chamada
+// com s.mu já travado; não toca no nft — quem aplica é a mudança que vem depois.
 //
-// A ORDEM — armar antes de aplicar — é a correção mais importante desta
-// revisão, e o motivo é o que acontecia com a ordem inversa. Armar depois de
-// reconciliar deixava dois buracos, os dois medidos por sonda:
-//
-//   - reconcile que falha: o handler respondia 500 e voltava ANTES de armar,
-//     com a mudança de escopo input já gravada no banco e já valendo na chain
-//     input viva — sem pendente, sem auto-revert e sem trava, enquanto o
-//     operador lia "erro interno do servidor" e concluía que nada acontecera;
-//   - duas mutações de input simultâneas: as duas passavam pela trava (que lê o
-//     pendente e ainda não havia nenhum), as duas aplicavam, e só a segunda
-//     descobria, ao armar, que já havia uma janela — mudança valendo sem rede
-//     embaixo, e o snapshot da vencedora podendo já conter a escrita da
-//     perdedora, isto é, uma reversão que o operador acredita completa e não é.
-//
-// Armando antes, a UNIQUE de pending_firewall_change (uma linha, só_row) é o
-// que serializa: a segunda requisição recebe conflito AQUI, antes de tocar no
-// firewall, e um reconcile que falha passa a ser coberto pelo watchdog.
-//
-// Não toca no nft. Quem aplica é a mutação que vem DEPOIS; esta função é só
-// a rede de proteção sendo armada, e um comando de nft aqui seria uma
-// reescrita de chain que ninguém pediu.
+// A ORDEM — armar antes de aplicar — evita dois buracos que a ordem inversa
+// tinha. Armar depois de reconciliar deixava uma mudança de escopo input já
+// valendo na chain viva, sem pendente, sem auto-revert e sem trava, quando o
+// reconcile falhava; e duas mutações simultâneas passavam pela trava (nenhuma
+// janela ainda), as duas aplicavam, e só a segunda descobria, ao armar, que já
+// havia uma. Armando antes, a UNIQUE de pending_firewall_change (uma linha) é
+// o que serializa: a segunda requisição recebe o conflito AQUI, antes de tocar
+// no firewall. Quem falha em aplicar depois de armar descarta a janela.
 //
 // O snapshot é validado como JSON do formato esperado E como um estado
-// restaurável (validateSnapshotGroups) antes de ir para o banco: um pendente
-// que a reversão vai recusar é uma janela armada que nunca pode disparar, e a
-// hora de descobrir isso é agora — não daqui a 90 segundos.
+// restaurável (validateSnapshotV2) antes de ir para o banco: um pendente que a
+// reversão vai recusar é uma janela armada que nunca pode disparar, e a hora de
+// descobrir isso é agora, não daqui a 90 segundos.
 //
-// Abrir com uma janela já aberta falha (a tabela aceita uma linha só). Não é
-// limitação: com dois pendentes, "reverter ao estado anterior" não teria
-// resposta — anterior a qual das duas mudanças? (spec §5.3).
-//
-// ESCOPO DO SNAPSHOT — o que ele NÃO cobre. stateSnapshot é só `groups` e
-// `rules`. As mesmas chains forward e input também são renderizadas a partir
-// dos named sets (blocked_hosts, blocklist), dos port forwards e do toggle de
-// NTP, e NADA disso entra no snapshot: uma mutação que tocasse neles e
-// abrisse janela seria revertida só pela metade — o pior resultado possível
-// aqui, porque o operador acredita que o estado anterior voltou. Enquanto
-// esta limitação existir, a regra é: SÓ mutação de grupo/regra pode chamar
-// esta função (é a Task 4 que precisa garantir isso do lado dos handlers).
-func (s *Service) OpenConfirmWindow(ctx context.Context, by, summary string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	aplicada, existe, err := s.db.CarregarConfigAplicada()
-	if err != nil {
-		return "", fmt.Errorf("carregar config aplicada para snapshot: %w", err)
-	}
-	if !existe {
-		aplicada, err = s.db.CarregarConfigEmEdicao()
-		if err != nil {
-			return "", fmt.Errorf("carregar config em edição para snapshot: %w", err)
-		}
-	}
-
-	var perfis []perfilVPN
-	if peers, err := s.db.ListWireGuardPeers(); err == nil {
-		for _, peer := range peers {
-			perfis = append(perfis, perfilVPN{
-				UserID:            peer.UserID,
-				AccessMode:        peer.AccessMode,
-				AllowedHostGroups: peer.AllowedHostGroups,
-				AllowedPorts:      peer.AllowedPorts,
-			})
-		}
-	}
-
-	snap := snapshotV2{
-		Formato:   2,
-		Config:    aplicada,
-		PerfisVPN: perfis,
-	}
-	snapshotBytes, err := json.Marshal(snap)
-	if err != nil {
-		return "", fmt.Errorf("serializar o snapshot v2: %w", err)
-	}
-	return s.openWindowLocked(string(snapshotBytes), by, summary)
-}
-
-// openWindowLocked é o arme propriamente dito. Chamada com s.mu já travado.
+// Abrir com uma janela já aberta falha: com dois pendentes, "reverter ao estado
+// anterior" não teria resposta — anterior a qual das duas mudanças? (spec §5.3).
 func (s *Service) openWindowLocked(snapshot, by, summary string) (string, error) {
 	if snapshot == "" {
 		return "", fmt.Errorf("snapshot vazio: sem ele não há para onde reverter")
