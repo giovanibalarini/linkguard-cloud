@@ -472,6 +472,9 @@ fwz.problema.regraIdInvalido:
 fwz.problema.aliasIdInvalido:
   pt: "O identificador do alias \"{id}\" é inválido."
   en: "The alias ID \"{id}\" is invalid."
+fwz.problema.aliasSetColide:
+  pt: "O alias \"{id}\" tem o mesmo nome interno de \"{outro}\". Use um identificador que difira nos 12 primeiros caracteres."
+  en: "Alias \"{id}\" has the same internal name as \"{outro}\". Use an ID that differs in the first 12 characters."
 fwz.problema.agendamentoIdInvalido:
   pt: "O identificador do agendamento \"{id}\" é inválido."
   en: "The schedule ID \"{id}\" is invalid."

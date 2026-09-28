@@ -737,7 +737,7 @@ func TestRenderZonas_Erros(t *testing.T) {
 	}
 	// Ambos têm prefixo hex "000000000000"
 	_, err := RenderZonas(cColisao, Insumos{PortasGerencia: []int{22}})
-	if err == nil || !strings.Contains(err.Error(), "colisão de nome de set") {
+	if err == nil || !strings.Contains(err.Error(), "aliasSetColide") {
 		t.Fatalf("esperava erro de colisão de set, veio: %v", err)
 	}
 

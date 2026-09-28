@@ -18,6 +18,19 @@ const MaxIDObjeto = 64
 // só letras, dígitos, "_" e "-" garantem que nenhum deles escapa das aspas ou vira outro comando.
 var reIDObjeto = regexp.MustCompile(`^[A-Za-z0-9_-]{1,` + strconv.Itoa(MaxIDObjeto) + `}$`)
 
+// NomeSetAlias é o nome do set do nftables de um alias: "fwa_" (endereços) ou "fwp_" (portas)
+// mais os 12 primeiros caracteres do ID sem traços. Dois IDs que dão o mesmo nome não podem coexistir.
+func NomeSetAlias(tipo AliasTipo, id string) string {
+	limpo := strings.ToLower(strings.ReplaceAll(id, "-", ""))
+	if len(limpo) > 12 {
+		limpo = limpo[:12]
+	}
+	if tipo == AliasTipoPortas {
+		return "fwp_" + limpo
+	}
+	return "fwa_" + limpo
+}
+
 // IDValido diz se o identificador pode entrar no script do nft.
 func IDValido(id string) bool {
 	return reIDObjeto.MatchString(id)
@@ -51,14 +64,12 @@ func TemErro(ps []Problema) bool {
 
 // isIPv4 verifica se a string representa um endereço IPv4 único válido.
 func isIPv4(s string) bool {
-	s = strings.TrimSpace(s)
 	a, err := netip.ParseAddr(s)
 	return err == nil && a.Is4()
 }
 
 // isIPv4CIDR verifica se a string representa uma sub-rede IPv4 CIDR válida.
 func isIPv4CIDR(s string) bool {
-	s = strings.TrimSpace(s)
 	p, err := netip.ParsePrefix(s)
 	return err == nil && p.Addr().Is4()
 }
@@ -69,29 +80,21 @@ func isIPv4OrCIDR(s string) bool {
 }
 
 // isValidPortOrRange valida se o valor é uma porta individual (1-65535) ou faixa "a-b" (1 <= a < b <= 65535).
+// O texto entra como está no script do nft, então espaço e sinal não passam.
 func isValidPortOrRange(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" {
+	if !rePortaOuFaixa.MatchString(s) {
 		return false
 	}
-	if strings.Contains(s, "-") {
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
-			return false
-		}
-		a, errA := strconv.Atoi(strings.TrimSpace(parts[0]))
-		b, errB := strconv.Atoi(strings.TrimSpace(parts[1]))
-		if errA != nil || errB != nil {
-			return false
-		}
-		return a >= 1 && b <= 65535 && a < b
+	ini, fim, faixa := strings.Cut(s, "-")
+	a, _ := strconv.Atoi(ini)
+	if !faixa {
+		return a >= 1 && a <= 65535
 	}
-	p, err := strconv.Atoi(s)
-	if err != nil {
-		return false
-	}
-	return p >= 1 && p <= 65535
+	b, _ := strconv.Atoi(fim)
+	return a >= 1 && b <= 65535 && a < b
 }
+
+var rePortaOuFaixa = regexp.MustCompile(`^[0-9]{1,5}(-[0-9]{1,5})?$`)
 
 // isNomeAliasReservado confere se o nome conflita com nomes reservados pelo sistema.
 func isNomeAliasReservado(nome string) bool {
@@ -138,6 +141,7 @@ func Validar(c Config, pessoas []string) []Problema {
 	// 1. Validar Aliases
 	aliasMap := make(map[string]Alias, len(c.Aliases))
 	nomesAlias := make(map[string]string, len(c.Aliases))
+	setsDeAlias := map[string]string{"fwa_vcn": "sys:vcn", "fwa_vpn": "sys:vpn", "fwp_gerencia": "sys:gerencia"}
 
 	for _, a := range c.Aliases {
 		onde := "alias:" + a.ID
@@ -145,6 +149,15 @@ func Validar(c Config, pessoas []string) []Problema {
 			addErro(onde, "fwz.problema.aliasIdVazio", nil)
 		} else if !IDValido(a.ID) {
 			addErro(onde, "fwz.problema.aliasIdInvalido", map[string]string{"id": idParaMensagem(a.ID)})
+		}
+
+		if a.ID != "" && IDValido(a.ID) {
+			set := NomeSetAlias(a.Tipo, a.ID)
+			if outro, existe := setsDeAlias[set]; existe {
+				addErro(onde, "fwz.problema.aliasSetColide", map[string]string{"id": a.ID, "outro": outro})
+			} else {
+				setsDeAlias[set] = a.ID
+			}
 		}
 
 		nomeTrim := strings.TrimSpace(a.Nome)

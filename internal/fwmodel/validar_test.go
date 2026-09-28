@@ -436,3 +436,39 @@ func TestIPv4RejeitaIPv6MapeadoEmIPv4(t *testing.T) {
 		t.Error("IPv4 puro deixou de valer")
 	}
 }
+
+func TestValidarRecusaColisaoDeNomeDeSet(t *testing.T) {
+	cfg := configBaseValida()
+	cfg.Aliases = append(cfg.Aliases,
+		Alias{ID: "aaaaaaaaaaaa-1", Nome: "Um", Tipo: AliasTipoEnderecos, Itens: []string{"10.0.0.1"}},
+		Alias{ID: "aaaaaaaaaaaa-2", Nome: "Dois", Tipo: AliasTipoEnderecos, Itens: []string{"10.0.0.2"}},
+		Alias{ID: "vcn", Nome: "Sistema", Tipo: AliasTipoEnderecos, Itens: []string{"10.0.0.3"}},
+	)
+	n := 0
+	for _, p := range Validar(cfg, nil) {
+		if p.Chave == "fwz.problema.aliasSetColide" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("esperava 2 colisões (prefixo repetido e set do sistema), vieram %d", n)
+	}
+}
+
+func TestValidacaoNaoAceitaEspacoNemSinalEmPortasEEnderecos(t *testing.T) {
+	for _, s := range []string{" 10.0.0.1", "10.0.0.1 ", " 10.0.0.0/24"} {
+		if isIPv4(s) || isIPv4CIDR(s) {
+			t.Errorf("%q passou", s)
+		}
+	}
+	for _, s := range []string{" 80", "80 ", "+80", "80 - 90", "0", "65536", "90-80", "1-2-3"} {
+		if isValidPortOrRange(s) {
+			t.Errorf("porta %q passou", s)
+		}
+	}
+	for _, s := range []string{"80", "1-65535"} {
+		if !isValidPortOrRange(s) {
+			t.Errorf("porta %q recusada", s)
+		}
+	}
+}

@@ -71,14 +71,7 @@ var reHexUUID = regexp.MustCompile(`^[0-9a-fA-F-]+$`)
 // aliasSetName calcula o nome do set nftables para um alias:
 // "fwa_" (endereços) ou "fwp_" (portas) + os 12 primeiros caracteres hexadecimais sem traços.
 func aliasSetName(tipo fwmodel.AliasTipo, id string) string {
-	clean := strings.ToLower(strings.ReplaceAll(id, "-", ""))
-	if len(clean) > 12 {
-		clean = clean[:12]
-	}
-	if tipo == fwmodel.AliasTipoPortas {
-		return "fwp_" + clean
-	}
-	return "fwa_" + clean
+	return fwmodel.NomeSetAlias(tipo, id)
 }
 
 // aliasUUIDHex12 extrai os 12 primeiros hex de um UUID sem traços, para o prefixo de log.
