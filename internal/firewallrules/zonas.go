@@ -406,7 +406,7 @@ func (s *Service) Aplicar(ctx context.Context, por string) (appliedOut *Applied,
 	_ = s.db.CreateAuditLog(&storage.AuditLog{
 		User:     por,
 		Action:   "fw.aplicar",
-		Resource: "fw",
+		Resource: "firewall",
 		Details:  resumo,
 	})
 
@@ -472,7 +472,7 @@ func (s *Service) Descartar(ctx context.Context, por string) error {
 	_ = s.db.CreateAuditLog(&storage.AuditLog{
 		User:     por,
 		Action:   "fw.descartar",
-		Resource: "fw",
+		Resource: "firewall",
 		Details:  "descartou alterações em edição e restaurou a configuração aplicada",
 	})
 	return nil

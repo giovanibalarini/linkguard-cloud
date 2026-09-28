@@ -22,12 +22,6 @@ func (h *FirewallHandler) Aplicar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary := ""
-	if applied != nil {
-		summary = applied.Summary
-	}
-	auditAction(h.db, r, "fw.aplicar", "firewall", summary)
-
 	res := map[string]any{"status": "ok"}
 	if applied != nil && applied.Pending != nil {
 		res["pending"] = h.pendingView(applied.Pending)
@@ -43,6 +37,5 @@ func (h *FirewallHandler) Descartar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditAction(h.db, r, "fw.descartar", "firewall", "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -28,12 +28,14 @@ type RegistroEntryView struct {
 	DPort     string            `json:"dport"`
 }
 
+const limiteRegistro = 1000
+
 // GetRegistro devolve os registros recentes de tráfego/descartes do firewall com as regras resolvidas.
 func (h *FirewallHandler) GetRegistro(w http.ResponseWriter, r *http.Request) {
 	limit := 200
 	if limStr := r.URL.Query().Get("limit"); limStr != "" {
 		if n, err := strconv.Atoi(limStr); err == nil && n > 0 {
-			limit = n
+			limit = min(n, limiteRegistro)
 		}
 	}
 	q := r.URL.Query().Get("q")

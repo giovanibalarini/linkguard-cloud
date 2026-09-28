@@ -390,7 +390,7 @@ func TestFirewallRegrasZonaVPNTrazTravadasEPadrao(t *testing.T) {
 }
 
 func TestFirewallAplicarEDescartar(t *testing.T) {
-	_, _, _, userR, userW, router := setupFirewallTestRouter(t)
+	db, _, _, userR, userW, router := setupFirewallTestRouter(t)
 
 	// Inicialmente sem regras, mas como fw_aplicado está vazio ou idêntico:
 	res := doReq(router, http.MethodGet, "/api/firewall/pendencias", userR.ID, "")
@@ -424,6 +424,19 @@ func TestFirewallAplicarEDescartar(t *testing.T) {
 	res = doReq(router, http.MethodPost, "/api/firewall/aplicar", userW.ID, "")
 	if res.Code != http.StatusOK {
 		t.Fatalf("POST /aplicar: %d: %s", res.Code, res.Body.String())
+	}
+	if logs, err := db.GetAuditLogs(100); err != nil {
+		t.Fatal(err)
+	} else {
+		n := 0
+		for _, l := range logs {
+			if l.Action == "fw.aplicar" {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("aplicar deveria deixar 1 registro de auditoria, deixou %d", n)
+		}
 	}
 
 	// Sem pendências agora
