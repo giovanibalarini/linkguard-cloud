@@ -263,6 +263,18 @@ func (h *FirewallHandler) AtualizarRegra(w http.ResponseWriter, r *http.Request)
 	}
 
 	auditAction(h.db, r, "fw.regra.alterar", "firewall", id)
+
+	cfg, err := h.db.CarregarConfigEmEdicao()
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	for _, guardada := range cfg.Regras {
+		if guardada.ID == id {
+			writeJSON(w, http.StatusOK, guardada)
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, regra)
 }
 

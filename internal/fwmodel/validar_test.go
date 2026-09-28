@@ -422,3 +422,17 @@ func TestValidarAjustes(t *testing.T) {
 		}
 	})
 }
+
+func TestIPv4RejeitaIPv6MapeadoEmIPv4(t *testing.T) {
+	for _, s := range []string{"::ffff:10.0.0.1", "::ffff:10.0.0.0/104", "10.0.0.1/24", "fe80::1"} {
+		if isIPv4(s) {
+			t.Errorf("isIPv4(%q) = true", s)
+		}
+	}
+	if isIPv4CIDR("::ffff:10.0.0.0/104") {
+		t.Error("isIPv4CIDR aceitou IPv6 mapeado")
+	}
+	if !isIPv4("10.0.0.1") || !isIPv4CIDR("10.0.0.0/24") {
+		t.Error("IPv4 puro deixou de valer")
+	}
+}

@@ -91,7 +91,11 @@ func (h *FirewallHandler) GetAliases(w http.ResponseWriter, r *http.Request) {
 
 	res := make([]AliasView, 0, len(embutidos)+len(cfg.Aliases))
 	for _, emb := range embutidos {
-		usos, _ := h.db.UsosDoAlias(emb.ID)
+		usos, err := h.db.UsosDoAlias(emb.ID)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
 		emb.Usos = len(usos)
 		emb.UsosLista = usos
 		res = append(res, emb)
@@ -99,7 +103,11 @@ func (h *FirewallHandler) GetAliases(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Aliases de usuário
 	for _, a := range cfg.Aliases {
-		usos, _ := h.db.UsosDoAlias(a.ID)
+		usos, err := h.db.UsosDoAlias(a.ID)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
 		itens := a.Itens
 		if itens == nil {
 			itens = []string{}

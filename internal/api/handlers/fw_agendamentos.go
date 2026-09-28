@@ -33,7 +33,11 @@ func (h *FirewallHandler) GetAgendamentos(w http.ResponseWriter, r *http.Request
 
 	res := make([]AgendamentoView, 0, len(cfg.Agendamentos))
 	for _, ag := range cfg.Agendamentos {
-		usos, _ := h.db.UsosDoAgendamento(ag.ID)
+		usos, err := h.db.UsosDoAgendamento(ag.ID)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
 		res = append(res, AgendamentoView{
 			ID:        ag.ID,
 			Nome:      ag.Nome,

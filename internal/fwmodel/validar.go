@@ -2,7 +2,7 @@ package fwmodel
 
 import (
 	"fmt"
-	"net"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -52,15 +52,15 @@ func TemErro(ps []Problema) bool {
 // isIPv4 verifica se a string representa um endereço IPv4 único válido.
 func isIPv4(s string) bool {
 	s = strings.TrimSpace(s)
-	ip := net.ParseIP(s)
-	return ip != nil && ip.To4() != nil && !strings.Contains(s, "/")
+	a, err := netip.ParseAddr(s)
+	return err == nil && a.Is4()
 }
 
 // isIPv4CIDR verifica se a string representa uma sub-rede IPv4 CIDR válida.
 func isIPv4CIDR(s string) bool {
 	s = strings.TrimSpace(s)
-	ip, _, err := net.ParseCIDR(s)
-	return err == nil && ip != nil && ip.To4() != nil
+	p, err := netip.ParsePrefix(s)
+	return err == nil && p.Addr().Is4()
 }
 
 // isIPv4OrCIDR verifica se a string é IPv4 ou sub-rede IPv4 CIDR válida.
