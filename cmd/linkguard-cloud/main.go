@@ -560,6 +560,9 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	// which exists on no interface and so cannot be discovered here.
 	wgSvc := wireguard.NewService(db, secretsSvc, exec)
 	wgSvc.SetInstallExecutor(pkgExec)
+	wgSvc.SetRedesVCN(func() []string {
+		return append(redesLocais(db, plat), frSvc.RedesVCNExtrasAplicadas()...)
+	})
 	// This callback is read at every reconcile. No WireGuard state is
 	// duplicated into netsvc persistence, so boot and retries are
 	// idempotent and a disabled tunnel removes both projections.

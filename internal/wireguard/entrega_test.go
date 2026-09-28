@@ -261,3 +261,25 @@ func TestPerfilRecusaAliasInexistente(t *testing.T) {
 		}
 	}
 }
+
+func TestPerfilComAliasEmbutidoNaoDependeDaConfigAplicada(t *testing.T) {
+	svc, db, _, _ := newServiceTest(t)
+
+	for _, embutido := range []string{fwmodel.AliasVCN, fwmodel.AliasVPN} {
+		if _, err := normalizeAccess(db, PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{embutido}}); err != nil {
+			t.Fatalf("%s deveria valer sem config aplicada: %v", embutido, err)
+		}
+	}
+	if _, err := normalizeAccess(db, PeerAccess{AccessMode: "restricted", AllowedHostGroups: []string{fwmodel.AliasVCN, "inexistente"}}); err == nil {
+		t.Fatal("um alias inexistente ao lado do embutido ainda precisa ser recusado")
+	}
+
+	svc.SetRedesVCN(func() []string { return []string{"10.0.0.0/16", "172.16.0.0/12"} })
+	rotas, err := svc.resolveRoutes("restricted", []string{fwmodel.AliasVCN}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(rotas, ",") != "10.0.0.0/16,172.16.0.0/12" {
+		t.Errorf("o alias sys:vcn precisa virar as redes da VCN no AllowedIPs, veio %v", rotas)
+	}
+}

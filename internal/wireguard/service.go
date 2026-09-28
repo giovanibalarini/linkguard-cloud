@@ -77,6 +77,7 @@ type Service struct {
 	configPath  string
 	qr          QREncoder
 	now         func() time.Time
+	redesVCN    func() []string
 	mu          sync.Mutex
 }
 
@@ -85,6 +86,12 @@ func NewService(db *storage.DB, sec secrets.Secrets, executor firewall.Executor)
 		db: db, secrets: sec, exec: executor, installExec: executor,
 		configPath: ConfigPath, qr: commandQREncoder{}, now: time.Now,
 	}
+}
+
+// SetRedesVCN diz de onde vêm as redes que o alias embutido sys:vcn cobre: sem
+// elas, um perfil "só a VCN" em túnel dividido não recebe rota nenhuma.
+func (s *Service) SetRedesVCN(f func() []string) {
+	s.redesVCN = f
 }
 
 func (s *Service) SetInstallExecutor(executor firewall.Executor) {
@@ -560,6 +567,12 @@ func (s *Service) resolveRoutes(accessMode string, allowedHostGroups, extraRoute
 				}
 			}
 		}
+		if s.redesVCN != nil {
+			aliasMap[fwmodel.AliasVCN] = s.redesVCN()
+		}
+		if _, rede, ligada, err := s.DNSBinding(); err == nil && ligada {
+			aliasMap[fwmodel.AliasVPN] = []string{rede}
+		}
 		for _, id := range allowedHostGroups {
 			if itens, ok := aliasMap[id]; ok {
 				routes = append(routes, itens...)
@@ -878,7 +891,7 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 		access.AllowedHostGroups = []string{}
 	}
 
-	if len(access.AllowedHostGroups) > 0 {
+	if precisaDeAliasAplicado(access.AllowedHostGroups) {
 		if db == nil {
 			return PeerAccess{}, recusa(PedidoInvalido, "alias de endereços inexistente ou ainda não aplicado")
 		}
@@ -890,15 +903,13 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 			return PeerAccess{}, recusa(PedidoInvalido, "alias de endereços inexistente ou ainda não aplicado")
 		}
 		aliasAddr := make(map[string]bool)
-		aliasAddr[fwmodel.AliasVCN] = true
-		aliasAddr[fwmodel.AliasVPN] = true
 		for _, a := range aplicada.Aliases {
 			if a.Tipo == fwmodel.AliasTipoEnderecos {
 				aliasAddr[a.ID] = true
 			}
 		}
 		for _, id := range access.AllowedHostGroups {
-			if !aliasAddr[id] {
+			if !ehAliasEmbutidoDeRede(id) && !aliasAddr[id] {
 				return PeerAccess{}, recusa(PedidoInvalido, "alias de endereços inexistente ou ainda não aplicado")
 			}
 		}
@@ -917,6 +928,21 @@ func normalizeAccess(db *storage.DB, access PeerAccess) (PeerAccess, error) {
 	}
 	access.AllowedPorts = strings.Join(ports, ",")
 	return access, nil
+}
+
+func ehAliasEmbutidoDeRede(id string) bool {
+	return id == fwmodel.AliasVCN || id == fwmodel.AliasVPN
+}
+
+// precisaDeAliasAplicado diz se o perfil cita algum alias que só existe na
+// config aplicada; os embutidos existem sempre.
+func precisaDeAliasAplicado(ids []string) bool {
+	for _, id := range ids {
+		if !ehAliasEmbutidoDeRede(id) {
+			return true
+		}
+	}
+	return false
 }
 
 // MyVPN é o que um usuário vê da PRÓPRIA VPN, sem enxergar a de ninguém.
