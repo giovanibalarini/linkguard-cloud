@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -323,6 +324,74 @@ func TestAplicarMudandoEntradaAbreJanela(t *testing.T) {
 	}
 	if len(snap.Config.Regras) != 0 {
 		t.Errorf("o snapshot deve conter a configuração ANTERIOR (0 regras), tem: %d", len(snap.Config.Regras))
+	}
+}
+
+// O nft -f passou (o ruleset já vale no kernel) mas o arquivo de boot não pode ser gravado:
+// a aplicação segue de pé, a aplicada é gravada e a janela de 90 s continua aberta.
+func TestAplicarFalhaNoArquivoDeBootMantemJanela(t *testing.T) {
+	svc, db, _ := newZonasTestService(t)
+	svc.nft.SetConfPath(filepath.Join(t.TempDir(), "nao-existe", "nftables.conf"))
+	ctx := context.Background()
+
+	cfg := fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
+	_ = db.SubstituirConfigEmEdicao(cfg)
+	_ = db.SalvarAplicadaERevisao(cfg, "sistema", "inicial", "conversao", time.Now())
+
+	_ = db.CriarRegraFW(&fwmodel.Regra{
+		ID:           "r-entrada",
+		Zona:         fwmodel.ZonaVCN,
+		Posicao:      1,
+		Ativa:        true,
+		Acao:         fwmodel.AcaoDrop,
+		Proto:        fwmodel.ProtoTCP,
+		Origem:       fwmodel.Ponta{Tipo: fwmodel.PontaQualquer},
+		Destino:      fwmodel.Ponta{Tipo: fwmodel.PontaQualquer},
+		PortaDestino: fwmodel.Porta{Tipo: fwmodel.PortaValor, Valor: "22"},
+		Descricao:    "Bloquear SSH",
+	})
+
+	applied, err := svc.Aplicar(ctx, "admin")
+	if err != nil {
+		t.Fatalf("o nft -f passou: Aplicar não podia falhar por causa do arquivo de boot: %v", err)
+	}
+	if applied.WindowID == "" {
+		t.Fatal("a janela de confirmação tinha de continuar aberta")
+	}
+	if pend, err := db.GetPendingChange(); err != nil || pend == nil {
+		t.Fatalf("a mudança pendente tinha de continuar gravada: pend=%v err=%v", pend, err)
+	}
+	aplicada, existe, err := svc.Aplicada()
+	if err != nil || !existe {
+		t.Fatalf("carregar aplicada: existe=%v err=%v", existe, err)
+	}
+	if len(aplicada.Regras) != 1 || aplicada.Regras[0].ID != "r-entrada" {
+		t.Fatalf("a aplicada tinha de refletir o que entrou no kernel: %+v", aplicada.Regras)
+	}
+}
+
+func TestAplicarMudancaVPNFalhaNoArquivoDeBoot(t *testing.T) {
+	svc, db, _ := newZonasTestService(t)
+	svc.nft.SetConfPath(filepath.Join(t.TempDir(), "nao-existe", "nftables.conf"))
+	ctx := context.Background()
+
+	cfg := fwmodel.Config{Formato: 1, Ajustes: fwmodel.AjustesPadrao()}
+	_ = db.SubstituirConfigEmEdicao(cfg)
+	_ = db.SalvarAplicadaERevisao(cfg, "sistema", "inicial", "conversao", time.Now())
+
+	var desfeito bool
+	_, err := svc.AplicarMudancaVPN(ctx, "admin", "adicionar peer", func() error {
+		createTestPeer(t, db, "user-vpn", "valdo", "10.7.0.5", "full", nil, "")
+		return nil
+	}, func() error {
+		desfeito = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("o nft -f passou: a mudança da VPN não podia falhar por causa do arquivo de boot: %v", err)
+	}
+	if desfeito {
+		t.Fatal("o desfazer não podia rodar: o ruleset novo já vale no kernel")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -149,8 +150,10 @@ func (s *Service) TestarScript(ctx context.Context, script string) error {
 	return nil
 }
 
-// AplicarScript escreve o script atômico no kernel via `nft -f <arquivo>` e persiste as regras
-// em disco chamando s.Persist(ctx). Adquire reconcileMu durante toda a operação. Dry-run devolve nil.
+// AplicarScript escreve o script atômico no kernel via `nft -f <arquivo>` e tenta persistir as regras
+// em disco (s.Persist). Só o `nft -f` conta como falha: se ele passou, o ruleset já vale e um erro
+// ao gravar o arquivo de boot fica em PersistState e no log. Adquire reconcileMu durante toda a
+// operação. Dry-run devolve nil.
 func (s *Service) AplicarScript(ctx context.Context, script string) error {
 	s.reconcileMu.Lock()
 	defer s.reconcileMu.Unlock()
@@ -177,7 +180,10 @@ func (s *Service) AplicarScript(ctx context.Context, script string) error {
 		return err
 	}
 
-	return s.Persist(ctx)
+	if err := s.Persist(ctx); err != nil {
+		slog.Warn("o ruleset entrou no kernel, mas o arquivo de boot não foi gravado", "err", err)
+	}
+	return nil
 }
 
 // ContadoresPorChave lê a tabela via `nft -j list table inet linkguard` e agrega pacotes e bytes

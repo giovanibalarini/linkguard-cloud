@@ -201,6 +201,28 @@ func TestService_AplicarScript(t *testing.T) {
 		}
 	})
 
+	t.Run("falha ao gravar o arquivo de boot não é falha da aplicação", func(t *testing.T) {
+		exec := &fakeReconcileExec{
+			readOut: map[string]string{
+				"nft list table inet linkguard": "table inet linkguard {\n\tchain input {\n\t}\n}\n",
+			},
+		}
+		s := NewService(exec)
+		// o diretório-pai não existe: o nft -f passa e o os.WriteFile falha
+		s.SetConfPath(filepath.Join(t.TempDir(), "nao-existe", "nftables.conf"))
+
+		if err := s.AplicarScript(ctx, scriptExemplo); err != nil {
+			t.Fatalf("o ruleset entrou no kernel: AplicarScript não podia devolver erro, veio: %v", err)
+		}
+		if len(exec.executed) != 1 || !strings.HasPrefix(exec.executed[0], "nft -f ") {
+			t.Fatalf("esperava exatamente um nft -f, vieram: %v", exec.executed)
+		}
+		st := s.PersistState()
+		if !st.Attempted || st.OK || st.Err == "" {
+			t.Fatalf("a falha do arquivo de boot devia ficar registrada em PersistState, veio: %+v", st)
+		}
+	})
+
 	t.Run("dry-run não executa nada", func(t *testing.T) {
 		exec := &fakeReconcileExec{dryRun: true}
 		s := NewService(exec)
