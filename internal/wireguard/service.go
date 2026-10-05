@@ -78,6 +78,7 @@ type Service struct {
 	qr          QREncoder
 	now         func() time.Time
 	redesVCN    func() []string
+	pathMTU     func() int
 	mu          sync.Mutex
 }
 
@@ -92,6 +93,13 @@ func NewService(db *storage.DB, sec secrets.Secrets, executor firewall.Executor)
 // elas, um perfil "só a VCN" em túnel dividido não recebe rota nenhuma.
 func (s *Service) SetRedesVCN(f func() []string) {
 	s.redesVCN = f
+}
+
+// SetPathMTU diz de onde vem a MTU do CAMINHO até a Internet, de que sai a MTU
+// da interface do servidor (ver ServerMTU). Sem ela a linha não é escrita e o
+// wg-quick deduz a MTU pela placa — o que na nuvem dá 8920.
+func (s *Service) SetPathMTU(f func() int) {
+	s.pathMTU = f
 }
 
 func (s *Service) SetInstallExecutor(executor firewall.Executor) {
@@ -236,7 +244,11 @@ func (s *Service) applyEnabled(ctx context.Context, c Config) error {
 		return err
 	}
 	peers := peersFromStorage(storedPeers)
-	content, err := RenderServerConfig(c, private, peers)
+	pathMTU := 0
+	if s.pathMTU != nil {
+		pathMTU = s.pathMTU()
+	}
+	content, err := RenderServerConfig(c, private, peers, ServerMTU(pathMTU))
 	if err != nil {
 		return err
 	}

@@ -53,26 +53,72 @@ func TestOAjusteSoValeNoApertoDeMao(t *testing.T) {
 // zero regra. É seguro porque a chain é `policy accept` e não decide nada
 // sozinha, e é honesto porque o estado passa a ser inspecionável.
 //
-// O QUE CONTINUA VALENDO, e é a metade que não pode ser perdida: nenhuma REGRA
-// é emitida. Uma regra de clamp sem saber por onde se sai é pior do que
-// nenhuma.
-func TestMSSClampSemWANCriaAChainVaziaEmVezDeNaoCriarNada(t *testing.T) {
+// O QUE CONTINUA VALENDO, e é a metade que não pode ser perdida: nenhuma regra
+// DA WAN é emitida. Uma regra de clamp sem saber por onde se sai é pior do que
+// nenhuma. A regra do túnel (mssClampVPNRule) é a exceção deliberada: ela sabe
+// por onde se sai, e por isso é a única que a chain carrega.
+func TestMSSClampSemWANCriaAChainSoComARegraDoTunel(t *testing.T) {
 	ex := &execFalso{}
 	s := &Service{exec: ex}
 	if err := s.EnsureMSSClamp(context.Background(), nil); err != nil {
 		t.Fatalf("erro inesperado: %v", err)
 	}
 	var criouChain bool
+	var regras []string
 	for _, c := range ex.comandos {
 		if strings.Contains(c, "add chain inet linkguard mss_clamp") {
 			criouChain = true
 		}
 		if strings.Contains(c, "add rule") {
-			t.Errorf("emitiu regra sem WAN cadastrada: %q", c)
+			regras = append(regras, c)
 		}
 	}
 	if !criouChain {
-		t.Errorf("a chain mss_clamp tinha de nascer, mesmo vazia: %v", ex.comandos)
+		t.Errorf("a chain mss_clamp tinha de nascer: %v", ex.comandos)
+	}
+	if len(regras) != 1 || !strings.Contains(regras[0], `oifname "linkguard"`) {
+		t.Errorf("sem WAN cadastrada, a única regra deveria ser a do túnel: %v", regras)
+	}
+}
+
+// TestMSSClampDoTunelUsaARotaECasaSoOSYN prende a forma da regra do túnel.
+//
+// `rt mtu` e não um número: a MTU da rota é a que o produto escreveu para o
+// túnel — a da interface, ou a do /32 do peer que pediu menos (ver
+// wireguard.RenderServerConfig). Um número fixo aqui apagaria a MTU por peer.
+func TestMSSClampDoTunelUsaARotaECasaSoOSYN(t *testing.T) {
+	regra := strings.Join(mssClampVPNRule(), " ")
+	for _, parte := range []string{
+		`oifname "linkguard"`,
+		"tcp flags syn / syn,rst",
+		"maxseg size set rt mtu",
+	} {
+		if !strings.Contains(regra, parte) {
+			t.Errorf("regra do túnel sem %q: %q", parte, regra)
+		}
+	}
+}
+
+// TestMSSClampComWANAcrescentaOTunelDepoisDasRegrasDaWAN garante que a regra
+// do túnel não toma o lugar de nenhuma regra da WAN nem muda a ordem delas.
+func TestMSSClampComWANAcrescentaOTunelDepoisDasRegrasDaWAN(t *testing.T) {
+	ex := &execFalso{}
+	s := &Service{exec: ex}
+	if err := s.EnsureMSSClamp(context.Background(), []string{"wan1", "wan2"}); err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	var regras []string
+	for _, c := range ex.comandos {
+		if strings.Contains(c, "add rule") {
+			regras = append(regras, c)
+		}
+	}
+	if len(regras) != 3 {
+		t.Fatalf("esperava 2 regras de WAN e 1 do túnel, vieram %d: %v", len(regras), regras)
+	}
+	if !strings.Contains(regras[0], `"wan1"`) || !strings.Contains(regras[1], `"wan2"`) ||
+		!strings.Contains(regras[2], `oifname "linkguard"`) {
+		t.Errorf("ordem errada: %v", regras)
 	}
 }
 

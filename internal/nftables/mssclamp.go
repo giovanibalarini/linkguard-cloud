@@ -25,7 +25,8 @@ import (
 // permite aplicá-la sempre, sem tela de configuração e sem perguntar ao admin
 // qual é a MTU do provedor dele (que ele frequentemente não sabe).
 //
-// SÓ NA SAÍDA PARA A WAN. Isto ajusta o que o cliente da LAN anuncia. O que o
+// NA SAÍDA PARA A WAN E NA ENTRADA DO TÚNEL. A segunda é mssClampVPNRule, que
+// tem razão própria. Na WAN, isto ajusta o que o cliente da LAN anuncia. O que o
 // servidor do outro lado anuncia depende de o PMTU dele funcionar — que é o
 // comportamento padrão de qualquer roteador de borda, incluindo o que o
 // OpenWrt faz. Prometer mais que isso seria prometer o que a regra não entrega.
@@ -71,9 +72,10 @@ func (s *Service) EnsureMSSClamp(ctx context.Context, wanInterfaces []string) er
 	}
 	regras := mssClampRules(z)
 	if len(regras) == 0 {
-		slog.Warn("ajuste de MSS: a chain foi criada VAZIA",
+		slog.Warn("ajuste de MSS: nenhuma regra para a WAN",
 			"motivo", motivoDeMSSClampVazia(z), "wans", ifaces)
 	}
+	regras = append(regras, mssClampVPNRule())
 	if err := s.rebuildChain(ctx, MSSClampChain, regras); err != nil {
 		return err
 	}
@@ -156,6 +158,39 @@ func mssClampRules(z Zone) [][]string {
 		"counter",
 		"tcp", "option", "maxseg", "size", "set", n,
 	)}
+}
+
+// VPNInterface é a interface do WireGuard do servidor. Repete
+// wireguard.InterfaceName porque o pacote wireguard importa este, e não o
+// contrário; um teste lá prende os dois ao mesmo valor.
+const VPNInterface = "linkguard"
+
+// mssClampVPNRule ajusta o MSS de todo SYN que ENTRA no túnel.
+//
+// As regras da WAN não veem esse tráfego: elas casam a saída para fora, e um
+// SYN-ACK de um servidor da Internet — ou um SYN vindo de um nó da VCN com MTU
+// 9000 — rumo ao cliente da VPN sai pela interface do túnel. Toda conexão de
+// um road-warrior tem pelo menos um pacote do aperto de mão nesse sentido,
+// quem quer que a tenha aberto, e por isso UMA regra cobre as duas direções.
+//
+// AQUI `rt mtu` ACERTA, ao contrário da WAN em hairpin. A rota é a do túnel,
+// e a MTU dela é a que o produto escreveu: a da interface (ServerMTU) ou, para
+// o peer que pediu menos, a da rota /32 dele (o PostUp do RenderServerConfig).
+// O kernel só deixa `maxseg size set` REDUZIR o MSS, então a regra é no-op
+// para quem já anunciou pouco.
+//
+// Nasce sempre, com ou sem VPN ligada e com ou sem WAN cadastrada: `oifname`
+// é comparação de nome, não exige a interface existir, e uma regra que não
+// casa nada não custa nada. Condicioná-la ao estado da VPN obrigaria esta
+// chain a ser reconciliada também quando o túnel liga — e o dia em que alguém
+// esquecesse disso seria um túnel sem ajuste nenhum.
+func mssClampVPNRule() []string {
+	return []string{
+		"oifname", fmt.Sprintf("%q", VPNInterface),
+		"tcp", "flags", "syn", "/", "syn,rst",
+		"counter",
+		"tcp", "option", "maxseg", "size", "set", "rt", "mtu",
+	}
 }
 
 // motivoDeMSSClampVazia explica por que ESTA chain — e não uma chain qualquer —

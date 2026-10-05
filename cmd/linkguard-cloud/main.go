@@ -563,6 +563,10 @@ func buildServices(cfg *config.Config, db *storage.DB, plat platform.Snapshot) (
 	wgSvc.SetRedesVCN(func() []string {
 		return append(redesLocais(db, plat), frSvc.RedesVCNExtrasAplicadas()...)
 	})
+	// A MTU do túnel sai da MTU do CAMINHO, pelo mesmo motivo — e da mesma
+	// fonte — que a mss_clamp: na OCI a placa anuncia 9000 e o wg-quick, sem
+	// número, deixaria a interface em 8920 com um caminho de 1500.
+	wgSvc.SetPathMTU(func() int { return uplinkDaPlataforma(plat).PathMTU })
 	// This callback is read at every reconcile. No WireGuard state is
 	// duplicated into netsvc persistence, so boot and retries are
 	// idempotent and a disabled tunnel removes both projections.
