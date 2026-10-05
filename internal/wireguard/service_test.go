@@ -168,6 +168,27 @@ func TestDisabledReconcileDisablesAnEnabledButInactiveUnit(t *testing.T) {
 	}
 }
 
+// TestReconcileEscreveAMTUDoCaminhoNoServidor é o defeito que motivou isto: sem
+// a linha, o wg-quick deduz 9000 − 80 na OCI e o servidor manda para o
+// cliente pacotes que não cabem no caminho de 1500.
+func TestReconcileEscreveAMTUDoCaminhoNoServidor(t *testing.T) {
+	svc, _, _, _ := newServiceTest(t)
+	svc.SetPathMTU(func() int { return 1500 })
+	c := DefaultConfig()
+	c.Enabled = true
+	c.EndpointHost = "vpn.example.net"
+	if err := svc.UpdateConfig(context.Background(), c); err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+	got, err := os.ReadFile(svc.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "\nMTU = 1420\n") {
+		t.Fatalf("o servidor ficou sem a MTU do caminho:\n%s", got)
+	}
+}
+
 func TestEnabledReconcileWritesRootOnlyConfigAndIsIdempotent(t *testing.T) {
 	svc, _, sec, exec := newServiceTest(t)
 	c := DefaultConfig()

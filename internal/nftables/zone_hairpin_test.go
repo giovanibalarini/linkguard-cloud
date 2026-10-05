@@ -446,6 +446,9 @@ func TestAsChainsNascemVaziasEmVezDeNaoNascerQuandoNaoHaWANCadastrada(t *testing
 			nome:   "ajuste de MSS",
 			rodar:  func(ctx context.Context, s *Service) error { return s.EnsureMSSClamp(ctx, nil) },
 			chains: []string{"add chain inet linkguard mss_clamp"},
+			// Só a regra do túnel, que não depende de WAN — ver
+			// mssClampVPNRule.
+			regrasEsperadas: 1,
 		},
 	}
 	for _, c := range casos {

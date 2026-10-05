@@ -162,22 +162,87 @@ func validatePeer(c Config, p Peer) error {
 	return nil
 }
 
-func RenderServerConfig(c Config, private string, peers []Peer) (string, error) {
+// wireGuardOverhead é o que o túnel acrescenta a cada pacote com o caminho
+// externo em IPv6: 40 de IP, 8 de UDP, 32 de WireGuard. É o número que o
+// próprio wg-quick desconta; em IPv4 sobrariam 20 bytes, e usar o pior caso é
+// o que deixa a MTU valer qualquer que seja a família do cliente.
+const wireGuardOverhead = 80
+
+// ServerMTU é a MTU da interface do servidor a partir da MTU do CAMINHO até a
+// Internet. 0 = não escreve a linha.
+//
+// SEM ESTA LINHA O SERVIDOR NA NUVEM FICA COM 8920. O wg-quick deduz a MTU
+// da placa da rota padrão menos 80, e na OCI a ens3 anuncia 9000 enquanto o
+// caminho para fora suporta 1500. O servidor então manda para o cliente pacotes
+// que, encapsulados, passam de 1500 e somem no caminho: ping e página pequena
+// funcionam, download grande e chamada de vídeo travam. A MTU do cliente (o
+// campo do peer) esconde isso só para TCP, e só na direção que ele anuncia.
+//
+// Caminho desconhecido (0) devolve 0 e deixa o wg-quick decidir: fora da
+// nuvem a placa É o caminho, e a dedução dele está certa.
+func ServerMTU(pathMTU int) int {
+	if pathMTU <= 0 {
+		return 0
+	}
+	mtu := pathMTU - wireGuardOverhead
+	if mtu < MTUMin {
+		return MTUMin
+	}
+	if mtu > MTUMax {
+		return MTUMax
+	}
+	return mtu
+}
+
+// RenderServerConfig monta o linkguard.conf do servidor. serverMTU vem de
+// ServerMTU; 0 omite a linha.
+//
+// MTU POR PEER NO SENTIDO SERVIDOR → CLIENTE. A interface tem uma MTU só, mas
+// cada peer tem a sua rota /32, e a rota pode carregar MTU própria. Um peer com
+// MTU menor que a da interface (o caso do celular em 4G, ou do PPPoE) ganha um
+// PostUp que reescreve a rota dele com aquele valor, depois que o wg-quick já a
+// criou. Isso faz duas coisas: o kernel passa a fragmentar/avisar pelo número
+// certo, e o ajuste de MSS da chain mss_clamp — que usa `rt mtu` — anuncia ao
+// outro lado o MSS que cabe NAQUELE cliente, e não o da interface.
+//
+// Só se escreve rota quando a MTU da interface é conhecida e o peer pede MENOS
+// que ela: uma rota com MTU maior que a da interface não teria efeito nenhum e
+// ainda diria ao ajuste de MSS um número que o túnel não suporta.
+func RenderServerConfig(c Config, private string, peers []Peer, serverMTU int) (string, error) {
 	if err := ValidateConfig(c); err != nil {
 		return "", err
 	}
 	if _, err := decodeKey(private); err != nil {
 		return "", err
 	}
+	if err := ValidateMTU(serverMTU); err != nil {
+		return "", err
+	}
 	ordered := append([]Peer(nil), peers...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Address < ordered[j].Address })
-	var b strings.Builder
-	b.WriteString("# Managed by LinkGuard Cloud — do not edit by hand.\n[Interface]\n")
-	fmt.Fprintf(&b, "Address = %s\nListenPort = %d\nPrivateKey = %s\n", c.Address, c.ListenPort, private)
 	for _, p := range ordered {
 		if err := validatePeer(c, p); err != nil {
 			return "", err
 		}
+	}
+	var b strings.Builder
+	b.WriteString("# Managed by LinkGuard Cloud — do not edit by hand.\n[Interface]\n")
+	fmt.Fprintf(&b, "Address = %s\nListenPort = %d\nPrivateKey = %s\n", c.Address, c.ListenPort, private)
+	if serverMTU > 0 {
+		fmt.Fprintf(&b, "MTU = %d\n", serverMTU)
+		for _, p := range ordered {
+			// MTU fora da faixa vinda do banco não derruba a VPN de todo
+			// mundo: o peer só fica sem a rota própria e segue pela MTU da
+			// interface. O endereço já passou por validatePeer (/32 IPv4
+			// dentro do túnel): nada chega ao shell do PostUp sem ter sido
+			// reduzido a número e prefixo.
+			if p.MTU >= MTUMin && p.MTU < serverMTU {
+				addr := netip.MustParsePrefix(p.Address)
+				fmt.Fprintf(&b, "PostUp = ip route replace %s dev %%i mtu %d\n", addr, p.MTU)
+			}
+		}
+	}
+	for _, p := range ordered {
 		b.WriteString("\n[Peer]\n")
 		fmt.Fprintf(&b, "PublicKey = %s\nAllowedIPs = %s\n", p.PublicKey, p.Address)
 	}
