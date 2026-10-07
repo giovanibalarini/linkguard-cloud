@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Info, Plus } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import { ZONAS } from '../../../lib/fwZonas';
 import type { ConfirmOrRevert } from '../../../lib/useConfirmOrRevert';
 import type {
@@ -43,6 +44,7 @@ export default function RulesTab({
   const [aliases, setAliases] = useState<AliasFW[]>([]);
   const [agendamentos, setAgendamentos] = useState<AgendamentoFW[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRegra, setEditingRegra] = useState<RegraFW | null>(null);
@@ -60,8 +62,9 @@ export default function RulesTab({
 
       const adminCount = currentLinhas.filter((l) => l.tipo === 'admin').length;
       setCounts((prev) => ({ ...prev, [z]: adminCount }));
-    } catch (e) {
-      console.error(e);
+      setErroCarga(false);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoading(false);
     }
@@ -144,6 +147,7 @@ export default function RulesTab({
 
   return (
     <div className="space-y-4">
+      {erroCarga && <LoadError onRetry={() => fetchZoneData(zona)} />}
       {/* Sub-abas de Zonas */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-gray-800">
         <div className="flex items-center gap-2 overflow-x-auto">

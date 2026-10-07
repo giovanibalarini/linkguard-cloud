@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Shield } from 'lucide-react';
+import { Lock, RefreshCw, Shield } from 'lucide-react';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n';
@@ -128,6 +128,14 @@ export default function Firewall() {
   }, [refreshEstado, fetchPendencias, fetchAuxData]);
 
   const cor = useConfirmOrRevert(refreshAll, notify);
+  // Durante a janela de 90 s tudo o que entra na configuração do firewall fica
+  // só para leitura — regras, listas, horários, encaminhamentos, ajustes e
+  // restaurar do histórico —, porque a reversão devolve a configuração INTEIRA
+  // e uma edição feita agora sumiria junto. Destinos fica de fora: a lista de
+  // bloqueio não faz parte dessa configuração e a reversão não a toca. (O
+  // "Liberar" de IP contido, na aba Avançado, também não é configuração, mas
+  // vai junto com a aba: por 90 s, o preço é pequeno.)
+  const podeEditarConfig = canWrite && !cor.locked;
 
   useEffect(() => {
     if (canRead) {
@@ -203,6 +211,14 @@ export default function Firewall() {
         <div className={`card border text-sm ${MSG_STYLES[msg.level]}`}>{msg.text}</div>
       )}
 
+      {/* Por que os botões de edição sumiram: dito uma vez, acima de todas as abas */}
+      {canWrite && cor.locked && (
+        <div className="card border border-gray-700 text-sm text-gray-300 flex items-start gap-3" role="status">
+          <Lock className="w-4 h-4 shrink-0 mt-0.5 text-gray-400" aria-hidden="true" />
+          <p>{cor.lockReason}</p>
+        </div>
+      )}
+
       {/* Navegação entre Abas Principais */}
       <div className="flex gap-2 border-b border-gray-800 overflow-x-auto">
         {TABS.map((id) => (
@@ -231,11 +247,11 @@ export default function Firewall() {
           cor={cor}
         />
       ) : activeTab === 'aliases' ? (
-        <AliasesTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
+        <AliasesTab canWrite={podeEditarConfig} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : activeTab === 'agendamentos' ? (
-        <SchedulesTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
+        <SchedulesTab canWrite={podeEditarConfig} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : activeTab === 'nat' ? (
-        <NatTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
+        <NatTab canWrite={podeEditarConfig} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : activeTab === 'destinos' ? (
         <DestinosTab canWrite={canWrite}>
           <DomainTargets canEdit={can('firewall.write')} />
@@ -243,11 +259,11 @@ export default function Firewall() {
       ) : activeTab === 'registro' ? (
         <FirewallLog canWrite={canWrite} onMsg={notify} />
       ) : activeTab === 'historico' ? (
-        <HistoryTab canWrite={canWrite} onRefreshGlobal={refreshAll} onMsg={notify} />
+        <HistoryTab canWrite={podeEditarConfig} onRefreshGlobal={refreshAll} onMsg={notify} />
       ) : (
         <AdvancedTab
           ruleset={ruleset}
-          canWrite={canWrite}
+          canWrite={podeEditarConfig}
           onRefreshGlobal={refreshAll}
           onMsg={notify}
         />

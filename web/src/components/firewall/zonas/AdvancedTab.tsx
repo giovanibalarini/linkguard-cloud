@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Settings, Shield, Terminal, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
 import type { MsgLevel } from '../../../types';
@@ -38,6 +39,7 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
     contencao_borda: true,
   });
   const [loadingAjustes, setLoadingAjustes] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [salvandoAjustes, setSalvandoAjustes] = useState(false);
 
   // Estado dos contidos
@@ -54,8 +56,9 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
         registrar_padrao: !!data?.registrar_padrao,
         contencao_borda: !!data?.contencao_borda,
       });
-    } catch (e) {
-      console.error(e);
+      setErroCarga(false);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoadingAjustes(false);
     }
@@ -78,7 +81,7 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
   }, [carregarAjustes, carregarContidos]);
 
   const handleSalvarAjustes = async () => {
-    if (!canWrite) return;
+    if (!canWrite || erroCarga) return;
     setSalvandoAjustes(true);
     try {
       await client.put('/api/firewall/ajustes', ajustes);
@@ -104,6 +107,7 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
 
   return (
     <div className="space-y-6">
+      {erroCarga && <LoadError onRetry={() => carregarAjustes()} />}
       {/* 1. Ajustes do Firewall */}
       <Panel
         title={
@@ -212,12 +216,15 @@ export default function AdvancedTab({ ruleset, canWrite, onRefreshGlobal, onMsg 
               <div className="pt-2">
                 <button
                   onClick={handleSalvarAjustes}
-                  disabled={salvandoAjustes}
+                  disabled={salvandoAjustes || erroCarga}
                   className="btn-primary flex items-center gap-2 text-xs py-2 px-4"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{salvandoAjustes ? t('fwz.avancado.salvando') : t('fwz.avancado.salvar')}</span>
                 </button>
+                {erroCarga && (
+                  <p className="text-xs text-red-300 mt-2">{t('fwz.carga.salvar_bloqueado')}</p>
+                )}
               </div>
             )}
           </div>

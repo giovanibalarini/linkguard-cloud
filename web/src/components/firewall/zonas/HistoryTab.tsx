@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { RotateCcw, History, User, Clock, FileText } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
 import InlineConfirm from './InlineConfirm';
@@ -18,6 +19,7 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
   const { t, lang } = useI18n();
   const [revisoes, setRevisoes] = useState<RevisaoFW[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
 
@@ -25,8 +27,9 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
     try {
       const { data } = await client.get<RevisaoFW[]>('/api/firewall/historico');
       setRevisoes(data ?? []);
-    } catch (e) {
-      console.error(e);
+      setErroCarga(false);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoading(false);
     }
@@ -68,9 +71,11 @@ export default function HistoryTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
     >
       <p className="text-xs text-gray-400 mb-4">{t('fwz.historico.desc')}</p>
 
+      {erroCarga && <div className="mb-4"><LoadError onRetry={() => fetchHistorico()} /></div>}
+
       {loading ? (
         <div className="py-8 text-center text-xs text-gray-500">{t('common.loading')}</div>
-      ) : revisoes.length === 0 ? (
+      ) : revisoes.length === 0 && !erroCarga ? (
         <div className="py-8 text-center text-xs text-gray-500">{t('fwz.historico.vazio')}</div>
       ) : (
         <div className="overflow-x-auto">

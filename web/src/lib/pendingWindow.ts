@@ -2,8 +2,8 @@ import type { FirewallPendingChange } from '../types';
 
 /**
  * A contagem regressiva da janela de confirmação (Fase C2, spec §5), num lugar
- * só porque ela é desenhada em DOIS: a faixa completa da tela de grupos de
- * regras e a faixa compacta que segue o operador por qualquer tela do painel
+ * só porque ela é desenhada em DOIS: a faixa completa da tela de firewall e a
+ * faixa compacta que segue o operador por qualquer tela do painel
  * (M-5 da revisão final). Duas cópias divergiriam justamente no número que o
  * operador usa para decidir se ainda dá tempo de testar o SSH.
  *
@@ -57,16 +57,14 @@ export function formatCountdown(s: number): string {
  * Quem está desenhando a faixa completa neste instante.
  *
  * As duas faixas do confirmar-ou-reverte não podem aparecer juntas: a completa
- * (tela de grupos de regras, com o que a reversão desfaz e o que ela não desfaz)
+ * (tela de firewall, com o que a reversão desfaz e o que ela não desfaz)
  * e a compacta do Layout, que segue o operador por qualquer tela. Duas
  * empilhadas dizendo a mesma coisa é ruído no minuto em que ruído é caro.
  *
- * A condição NÃO pode ser a rota `/firewall`: a faixa completa mora dentro de
- * FirewallGroups, que só existe na ABA "Grupos de regras" — nas outras abas
- * (Visão geral, Steering, Encaminhamentos, Ruleset, Backups) a tela ficaria sem
- * faixa nenhuma, que é exatamente o buraco que a faixa global existe para
- * fechar. Quem sabe a resposta é o componente que está montado, e é ele que a
- * declara aqui.
+ * Quem declara é a faixa completa (ConfirmOrRevertBanner), montada em
+ * Firewall.tsx acima das abas: enquanto ela está na tela — em qualquer aba do
+ * firewall —, a compacta some. Em qualquer outra tela do painel, a compacta
+ * volta.
  *
  * Um contador, e não um booleano: durante a troca de aba o React pode montar o
  * novo antes de desmontar o velho, e um booleano deixaria a faixa global sumida

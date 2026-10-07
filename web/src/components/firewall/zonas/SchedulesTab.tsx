@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Clock, AlertCircle } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import { errMsg } from '../../../lib/apiError';
 import Panel from '../../ui/Panel';
 import InlineConfirm from './InlineConfirm';
@@ -20,6 +21,7 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal, onMsg }: Props
 
   const [schedules, setSchedules] = useState<AgendamentoFW[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [editorTarget, setEditorTarget] = useState<AgendamentoFW | null | 'new'>(null);
   const [apagando, setApagando] = useState<AgendamentoFW | null>(null);
   const [erroUso, setErroUso] = useState<{ nome: string; usos: string[] } | null>(null);
@@ -28,8 +30,9 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal, onMsg }: Props
     try {
       const { data } = await client.get<AgendamentoFW[]>('/api/firewall/agendamentos');
       setSchedules(data ?? []);
-    } catch (e) {
-      console.error(e);
+      setErroCarga(false);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoading(false);
     }
@@ -80,6 +83,7 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal, onMsg }: Props
 
   return (
     <div className="space-y-6">
+      {erroCarga && <LoadError onRetry={() => fetchSchedules()} />}
       {/* Barra de ações superior */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-gray-400">
@@ -131,7 +135,7 @@ export default function SchedulesTab({ canWrite, onRefreshGlobal, onMsg }: Props
                     {t('common.loading')}
                   </td>
                 </tr>
-              ) : schedules.length === 0 ? (
+              ) : schedules.length === 0 && !erroCarga ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-500">
                     {t('fwz.agendamentos.vazio')}

@@ -33,8 +33,8 @@ fwx.revert.scope.strong:
   pt: "toda a configuração do firewall e os perfis de acesso da VPN"
   en: "the whole firewall configuration and the VPN access profiles"
 fwx.revert.scope.tail:
-  pt: " ao estado de antes da janela: regras, aliases, agendamentos, NAT e ajustes."
-  en: " to how they were before the window: rules, aliases, schedules, NAT and settings."
+  pt: " ao estado de antes da janela: regras, aliases, agendamentos, NAT e ajustes. Bloqueios de máquina e destinos bloqueados ficam como estão."
+  en: " to how they were before the window: rules, aliases, schedules, NAT and settings. Host blocks and blocked destinations stay as they are."
 fwx.confirm.btn.confirm:
   pt: "Confirmar acesso"
   en: "Confirm access"

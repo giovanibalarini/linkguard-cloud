@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import { errMsg } from '../../../lib/apiError';
 import type { ItemRelatorioConversao } from '../../../types/firewall';
 
 // Os tipos que o backend sabe emitir; um tipo novo aparece cru em vez de virar
@@ -18,16 +19,18 @@ export default function ConversionNotice({ items, onDismiss, canWrite }: Convers
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState('');
 
   if (!items || items.length === 0) return null;
 
   const handleEntendi = async () => {
     setBusy(true);
+    setErro('');
     try {
       await client.post('/api/firewall/conversao/entendi');
       await onDismiss();
     } catch (e) {
-      console.error(e);
+      setErro(errMsg(e, t));
     } finally {
       setBusy(false);
     }
@@ -35,6 +38,9 @@ export default function ConversionNotice({ items, onDismiss, canWrite }: Convers
 
   return (
     <div className="rounded-xl border border-indigo-500/40 bg-indigo-950/30 p-4 space-y-3">
+      {erro && (
+        <p role="alert" className="text-xs text-red-300">{erro}</p>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400 shrink-0 mt-0.5">
