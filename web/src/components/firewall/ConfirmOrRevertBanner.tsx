@@ -13,14 +13,19 @@
  * tem o id da janela e os dois botões.
  */
 
+import { useEffect } from 'react';
 import { Timer, Check, RotateCcw, HelpCircle, RefreshCw } from 'lucide-react';
-import { formatCountdown } from '../../lib/pendingWindow';
+import { claimFullBanner, formatCountdown } from '../../lib/pendingWindow';
 import { useI18n } from '../../i18n';
 import type { ConfirmOrRevert } from '../../lib/useConfirmOrRevert';
 
 export default function ConfirmOrRevertBanner({ cor, canWrite }: { cor: ConfirmOrRevert; canWrite: boolean }) {
   const { pending, pendingUnknown, pendingSeconds, busy } = cor;
   const { t } = useI18n();
+  // Enquanto esta faixa está montada, a compacta do Layout se esconde: as duas
+  // empilhadas mostravam dois relógios e dois pares de botões para a mesma
+  // janela. Ela mora em Firewall.tsx, acima das abas, então vale para todas elas.
+  useEffect(() => claimFullBanner(), []);
   return (
     <>
       {/* A mudança de escopo input já está APLICADA quando esta faixa

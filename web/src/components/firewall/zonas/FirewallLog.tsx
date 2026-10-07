@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { Search, RefreshCw, AlertCircle, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import type { MsgLevel } from '../../../types';
 import type { RegistroFW } from '../../../types/firewall';
 
@@ -14,6 +15,7 @@ export default function FirewallLog({}: Props) {
   const { t } = useI18n();
   const [entradas, setEntradas] = useState<RegistroFW[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [busca, setBusca] = useState('');
   const [debouncedBusca, setDebouncedBusca] = useState('');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -33,8 +35,9 @@ export default function FirewallLog({}: Props) {
       const url = `/api/firewall/registro?limit=200${q ? `&q=${encodeURIComponent(q)}` : ''}`;
       const { data } = await client.get<{ entradas: RegistroFW[] }>(url);
       setEntradas(data?.entradas ?? []);
-    } catch (e) {
-      console.error(e);
+      setErroCarga(false);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoading(false);
     }
@@ -90,6 +93,7 @@ export default function FirewallLog({}: Props) {
 
   return (
     <div className="space-y-4">
+      {erroCarga && <LoadError onRetry={() => carregar()} />}
       {/* Nota explicativa */}
       <div className="p-3 bg-gray-900 border border-gray-800 rounded-lg text-xs text-gray-400 flex items-start gap-2">
         <AlertCircle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
@@ -137,7 +141,7 @@ export default function FirewallLog({}: Props) {
                   {t('common.loading')}
                 </td>
               </tr>
-            ) : entradas.length === 0 ? (
+            ) : entradas.length === 0 && !erroCarga ? (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-gray-500">
                   {t('fwz.registro.vazio')}

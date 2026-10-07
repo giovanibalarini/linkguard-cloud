@@ -167,14 +167,14 @@ fw.confirm.reverting.title:
   pt: "A reversão está em curso — e você já pode editar normalmente."
   en: "The revert is under way — and you can already edit normally."
 fw.confirm.reverting.body:
-  pt: "Os grupos e as regras já voltaram ao estado anterior aqui no LinkGuard; falta o firewall aceitar a reconfiguração, e ele repete a tentativa até conseguir. Não há o que confirmar: esta alteração não vai mais valer."
-  en: "The groups and rules are already back to their previous state here in LinkGuard; what remains is for the firewall to accept the reconfiguration, and it retries until it succeeds. There is nothing to confirm: this change will no longer take effect."
+  pt: "A configuração do firewall já voltou ao estado anterior aqui no LinkGuard; falta o firewall aceitar a reconfiguração, e ele repete a tentativa até conseguir. Não há o que confirmar: esta alteração não vai mais valer."
+  en: "The firewall configuration is already back to its previous state here in LinkGuard; what remains is for the firewall to accept the reconfiguration, and it retries until it succeeds. There is nothing to confirm: this change will no longer take effect."
 fw.confirm.reverting.editable:
   pt: "A edição continua liberada: se foi uma regra que fez o firewall recusar, é editando ou apagando ela que você resolve — a sua próxima alteração aplica os dois estados de uma vez."
   en: "Editing stays unlocked: if a rule is what made the firewall refuse, editing or deleting it is how you fix this — your next change applies both states at once."
 fw.confirm.reverting.scope:
-  pt: "A reversão desfaz apenas grupos e regras. Bloqueios por host, encaminhamentos de porta e o NTP continuam como estão."
-  en: "The revert only undoes groups and rules. Host blocks, port forwards and NTP stay as they are."
+  pt: "A reversão devolve regras, aliases, agendamentos, NAT, ajustes e os perfis de acesso da VPN. Bloqueios de máquina e a lista de destinos bloqueados não fazem parte dela e continuam como estão."
+  en: "The revert restores rules, aliases, schedules, NAT, settings and the VPN access profiles. Host blocks and the blocked destinations list are not part of it and stay as they are."
 fw.confirm.unknown.title:
   pt: "Não foi possível saber se há alguma alteração aguardando confirmação."
   en: "It was not possible to tell whether any change is awaiting confirmation."

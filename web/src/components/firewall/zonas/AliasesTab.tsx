@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Shield, Lock, Search, AlertCircle, Save } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import { errMsg } from '../../../lib/apiError';
 import { descricaoDoAlias, nomeDoAlias } from '../../../lib/fwZonas';
 import Panel from '../../ui/Panel';
@@ -21,6 +22,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
 
   const [aliases, setAliases] = useState<AliasFW[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [busca, setBusca] = useState('');
   const [editorTarget, setEditorTarget] = useState<AliasFW | null | 'new'>(null);
   const [apagando, setApagando] = useState<AliasFW | null>(null);
@@ -29,18 +31,25 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
   // Redes extras da VCN
   const [vcnExtrasTexto, setVcnExtrasTexto] = useState('');
   const [salvandoExtras, setSalvandoExtras] = useState(false);
+  const [extrasCarregados, setExtrasCarregados] = useState(false);
   const [sucessoExtras, setSucessoExtras] = useState(false);
 
   const fetchAliases = useCallback(async () => {
     try {
       const [resAliases, resAjustes] = await Promise.all([
         client.get<AliasFW[]>('/api/firewall/aliases'),
-        client.get<{ redes_vcn_extras?: string[] }>('/api/firewall/ajustes').catch(() => ({ data: { redes_vcn_extras: [] } })),
+        client.get<{ redes_vcn_extras?: string[] }>('/api/firewall/ajustes').catch(() => null),
       ]);
       setAliases(resAliases.data ?? []);
-      setVcnExtrasTexto((resAjustes.data.redes_vcn_extras ?? []).join('\n'));
-    } catch (e) {
-      console.error(e);
+      if (resAjustes) {
+        setVcnExtrasTexto((resAjustes.data.redes_vcn_extras ?? []).join('\n'));
+      }
+      // Sem os ajustes, o campo de redes extras não sabe o que há gravado:
+      // salvá-lo apagaria as redes de verdade.
+      setExtrasCarregados(!!resAjustes);
+      setErroCarga(!resAjustes);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoading(false);
     }
@@ -113,6 +122,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
 
   return (
     <div className="space-y-6">
+      {erroCarga && <LoadError onRetry={() => fetchAliases()} />}
       {/* Barra superior de busca e novo alias */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -171,7 +181,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
                     {t('common.loading')}
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : filtered.length === 0 && !erroCarga ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-500">
                     {t('fwz.aliases.vazio')}
@@ -287,7 +297,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
             placeholder="10.1.0.0/16&#10;172.16.0.0/12"
             value={vcnExtrasTexto}
             onChange={(e) => setVcnExtrasTexto(e.target.value)}
-            disabled={!canWrite || salvandoExtras}
+            disabled={!canWrite || salvandoExtras || !extrasCarregados}
           />
           {sucessoExtras && (
             <p className="text-xs text-green-400">
@@ -298,7 +308,7 @@ export default function AliasesTab({ canWrite, onRefreshGlobal, onMsg }: Props) 
             <div className="flex justify-end">
               <button
                 onClick={handleSalvarVCNExtras}
-                disabled={salvandoExtras}
+                disabled={salvandoExtras || !extrasCarregados}
                 className="btn-secondary text-xs flex items-center gap-2"
               >
                 <Save className="w-3.5 h-3.5" />

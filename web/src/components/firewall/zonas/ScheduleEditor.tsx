@@ -78,8 +78,9 @@ export default function ScheduleEditor({ schedule, onSave, onClose, canWrite }: 
       open
       onClose={onClose}
       title={isEditing ? t('fwz.agendamentos.editar') : t('fwz.agendamentos.novo')}
+      className="bg-gray-900 border border-gray-800 rounded-xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {erro && (
           <div className="p-3 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
             {erro}

@@ -21,14 +21,12 @@ import type { FirewallPendingChange, FirewallPendingResponse } from '../types';
  * edição do firewall travada por 90 segundos sem explicação na tela.
  *
  * Ela é compacta de propósito. A faixa completa — o que a reversão desfaz e o
- * que ela não desfaz, a explicação da trava, o estado "revertendo" — continua na
- * tela de grupos, que é onde cabe ler tudo isso; esta aqui responde às três
- * perguntas que não podem esperar: quanto tempo falta, o que está pendente e
- * como resolver. Por isso ela some enquanto a completa está montada — duas
- * faixas empilhadas dizendo a mesma coisa é ruído no minuto em que ruído é caro
- * —, e é a completa que declara isso (claimFullBanner), não a rota: ela mora na
- * ABA "Grupos de regras", e nas outras abas da tela de firewall é esta aqui que
- * tem de aparecer.
+ * que ela não desfaz, o estado "revertendo" — fica na tela de firewall, acima
+ * das abas, que é onde cabe ler tudo isso; esta aqui responde às três perguntas
+ * que não podem esperar: quanto tempo falta, o que está pendente e como
+ * resolver. Por isso ela some enquanto a completa está montada — duas faixas
+ * empilhadas dizendo a mesma coisa é ruído no minuto em que ruído é caro —, e é
+ * a completa que declara isso (claimFullBanner).
  *
  * Ela não recarrega nada de outras telas quando a janela fecha: cada tela cuida
  * dos dados dela. O que ela garante é que o operador vê o relógio e alcança os
@@ -39,8 +37,8 @@ export default function PendingWindowBanner() {
   const { t } = useI18n();
   const canRead = can('firewall.read');
   const canWrite = can('firewall.write');
-  // Enquanto a faixa COMPLETA estiver montada (aba "Grupos de regras"), quem
-  // manda é ela.
+  // Enquanto a faixa COMPLETA estiver montada (tela de firewall, qualquer aba),
+  // quem manda é ela.
   const hidden = useSyncExternalStore(subscribeFullBanner, fullBannerShown, fullBannerShown);
 
   const [pending, setPending] = useState<FirewallPendingChange | null>(null);

@@ -7,8 +7,8 @@
 # aparece em ~10 controles desabilitados, e a tela que o painel mostra quando
 # quebra.
 fw.lock.reason:
-  pt: "Há uma alteração aguardando confirmação. Confirme o acesso ou reverta agora, na faixa no topo, para voltar a editar."
-  en: "A change is awaiting confirmation. Confirm your access or revert now, in the banner at the top, to go back to editing."
+  pt: "Edição pausada enquanto a mudança aplicada está em teste: regras, aliases, agendamentos, NAT, ajustes e histórico ficam só para leitura, porque a reversão devolveria tudo isso e levaria junto o que fosse editado agora. Confirme o acesso ou reverta, na faixa acima, para voltar a editar."
+  en: "Editing is paused while the applied change is being tested: rules, aliases, schedules, NAT, settings and history are read-only, because a revert would restore all of them and take anything edited now along with it. Confirm your access or revert, in the banner above, to edit again."
 fw.toast.window.expired:
   pt: "O prazo acabou sem confirmação: a alteração foi revertida e os grupos e as regras voltaram ao estado anterior."
   en: "The deadline passed without confirmation: the change was reverted and the groups and rules are back to their previous state."

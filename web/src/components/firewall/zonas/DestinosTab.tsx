@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, Ban } from 'lucide-react';
 import client from '../../../api/client';
 import { useI18n } from '../../../i18n';
+import LoadError from './LoadError';
 import Panel from '../../ui/Panel';
 
 interface Props {
@@ -14,6 +15,7 @@ export default function DestinosTab({ canWrite, children }: Props) {
   const [blocklist, setBlocklist] = useState<string[]>([]);
   const [novoIP, setNovoIP] = useState('');
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -21,8 +23,9 @@ export default function DestinosTab({ canWrite, children }: Props) {
     try {
       const { data } = await client.get<{ blocklist: string[] }>('/api/nftables/managed');
       setBlocklist(data?.blocklist ?? []);
-    } catch (e) {
-      console.error(e);
+      setErroCarga(false);
+    } catch {
+      setErroCarga(true);
     } finally {
       setLoading(false);
     }
@@ -63,6 +66,7 @@ export default function DestinosTab({ canWrite, children }: Props) {
 
   return (
     <div className="space-y-6">
+      {erroCarga && <LoadError onRetry={() => fetchBlocklist()} />}
       <Panel
         title={
           <div className="flex items-center gap-2">
@@ -102,7 +106,7 @@ export default function DestinosTab({ canWrite, children }: Props) {
 
         {loading ? (
           <div className="py-6 text-center text-xs text-gray-500">{t('common.loading')}</div>
-        ) : blocklist.length === 0 ? (
+        ) : blocklist.length === 0 && !erroCarga ? (
           <div className="py-6 text-center text-xs text-gray-500">{t('fwz.destinos.vazio')}</div>
         ) : (
           <div className="overflow-x-auto">

@@ -1095,3 +1095,14 @@ fwz.avancado.ruleset.titulo:
 fwz.avancado.ruleset.vazio:
   pt: "Ruleset vazio ou inacessível."
   en: "Ruleset empty or unavailable."
+
+# ─── Falha ao carregar uma aba ────────────────────────────────────────────────
+fwz.carga.erro:
+  pt: "Não foi possível carregar estes dados. O que aparece abaixo pode estar desatualizado ou incompleto."
+  en: "Could not load this data. What is shown below may be outdated or incomplete."
+fwz.carga.tentar:
+  pt: "Tentar de novo"
+  en: "Try again"
+fwz.carga.salvar_bloqueado:
+  pt: "Salvar fica desligado até os ajustes carregarem: salvar agora gravaria valores que não são os atuais."
+  en: "Saving stays off until the settings load: saving now would write values that are not the current ones."
